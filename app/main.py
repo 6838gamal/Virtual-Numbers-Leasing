@@ -11,16 +11,25 @@ Customer Portal (FastAPI + Jinja2 + SSE keepalive + Google OAuth)
 - /logout لا يخرج من Google إلا بطلب صريح.
 - حفظ الجلسة عند OAuth callback قبل الـ redirect.
 
-✅ إصلاحات 2026-10-14:
+✅ إصلاحات 2026-10-14 (1.0.1):
 - إصلاح UndefinedError: 'stats' is undefined في buy.html.
 - تمرير stats إلى كل القوالب التي قد تحتاجه.
 - إضافة total_orders و active_orders إلى get_my_stats.
 - إصلاح ثغرة أمنية في auth_guard: path.startswith(p) مع p="/".
 - تفعيل StrictUndefined في وضع DEBUG.
+
+✅ إصلاحات 2026-10-14 (1.0.2):
 - تحسين auth_guard: redirect للمتصفح، 401 للـ API فقط.
-- إضافة /api/v1/system/version و /api/v1/system/whoami للتشخيص.
-- إضافة logging تشخيصي في auth_guard (عند DEBUG).
+- إضافة /api/v1/system/version و /api/v1/system/whoami.
+- logging تشخيصي في auth_guard (عند DEBUG).
 - فحص SECRET_KEY في lifespan وطباعة تحذير واضح.
+
+✅ إصلاحات 2026-10-14 (1.0.3):
+- إزالة الاعتماد على Accept header في auth_guard (غير موثوق).
+- الصفحات المحمية → 303 Redirect دائماً.
+- API المحمي → 401 JSON دائماً.
+- إضافة /api/v1/me/stats لـ JavaScript (بدل fetch على /dashboard).
+- logging تشخيصي دائم لطلبات 401 (مؤقت — يمكن تعطيله).
 """
 from __future__ import annotations
 
@@ -246,7 +255,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Jamal Solutions — Customer Portal",
     description="Virtual Numbers Platform",
-    version="1.0.2",
+    version="1.0.3",
     lifespan=lifespan,
 )
 
@@ -510,6 +519,7 @@ async def system_version():
         "version": app.version,
         "has_stats_fix": True,
         "has_auth_guard_fix": True,
+        "has_me_stats": True,
         "debug": DEBUG,
         "oauth_enabled": OAUTH_ENABLED,
         "secret_key_from_env": _SECRET_KEY_FROM_ENV,
@@ -618,6 +628,43 @@ async def sse_events(request: Request):
             _subscribers.discard(queue)
 
     return EventSourceResponse(event_generator())
+
+
+# ══════════════════════════════════════════════════════════════
+# API — Me (للـ JavaScript: يعيد JSON فقط)
+# ══════════════════════════════════════════════════════════════
+@app.get("/api/v1/me/stats")
+async def me_stats(request: Request):
+    """
+    نقطة نهاية JSON لـ JavaScript — بديل لـ fetch('/dashboard').
+    إذا انتهت الجلسة، يعيد 401 JSON واضح.
+    """
+    customer = _get_customer_from_session(request)
+    if not customer:
+        return JSONResponse(
+            {"error": "session_expired", "detail": "انتهت الجلسة، يرجى تسجيل الدخول"},
+            status_code=401,
+        )
+    return {
+        "customer": {
+            "id": customer["id"],
+            "name": customer["name"],
+            "email": customer["email"],
+            "balance": customer["balance"],
+        },
+        "stats": await get_my_stats(customer["id"]),
+    }
+
+
+@app.get("/api/v1/me/session")
+async def me_session(request: Request):
+    """فحص سريع لحالة الجلسة من JavaScript."""
+    cid = request.session.get("customer_id")
+    return {
+        "authenticated": bool(cid),
+        "customer_id": cid,
+        "session_keys": sorted(request.session.keys()),
+    }
 
 
 # ══════════════════════════════════════════════════════════════
@@ -1229,60 +1276,64 @@ async def end_all_sessions(request: Request):
 # ══════════════════════════════════════════════════════════════
 # Middleware — Auth Guard (يُنفَّذ بعد SessionMiddleware)
 # ══════════════════════════════════════════════════════════════
-def _wants_html(request: Request) -> bool:
-    """هل الطلب من متصفح يتوقع HTML؟"""
-    accept = request.headers.get("accept", "")
-    return "text/html" in accept
-
-
 @app.middleware("http")
 async def auth_guard(request: Request, call_next):
     """
     يحمي المسارات الخاصة.
 
-    - طلب صفحة من متصفح (Accept: text/html) → 303 Redirect إلى /?next=...
-    - طلب API (Accept: application/json أو غيره) → 401 JSON
-    - طلب API لكن من متصفح (Accept: text/html) → 303 Redirect (تسهيل التصفح)
+    ✅ القاعدة (1.0.3) — بدون الاعتماد على Accept header:
+
+    - "/" → عام (صفحة تسجيل الدخول)
+    - PUBLIC_PATHS → عامة
+    - "/api/..." (غير عام) → 401 JSON دائماً إذا لم يكن مسجّلاً
+    - أي صفحة محمية → 303 Redirect دائماً إذا لم يكن مسجّلاً
+
+    هذا يضمن:
+    * المتصفح يُوجَّه دائماً لشاشة تسجيل الدخول.
+    * fetch/API يحصل على 401 JSON واضح.
+    * لا اعتماد على Accept header (غير موثوق).
     """
     path = request.url.path
     is_api = path.startswith("/api/")
+    cid = request.session.get("customer_id")
 
-    # ── logging تشخيصي ──
-    if DEBUG and (is_api or path in PROTECTED_PREFIXES or path.startswith("/dashboard")):
-        print(
-            f"🔍 auth_guard: path={path} "
-            f"has_cookie={'cookie' in request.headers} "
-            f"session_keys={list(request.session.keys())} "
-            f"customer_id={request.session.get('customer_id')} "
-            f"accept={request.headers.get('accept', '')[:40]}"
-        )
-
-    # "/" مسار عام (صفحة تسجيل الدخول)
+    # ── "/" مسار عام ──
     if path == "/":
         return await call_next(request)
 
-    # مسارات عامة أخرى
+    # ── مسارات عامة أخرى ──
     if any(
         path == p or path.startswith(p + "/")
         for p in PUBLIC_PATHS
     ):
         return await call_next(request)
 
+    # ── هل يحتاج تسجيل دخول؟ ──
     needs_auth = any(
         path == p or path.startswith(p + "/") for p in PROTECTED_PREFIXES
     )
     if is_api:
         needs_auth = True
 
-    if needs_auth and not request.session.get("customer_id"):
-        # ✅ إذا كان الطلب من متصفح (حتى لو API) → redirect
-        if _wants_html(request):
-            return RedirectResponse(url="/?next=" + path, status_code=303)
-        # طلب برمجي (fetch, curl, monitoring) → 401 JSON
-        return JSONResponse({"detail": "غير مسجّل"}, status_code=401)
+    if needs_auth and not cid:
+        # logging تشخيصي لطلبات 401 (مفيد لتحديد المصدر)
+        if is_api:
+            print(
+                f"🔒 401: path={path} "
+                f"ua={request.headers.get('user-agent', '')[:60]!r} "
+                f"accept={request.headers.get('accept', '')[:40]!r} "
+                f"has_cookie={'cookie' in request.headers}"
+            )
+            return JSONResponse(
+                {"detail": "غير مسجّل", "error": "not_authenticated"},
+                status_code=401,
+            )
+        # صفحة محمية → redirect دائماً
+        print(f"↪️  303 redirect: path={path} → /?next={path}")
+        return RedirectResponse(url="/?next=" + path, status_code=303)
 
-    # ✅ جدّد الجلسة (sliding expiration) — يُحدّث الكوكي في الرد
-    if request.session.get("customer_id"):
+    # ── sliding refresh ──
+    if cid:
         request.session["_last_seen"] = _now_iso()
 
     return await call_next(request)
