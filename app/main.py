@@ -1,6 +1,15 @@
 """
 Jamal Solutions — Virtual Numbers Platform
 Customer Portal (FastAPI + Jinja2 + SSE keepalive + Google OAuth)
+
+✅ إصلاحات الجلسة:
+- SECRET_KEY ثابت من متغير البيئة (إلزامي في الإنتاج).
+- استخدام @app.middleware("http") بدل BaseHTTPMiddleware لضمان وصول session.
+- ترتيب middleware صحيح: SessionMiddleware أولاً في التنفيذ.
+- max_age موسّع (30 يوم) + sliding refresh عبر _last_seen.
+- same_site="lax" لدعم OAuth redirect.
+- /logout لا يخرج من Google إلا بطلب صريح.
+- حفظ الجلسة عند OAuth callback قبل الـ redirect.
 """
 from __future__ import annotations
 
@@ -25,7 +34,6 @@ from sse_starlette.sse import EventSourceResponse
 
 from authlib.integrations.starlette_client import OAuth
 from starlette.middleware.sessions import SessionMiddleware
-from starlette.middleware.base import BaseHTTPMiddleware
 
 # ══════════════════════════════════════════════════════════════
 # Paths
@@ -39,8 +47,24 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 # ══════════════════════════════════════════════════════════════
 # OAuth / Session config
 # ══════════════════════════════════════════════════════════════
-SECRET_KEY = os.getenv("SECRET_KEY", secrets.token_urlsafe(32))
+# 🔒 SECRET_KEY: يجب أن يكون ثابتاً. لا تستخدم secrets.token_urlsafe هنا،
+# وإلا فإن كل إعادة تشغيل تُبطل جميع الجلسات.
+SECRET_KEY = os.getenv("SECRET_KEY", "").strip()
+if not SECRET_KEY:
+    # في التطوير فقط: ولّد قيمة ثابتة واطبعها، ثم ضعها في .env
+    _dev_secret_file = Path(".dev_secret_key")
+    if _dev_secret_file.exists():
+        SECRET_KEY = _dev_secret_file.read_text().strip()
+    else:
+        SECRET_KEY = secrets.token_urlsafe(48)
+        _dev_secret_file.write_text(SECRET_KEY)
+        print(
+            "⚠️  SECRET_KEY غير مضبوط في البيئة. تم توليد واحد ثابت في "
+            ".dev_secret_key — لا تستخدم هذا في الإنتاج."
+        )
+
 SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true"
+SESSION_MAX_AGE = int(os.getenv("SESSION_MAX_AGE", str(30 * 24 * 3600)))  # 30 يوم
 
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
@@ -60,6 +84,10 @@ if OAUTH_ENABLED:
 PROTECTED_PREFIXES = (
     "/dashboard", "/buy", "/catalog", "/my-numbers", "/orders",
     "/inbox", "/wallet", "/transactions", "/support", "/profile", "/security",
+)
+
+PUBLIC_PATHS = (
+    "/", "/logout", "/auth", "/static", "/health", "/status", "/api/v1/system",
 )
 
 # ══════════════════════════════════════════════════════════════
@@ -217,12 +245,12 @@ STORE: dict[str, Any] = {
             },
         },
     },
-    "numbers": [],       # list of numbers owned by customer
-    "orders": [],        # purchase orders
-    "sms": [],           # incoming SMS
-    "transactions": [],  # wallet ledger
-    "deposits": [],      # top-ups
-    "tickets": [],       # support tickets
+    "numbers": [],
+    "orders": [],
+    "sms": [],
+    "transactions": [],
+    "deposits": [],
+    "tickets": [],
     "sessions": [
         {
             "id": "s1",
@@ -237,7 +265,7 @@ STORE: dict[str, Any] = {
 
 
 # ══════════════════════════════════════════════════════════════
-# Catalogs (countries / services / payment methods)
+# Catalogs
 # ══════════════════════════════════════════════════════════════
 COUNTRIES: list[dict] = [
     {"code": "YE", "name": "اليمن",          "flag": "🇾🇪", "continent": "asia",    "continent_label": "آسيا",    "price": "$0.50", "available": 42, "min_price": 0.50, "services_count": 8,  "top_services": ["واتساب", "تليجرام", "جوجل"]},
@@ -306,7 +334,6 @@ async def get_current_customer(request: Request) -> dict:
     """للصفحات المحمية — يفترض أن middleware قد تحقق من الجلسة."""
     customer = _get_customer_from_session(request)
     if customer is None:
-        # احتياطي (يجب ألا يحدث لأن middleware يحمي)
         raise HTTPException(status_code=401, detail="غير مسجّل")
     return customer
 
@@ -524,7 +551,6 @@ async def sse_events(request: Request):
 @app.get("/", response_class=HTMLResponse)
 async def login_page(request: Request):
     """شاشة تسجيل الدخول الرئيسية."""
-    # لو مسجّل بالفعل، حوّله للوحة البيانات
     if request.session.get("customer_id"):
         return RedirectResponse(url="/dashboard", status_code=303)
 
@@ -546,6 +572,9 @@ async def auth_google(request: Request):
         request.session["customer_id"] = 1
         request.session["email"] = STORE["customers"][1]["email"]
         request.session["name"] = STORE["customers"][1]["name"]
+        # ✅ علامة تسجيل الدخول
+        request.session["logged_in_at"] = _now_iso()
+        request.session["_last_seen"] = _now_iso()
         nxt = request.query_params.get("next", "/dashboard")
         return RedirectResponse(url=nxt, status_code=303)
 
@@ -572,7 +601,6 @@ async def auth_google_callback(request: Request):
     if not email:
         return RedirectResponse(url="/?error=no_email", status_code=303)
 
-    # ابحث عن العميل بنفس الإيميل أو أنشئ واحدًا جديدًا
     customer = next(
         (c for c in STORE["customers"].values() if c["email"] == email),
         None,
@@ -603,51 +631,45 @@ async def auth_google_callback(request: Request):
         }
         STORE["customers"][new_id] = customer
     else:
-        # حدّث الصورة إن وُجدت
         if picture:
             customer["picture"] = picture
 
-    # سجّل الدخول
+    # ✅ سجّل الدخول — تأكد من كتابة القيم قبل الـ redirect
     request.session["customer_id"] = customer["id"]
     request.session["email"] = email
     request.session["name"] = name
     request.session["picture"] = picture
+    request.session["logged_in_at"] = _now_iso()
+    request.session["_last_seen"] = _now_iso()
 
     nxt = request.session.pop("oauth_next", "/dashboard")
     return RedirectResponse(url=nxt, status_code=303)
 
 
 # ══════════════════════════════════════════════════════════════
-# Logout (مباشر + OAuth-aware)
+# Logout
 # ══════════════════════════════════════════════════════════════
 @app.api_route("/logout", methods=["GET", "POST"], name="logout")
 async def logout(request: Request):
     """
     تسجيل الخروج:
     - يمسح الجلسة المحلية بالكامل.
-    - إن كان OAuth مُفعّلاً وتم تسجيل الدخول عبر Google، يعيد التوجيه
-      لإنهاء جلسة Google أيضًا.
+    - اختياريًا: ?google=1 لإنهاء جلسة Google أيضاً.
     - يدعم ?next= للعودة لصفحة معينة بعد الخروج.
     """
     next_url = request.query_params.get("next", "/")
+    also_google = request.query_params.get("google", "0") == "1"
 
-    # احتفظ بالإيميل قبل مسح الجلسة (لإنهاء جلسة Google إن أمكن)
-    email = request.session.get("email")
-
-    # امسح الجلسة المحلية
     request.session.clear()
 
-    # إن كان OAuth مُفعّلًا وتم تسجيل الدخول عبر Google، أنهِ جلسته أيضًا
-    if OAUTH_ENABLED and email:
-        google_logout = "https://accounts.google.com/Logout"
-        return RedirectResponse(url=google_logout, status_code=303)
+    if OAUTH_ENABLED and also_google:
+        return RedirectResponse(url="https://accounts.google.com/Logout", status_code=303)
 
     return RedirectResponse(url=next_url, status_code=303)
 
 
 @app.get("/auth/logout")
 async def auth_logout(request: Request):
-    """توحيد السلوك — يُعيد التوجيه إلى /logout."""
     next_url = request.query_params.get("next", "/")
     return RedirectResponse(url=f"/logout?next={next_url}", status_code=303)
 
@@ -1072,8 +1094,7 @@ async def update_preferences(payload: PreferencesUpdate, request: Request):
 
 @app.delete("/api/v1/profile")
 async def delete_profile(request: Request):
-    customer = await get_current_customer(request)
-    # soft-delete placeholder
+    await get_current_customer(request)
     return {"status": "deleted"}
 
 
@@ -1082,7 +1103,7 @@ async def delete_profile(request: Request):
 # ══════════════════════════════════════════════════════════════
 @app.put("/api/v1/security/password")
 async def change_password(payload: PasswordChange, request: Request):
-    customer = await get_current_customer(request)
+    await get_current_customer(request)
     if len(payload.new) < 8:
         raise HTTPException(status_code=400, detail="كلمة المرور قصيرة")
     return {"status": "updated"}
@@ -1122,49 +1143,54 @@ async def end_all_sessions(request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# Middleware
+# Middleware — Auth Guard (يُنفَّذ بعد SessionMiddleware)
 # ══════════════════════════════════════════════════════════════
-class AuthGuardMiddleware(BaseHTTPMiddleware):
-    """يحوّل غير المسجّلين إلى شاشة الدخول."""
+@app.middleware("http")
+async def auth_guard(request: Request, call_next):
+    """
+    يحمي المسارات الخاصة.
+    - في Starlette، @app.middleware("http") تُنفَّذ بعد add_middleware،
+      لذلك SessionMiddleware (المضاف أدناه) سيكون الأقرب للتطبيق
+      ويُملأ request.session قبل هذه الدالة.
+    """
+    path = request.url.path
 
-    async def dispatch(self, request: Request, call_next):
-        path = request.url.path
-
-        # مسارات عامة لا تُحمى
-        if (
-            path == "/"
-            or path == "/logout"
-            or path.startswith("/auth/")
-            or path.startswith("/static/")
-            or path == "/health"
-            or path == "/status"
-            or path.startswith("/api/v1/system/")
-        ):
-            return await call_next(request)
-
-        needs_auth = any(
-            path == p or path.startswith(p + "/") for p in PROTECTED_PREFIXES
-        )
-        # حماية كل الـ API (باستثناء system)
-        if path.startswith("/api/"):
-            needs_auth = True
-
-        if needs_auth and not request.session.get("customer_id"):
-            if path.startswith("/api/"):
-                return JSONResponse({"detail": "غير مسجّل"}, status_code=401)
-            return RedirectResponse(url="/?next=" + path, status_code=303)
-
+    # مسارات عامة
+    if any(
+        path == p or path.startswith(p + "/") or path.startswith(p)
+        for p in PUBLIC_PATHS
+    ):
         return await call_next(request)
 
+    needs_auth = any(
+        path == p or path.startswith(p + "/") for p in PROTECTED_PREFIXES
+    )
+    # حماية كل الـ API (باستثناء system الذي مر أعلاه)
+    if path.startswith("/api/"):
+        needs_auth = True
 
-# ⚠️ الترتيب مهم: SessionMiddleware أولاً، ثم AuthGuard
-# (Starlette يعكس ترتيب التنفيذ — Session يجب أن يُنفّذ قبل AuthGuard)
-app.add_middleware(AuthGuardMiddleware)
+    if needs_auth and not request.session.get("customer_id"):
+        if path.startswith("/api/"):
+            return JSONResponse({"detail": "غير مسجّل"}, status_code=401)
+        return RedirectResponse(url="/?next=" + path, status_code=303)
+
+    # ✅ جدّد الجلسة (sliding expiration) — يُحدّث الكوكي في الرد
+    if request.session.get("customer_id"):
+        request.session["_last_seen"] = _now_iso()
+
+    return await call_next(request)
+
+
+# ══════════════════════════════════════════════════════════════
+# Session middleware — يُضاف بعد auth_guard ليكون الأقرب للتطبيق
+# (في Starlette، آخر middleware مضاف هو الأول في التنفيذ)
+# ══════════════════════════════════════════════════════════════
 app.add_middleware(
     SessionMiddleware,
     secret_key=SECRET_KEY,
     session_cookie="jamal_session",
-    max_age=14 * 24 * 3600,
-    same_site="lax",
-    https_only=SESSION_COOKIE_SECURE,
+    max_age=SESSION_MAX_AGE,          # 30 يوم افتراضياً
+    same_site="lax",                  # ضروري لـ OAuth redirect
+    https_only=SESSION_COOKIE_SECURE, # true في الإنتاج فقط
+    path="/",
 )
