@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}جمال سولوشنز{% endblock %}</title>
+
+  <!-- Tailwind CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Cairo font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+
+  <style>
+    html, body {
+      font-family: 'Cairo', system-ui, -apple-system, sans-serif;
+    }
+    .stat-card {
+      background: #fff;
+      border-radius: 1rem;
+      padding: 1.25rem;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+      border: 1px solid #f1f5f9;
+      transition: transform .15s ease, box-shadow .15s ease;
+    }
+    .stat-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+    }
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  </style>
+
+  {% block head_extra %}{% endblock %}
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen">
+
+  <!-- ══ Sidebar ═══════════════════════════════════════════════ -->
+  <aside class="fixed inset-y-0 right-0 w-64 bg-white border-l border-slate-100 hidden lg:flex flex-col z-40">
+    <div class="h-16 flex items-center px-6 border-b border-slate-100">
+      <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">ج</div>
+      <span class="mr-3 font-bold text-slate-800">جمال سولوشنز</span>
+    </div>
+    <nav class="flex-1 p-4 space-y-1 overflow-y-auto">
+      <a href="/" class="flex items-center gap-3 px-3 py-2 rounded-lg bg-blue-50 text-blue-700 font-medium">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+        </svg>
+        لوحة التحكم
+      </a>
+      <a href="/status" class="flex items-center gap-3 px-3 py-2 rounded-lg text-slate-600 hover:bg-slate-50">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+        </svg>
+        حالة السيرفر
+      </a>
+    </nav>
+    <div class="p-4 border-t border-slate-100 text-xs text-slate-400 text-center">
+      © 2026 جمال سولوشنز
+    </div>
+  </aside>
+
+  <!-- ══ Main ══════════════════════════════════════════════════ -->
+  <div class="lg:mr-64">
+    <!-- Topbar -->
+    <header class="h-16 bg-white border-b border-slate-100 flex items-center px-6 sticky top-0 z-30">
+      <div>
+        <h1 class="text-lg font-bold text-slate-800">{% block page_title %}لوحة التحكم{% endblock %}</h1>
+        <p class="text-xs text-slate-500">{% block page_subtitle %}{% endblock %}</p>
+      </div>
+    </header>
+
+    <!-- Page content -->
+    <main class="p-6">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>
