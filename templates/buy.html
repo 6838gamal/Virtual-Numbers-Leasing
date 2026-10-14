@@ -6,6 +6,32 @@
 
 {% block content %}
 
+<!-- ══ Prices Source Bar ═══════════════════════════════════════ -->
+<div class="mb-4 flex items-center justify-between gap-3 flex-wrap">
+  <div class="flex items-center gap-2 flex-wrap">
+    {% if prices_meta.source == '5sim' %}
+      <span class="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold px-2.5 py-1 rounded-full">
+        <span class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+        أسعار حية من 5SIM
+      </span>
+      {% if prices_meta.fetched_at %}
+        <span class="text-[10px] text-slate-400" dir="ltr">{{ prices_meta.fetched_at }}</span>
+      {% endif %}
+    {% else %}
+      <span class="inline-flex items-center gap-1.5 bg-amber-50 text-amber-700 border border-amber-200 text-[11px] font-bold px-2.5 py-1 rounded-full">
+        ⚠️ أسعار ثابتة (5SIM غير متاح)
+      </span>
+      {% if prices_meta.error %}
+        <span class="text-[10px] text-slate-400">{{ prices_meta.error }}</span>
+      {% endif %}
+    {% endif %}
+  </div>
+  <button type="button" onclick="refreshPrices(this)"
+          class="text-[11px] font-bold text-blue-600 hover:text-blue-700 border border-blue-200 hover:border-blue-400 bg-white px-3 py-1 rounded-lg transition-colors">
+    🔄 تحديث الأسعار
+  </button>
+</div>
+
 <!-- ══ Most Popular Services ═══════════════════════════════════ -->
 <div class="mb-6">
   <div class="flex items-center justify-between mb-3">
@@ -13,7 +39,7 @@
       <div class="w-1.5 h-5 bg-gradient-to-b from-orange-400 to-red-500 rounded-full"></div>
       <h3 class="text-base font-bold text-slate-800">الأكثر طلباً 🔥</h3>
     </div>
-    <a href="/services" class="text-xs text-blue-600 hover:text-blue-700 font-bold">عرض الكل ←</a>
+    <a href="/catalog" class="text-xs text-blue-600 hover:text-blue-700 font-bold">عرض الكل ←</a>
   </div>
 
   <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -39,6 +65,10 @@
         </div>
       </div>
     </button>
+    {% else %}
+    <div class="col-span-full text-center text-xs text-slate-400 py-4">
+      لا توجد عروض متوفرة حالياً
+    </div>
     {% endfor %}
   </div>
 </div>
@@ -102,6 +132,9 @@
             </td>
             <td class="px-4 py-3">
               <span class="text-sm font-bold text-blue-600">${{ "%.2f"|format(n.price) }}</span>
+              {% if n.rate %}
+                <div class="text-[10px] text-emerald-600">{{ "%.0f"|format(n.rate) }}% ✓</div>
+              {% endif %}
             </td>
             <td class="px-4 py-3">
               <button onclick="quickBuy('{{ n.country_code }}', '{{ n.service_id }}')"
@@ -152,23 +185,19 @@
       </div>
     </div>
 
-    <!-- Step 2: Service -->
+    <!-- Step 2: Service (dynamic per country) -->
     <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 opacity-50 pointer-events-none" id="service-step">
       <div class="flex items-center gap-3 mb-4">
         <div class="w-7 h-7 rounded-full bg-slate-300 text-white text-xs font-bold flex items-center justify-center">2</div>
         <h3 class="text-base font-bold text-slate-800">اختر الخدمة</h3>
       </div>
 
-      <div class="grid grid-cols-3 sm:grid-cols-4 gap-3" id="service-grid">
-        {% for s in services %}
-        <button type="button"
-                onclick="selectService('{{ s.id }}', this)"
-                data-id="{{ s.id }}"
-                class="service-btn flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 border-slate-100 hover:border-blue-400 hover:bg-blue-50 transition-all">
-          <span class="text-2xl">{{ s.icon }}</span>
-          <span class="text-xs font-bold text-slate-700">{{ s.name }}</span>
-        </button>
-        {% endfor %}
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-3" id="service-grid">
+        <!-- تُملأ ديناميكياً بالـ JS حسب الدولة المختارة -->
+      </div>
+
+      <div id="service-empty" class="hidden text-center text-xs text-slate-400 py-6">
+        لا توجد خدمات متاحة لهذه الدولة حالياً
       </div>
     </div>
 
@@ -283,14 +312,25 @@
   </div>
 </div>
 
+<!-- ══ Countries data (JSON) ═══════════════════════════════════ -->
+<script id="countries-data" type="application/json">
+{{ countries | tojson }}
+</script>
+
 {% endblock %}
 
 {% block scripts %}
 <script>
+// ── بيانات الدول (من الـ backend) ──
+const COUNTRIES = JSON.parse(
+  document.getElementById('countries-data').textContent
+);
+
 let selectedCountry = null;
 let selectedService = null;
 let currentPrice = 0;
 
+// ── اختيار الدولة ──
 function selectCountry(code, btn) {
   document.querySelectorAll('.country-btn').forEach(b => {
     b.classList.remove('border-blue-500', 'bg-blue-50');
@@ -298,42 +338,114 @@ function selectCountry(code, btn) {
   });
   btn.classList.add('border-blue-500', 'bg-blue-50');
   btn.classList.remove('border-slate-100');
-  selectedCountry = { code, name: btn.querySelector('.text-sm').textContent };
-  currentPrice = parseFloat(btn.querySelector('.text-\[10px\]').textContent.replace('$','')) || 0;
+
+  const country = COUNTRIES.find(c => c.code === code);
+  selectedCountry = country
+    ? { code: country.code, name: country.name, services: country.services }
+    : { code, name: code, services: [] };
+
+  // امسح الخدمة السابقة
+  selectedService = null;
+  currentPrice = 0;
+  updateConfirm();
+
+  // ابنِ شبكة الخدمات لهذه الدولة
+  renderServices(selectedCountry.services);
 
   document.getElementById('service-step').classList.remove('opacity-50','pointer-events-none');
-  updateConfirm();
+  document.getElementById('confirm-step').classList.add('opacity-50','pointer-events-none');
 }
 
-function selectService(id, btn) {
+// ── عرض الخدمات مع الأسعار ──
+function renderServices(services) {
+  const grid = document.getElementById('service-grid');
+  const empty = document.getElementById('service-empty');
+  grid.innerHTML = '';
+
+  if (!services || services.length === 0) {
+    empty.classList.remove('hidden');
+    return;
+  }
+  empty.classList.add('hidden');
+
+  services.forEach(s => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.dataset.id = s.id;
+    btn.className = 'service-btn flex flex-col items-center gap-1 p-3 rounded-xl border-2 border-slate-100 transition-all ' +
+      (s.available
+        ? 'hover:border-blue-400 hover:bg-blue-50'
+        : 'opacity-40 cursor-not-allowed');
+
+    if (s.available) {
+      btn.onclick = () => selectService(s.id, s.cost, btn);
+    } else {
+      btn.disabled = true;
+    }
+
+    // السعر
+    const priceHtml = s.available
+      ? `<span class="text-[11px] font-bold text-blue-600">$${Number(s.cost).toFixed(2)}</span>`
+      : `<span class="text-[10px] text-slate-400">غير متاح</span>`;
+
+    // نسبة التسليم
+    const rateHtml = (s.available && s.rate)
+      ? `<span class="text-[9px] text-emerald-600">${Number(s.rate).toFixed(0)}% ✓</span>`
+      : '';
+
+    btn.innerHTML = `
+      <span class="text-2xl">${s.icon}</span>
+      <span class="text-xs font-bold text-slate-700">${s.name}</span>
+      ${priceHtml}
+      ${rateHtml}
+    `;
+    grid.appendChild(btn);
+  });
+}
+
+// ── اختيار الخدمة ──
+function selectService(id, cost, btn) {
   document.querySelectorAll('.service-btn').forEach(b => {
     b.classList.remove('border-blue-500', 'bg-blue-50');
     b.classList.add('border-slate-100');
   });
   btn.classList.add('border-blue-500', 'bg-blue-50');
   btn.classList.remove('border-slate-100');
-  selectedService = { id, name: btn.querySelector('.text-xs').textContent };
+
+  const svc = selectedCountry.services.find(s => s.id === id);
+  selectedService = { id, name: svc?.name || id };
+  currentPrice = parseFloat(cost) || 0;
 
   document.getElementById('confirm-step').classList.remove('opacity-50','pointer-events-none');
   updateConfirm();
 }
 
+// ── تحديث صندوق التأكيد ──
 function updateConfirm() {
   document.getElementById('confirm-country').textContent = selectedCountry?.name || '—';
   document.getElementById('confirm-service').textContent = selectedService?.name || '—';
   document.getElementById('confirm-price').textContent = `$${currentPrice.toFixed(2)}`;
 }
 
+// ── شراء سريع من البطاقات العلوية ──
 function quickBuy(countryCode, serviceId) {
   const countryBtn = document.querySelector(`.country-btn[data-code="${countryCode}"]`);
-  if (countryBtn) selectCountry(countryCode, countryBtn);
+  if (!countryBtn) return;
+  selectCountry(countryCode, countryBtn);
 
-  const serviceBtn = document.querySelector(`.service-btn[data-id="${serviceId}"]`);
-  if (serviceBtn) selectService(serviceId, serviceBtn);
-
-  document.getElementById('confirm-step').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  // انتظر لحظة حتى تُرسم الأزرار
+  setTimeout(() => {
+    const svcBtn = document.querySelector(`.service-btn[data-id="${serviceId}"]`);
+    if (svcBtn && !svcBtn.disabled) {
+      const country = COUNTRIES.find(c => c.code === countryCode);
+      const svc = country?.services.find(s => s.id === serviceId);
+      selectService(serviceId, svc?.cost || 0, svcBtn);
+    }
+    document.getElementById('confirm-step').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, 50);
 }
 
+// ── تأكيد الشراء ──
 async function confirmPurchase() {
   if (!selectedCountry || !selectedService) return;
   const btn = document.getElementById('buy-btn');
@@ -363,5 +475,47 @@ async function confirmPurchase() {
     btn.innerHTML = 'شراء الآن';
   }
 }
+
+// ── تحديث الأسعار يدوياً ──
+async function refreshPrices(btn) {
+  const old = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '⏳ جارٍ التحديث...';
+  try {
+    const r = await fetch('/api/v1/prices/refresh', { method: 'POST' });
+    const j = await r.json();
+    if (j.error) {
+      alert('فشل التحديث: ' + j.error);
+      btn.disabled = false;
+      btn.innerHTML = old;
+    } else {
+      location.reload();
+    }
+  } catch (e) {
+    alert('خطأ في الاتصال');
+    btn.disabled = false;
+    btn.innerHTML = old;
+  }
+}
+
+// ── تحديد الدولة/الخدمة مسبقاً (من query params) ──
+document.addEventListener('DOMContentLoaded', () => {
+  const preCountry = "{{ preselected_country or '' }}";
+  const preService = "{{ preselected_service or '' }}";
+  if (preCountry) {
+    const btn = document.querySelector(`.country-btn[data-code="${preCountry}"]`);
+    if (btn) selectCountry(preCountry, btn);
+    if (preService) {
+      setTimeout(() => {
+        const svcBtn = document.querySelector(`.service-btn[data-id="${preService}"]`);
+        if (svcBtn && !svcBtn.disabled) {
+          const c = COUNTRIES.find(x => x.code === preCountry);
+          const s = c?.services.find(x => x.id === preService);
+          selectService(preService, s?.cost || 0, svcBtn);
+        }
+      }, 60);
+    }
+  }
+});
 </script>
 {% endblock %}
