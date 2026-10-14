@@ -7,16 +7,18 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 import httpx
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import FastAPI, HTTPException, Request, status
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel, EmailStr, Field
 from sse_starlette.sse import EventSourceResponse
 
 # ══════════════════════════════════════════════════════════════
@@ -157,76 +159,226 @@ if STATIC_DIR.exists():
 
 
 # ══════════════════════════════════════════════════════════════
-# Current customer (stub — replace with auth/session)
+# In-memory store (replace with DB later)
+# ══════════════════════════════════════════════════════════════
+STORE: dict[str, Any] = {
+    "customers": {
+        1: {
+            "id": 1,
+            "name": "أحمد محمد",
+            "email": "ahmed@example.com",
+            "phone": "+967 777 000 000",
+            "country": "YE",
+            "initials": "أم",
+            "balance": 0.0,
+            "currency": "USD",
+            "created_at": "2025-01-15",
+            "email_verified": True,
+            "phone_verified": False,
+            "two_fa_enabled": False,
+            "has_strong_password": True,
+            "security_score": 60,
+            "prefs": {
+                "email_notifications": True,
+                "sms_notifications": False,
+                "marketing_emails": False,
+            },
+        },
+    },
+    "numbers": [],       # list of numbers owned by customer
+    "orders": [],        # purchase orders
+    "sms": [],           # incoming SMS
+    "transactions": [],  # wallet ledger
+    "deposits": [],      # top-ups
+    "tickets": [],       # support tickets
+    "sessions": [
+        {
+            "id": "s1",
+            "device": "desktop",
+            "device_name": "Chrome · Windows",
+            "location": "اليمن، صنعاء",
+            "last_active": "الآن",
+            "current": True,
+        },
+    ],
+}
+
+
+# ══════════════════════════════════════════════════════════════
+# Catalogs (countries / services / payment methods)
+# ══════════════════════════════════════════════════════════════
+COUNTRIES: list[dict] = [
+    {"code": "YE", "name": "اليمن",          "flag": "🇾🇪", "continent": "asia",    "continent_label": "آسيا",    "price": "$0.50", "available": 42, "min_price": 0.50, "services_count": 8,  "top_services": ["واتساب", "تليجرام", "جوجل"]},
+    {"code": "SA", "name": "السعودية",       "flag": "🇸🇦", "continent": "asia",    "continent_label": "آسيا",    "price": "$0.70", "available": 85, "min_price": 0.70, "services_count": 12, "top_services": ["واتساب", "سناب شات", "جوجل"]},
+    {"code": "EG", "name": "مصر",            "flag": "🇪🇬", "continent": "africa",  "continent_label": "أفريقيا", "price": "$0.60", "available": 63, "min_price": 0.60, "services_count": 10, "top_services": ["واتساب", "تليجرام", "فيسبوك"]},
+    {"code": "US", "name": "الولايات المتحدة","flag": "🇺🇸", "continent": "america", "continent_label": "أمريكا",  "price": "$1.20", "available": 210,"min_price": 1.20, "services_count": 25, "top_services": ["واتساب", "جوجل", "أمازون"]},
+    {"code": "GB", "name": "المملكة المتحدة","flag": "🇬🇧", "continent": "europe",  "continent_label": "أوروبا",  "price": "$1.10", "available": 156,"min_price": 1.10, "services_count": 22, "top_services": ["واتساب", "جوجل", "تويتر"]},
+    {"code": "DE", "name": "ألمانيا",         "flag": "🇩🇪", "continent": "europe",  "continent_label": "أوروبا",  "price": "$1.00", "available": 130,"min_price": 1.00, "services_count": 18, "top_services": ["واتساب", "تليجرام", "أمازون"]},
+    {"code": "FR", "name": "فرنسا",           "flag": "🇫🇷", "continent": "europe",  "continent_label": "أوروبا",  "price": "$1.05", "available": 118,"min_price": 1.05, "services_count": 17, "top_services": ["واتساب", "جوجل", "فيسبوك"]},
+    {"code": "TR", "name": "تركيا",           "flag": "🇹🇷", "continent": "asia",    "continent_label": "آسيا",    "price": "$0.80", "available": 92, "min_price": 0.80, "services_count": 14, "top_services": ["واتساب", "تليجرام", "إنستغرام"]},
+    {"code": "AE", "name": "الإمارات",        "flag": "🇦🇪", "continent": "asia",    "continent_label": "آسيا",    "price": "$0.95", "available": 74, "min_price": 0.95, "services_count": 13, "top_services": ["واتساب", "تليجرام", "جوجل"]},
+    {"code": "IN", "name": "الهند",           "flag": "🇮🇳", "continent": "asia",    "continent_label": "آسيا",    "price": "$0.40", "available": 320,"min_price": 0.40, "services_count": 20, "top_services": ["واتساب", "تليجرام", "فيسبوك"]},
+    {"code": "BR", "name": "البرازيل",        "flag": "🇧🇷", "continent": "america", "continent_label": "أمريكا",  "price": "$0.85", "available": 145,"min_price": 0.85, "services_count": 16, "top_services": ["واتساب", "تليجرام", "إنستغرام"]},
+    {"code": "ID", "name": "إندونيسيا",       "flag": "🇮🇩", "continent": "asia",    "continent_label": "آسيا",    "price": "$0.45", "available": 260,"min_price": 0.45, "services_count": 19, "top_services": ["واتساب", "تليجرام", "تيك توك"]},
+]
+
+SERVICES: list[dict] = [
+    {"id": "whatsapp",  "name": "واتساب",   "icon": "💬"},
+    {"id": "telegram",  "name": "تليجرام",  "icon": "✈️"},
+    {"id": "google",    "name": "جوجل",     "icon": "🔍"},
+    {"id": "facebook",  "name": "فيسبوك",   "icon": "📘"},
+    {"id": "twitter",   "name": "تويتر",    "icon": "🐦"},
+    {"id": "instagram", "name": "إنستغرام", "icon": "📷"},
+    {"id": "tiktok",    "name": "تيك توك",  "icon": "🎵"},
+    {"id": "amazon",    "name": "أمازون",   "icon": "📦"},
+    {"id": "snapchat",  "name": "سناب شات", "icon": "👻"},
+    {"id": "discord",   "name": "ديسكورد",  "icon": "🎮"},
+    {"id": "uber",      "name": "أوبر",     "icon": "🚕"},
+    {"id": "netflix",   "name": "نتفليكس",  "icon": "🎬"},
+]
+
+PAYMENT_METHODS: list[dict] = [
+    {"id": "card",   "name": "بطاقة بنكية", "icon": "💳", "description": "Visa · Mastercard"},
+    {"id": "paypal", "name": "PayPal",      "icon": "🅿️", "description": "دفع آمن"},
+    {"id": "crypto", "name": "عملة رقمية",  "icon": "₿",  "description": "BTC · USDT · ETH"},
+    {"id": "local",  "name": "محفظة محلية", "icon": "📱", "description": "جوالي · كاش · وغيرها"},
+]
+
+FAQS: list[dict] = [
+    {"question": "كيف أستلم الرقم بعد الشراء؟",
+     "answer": "يظهر الرقم مباشرة في صفحة (أرقامي) ويمكنك استخدامه فورًا."},
+    {"question": "كم يستغرق وصول الرسالة؟",
+     "answer": "عادة خلال 30 ثانية إلى دقيقتين، وقد يتأخر بعض المزودين حتى 10 دقائق."},
+    {"question": "هل يمكنني استرداد المبلغ؟",
+     "answer": "نعم، إذا لم تصل أي رسالة خلال ساعة من الشراء، يتم استرداد كامل المبلغ تلقائيًا."},
+    {"question": "ما مدة صلاحية الرقم؟",
+     "answer": "20 دقيقة افتراضيًا من لحظة الشراء، ويمكن تجديده."},
+]
+
+COUNTRIES_BY_CODE = {c["code"]: c for c in COUNTRIES}
+SERVICES_BY_ID = {s["id"]: s for s in SERVICES}
+
+
+# ══════════════════════════════════════════════════════════════
+# Current customer (stub — replace with session/auth)
 # ══════════════════════════════════════════════════════════════
 async def get_current_customer() -> dict:
-    return {
-        "id": 1,
-        "name": "أحمد محمد",
-        "email": "ahmed@example.com",
-        "initials": "أم",
-        "balance": 0.0,
-        "currency": "USD",
-    }
+    return STORE["customers"][1]
 
 
 # ══════════════════════════════════════════════════════════════
-# Customer-scoped data stubs
+# Data aggregators
 # ══════════════════════════════════════════════════════════════
 async def get_my_stats(customer_id: int) -> dict:
-    """KPIs scoped to the current customer only."""
+    nums = [n for n in STORE["numbers"] if n["customer_id"] == customer_id]
+    ords = [o for o in STORE["orders"] if o["customer_id"] == customer_id]
+    sms  = [s for s in STORE["sms"] if s["customer_id"] == customer_id]
+    txs  = [t for t in STORE["transactions"] if t["customer_id"] == customer_id]
+
+    today = datetime.now(timezone.utc).date()
+    sms_today = sum(
+        1 for s in sms
+        if datetime.fromisoformat(s["created_at"]).date() == today
+    )
+
+    total_spent = sum(
+        -t["amount"] for t in txs if t["type"] == "purchase"
+    )
+    month_start = today.replace(day=1)
+    spent_this_month = sum(
+        -t["amount"] for t in txs
+        if t["type"] == "purchase"
+        and datetime.fromisoformat(t["created_at"]).date() >= month_start
+    )
+
     return {
-        # My numbers
-        "my_numbers": 0,
-        "active_numbers": 0,
-        "expiring_soon": 0,
-        # My orders
-        "my_orders": 0,
-        "pending_orders": 0,
-        "completed_orders": 0,
-        # My SMS
-        "my_sms": 0,
-        "sms_today": 0,
-        "unread_sms": 0,
-        # My spending
-        "total_spent": 0.0,
-        "spent_this_month": 0.0,
+        "my_numbers":       len(nums),
+        "active_numbers":   sum(1 for n in nums if n["status"] == "active"),
+        "expiring_soon":    sum(1 for n in nums if n["status"] == "expiring"),
+        "my_orders":        len(ords),
+        "pending_orders":   sum(1 for o in ords if o["status"] == "pending"),
+        "completed_orders": sum(1 for o in ords if o["status"] == "completed"),
+        "my_sms":           len(sms),
+        "sms_today":        sms_today,
+        "unread_sms":       sum(1 for s in sms if not s["read"]),
+        "total_spent":      total_spent,
+        "spent_this_month": spent_this_month,
     }
 
 
 async def get_my_orders_by_status(customer_id: int) -> dict:
-    return {
-        "pending": 0,
-        "active": 0,
-        "completed": 0,
-        "expired": 0,
-        "cancelled": 0,
-    }
+    buckets = {"pending": 0, "active": 0, "completed": 0, "expired": 0, "cancelled": 0}
+    for o in STORE["orders"]:
+        if o["customer_id"] == customer_id and o["status"] in buckets:
+            buckets[o["status"]] += 1
+    return buckets
 
 
 async def get_my_top_services(customer_id: int) -> list[dict]:
-    """Services the customer uses most (WhatsApp, Telegram, etc)."""
-    return [
-        {"name": "واتساب",   "icon": "💬", "count": 0},
-        {"name": "تليجرام",  "icon": "✈️", "count": 0},
-        {"name": "جوجل",     "icon": "🔍", "count": 0},
-        {"name": "فيسبوك",   "icon": "📘", "count": 0},
-        {"name": "تويتر",    "icon": "🐦", "count": 0},
-    ]
+    counts: dict[str, int] = {}
+    for n in STORE["numbers"]:
+        if n["customer_id"] == customer_id:
+            counts[n["service_id"]] = counts.get(n["service_id"], 0) + 1
+
+    rows = []
+    for s in SERVICES:
+        rows.append({
+            "name":  s["name"],
+            "icon":  s["icon"],
+            "count": counts.get(s["id"], 0),
+        })
+    rows.sort(key=lambda r: r["count"], reverse=True)
+    return rows[:5]
 
 
 async def get_my_numbers(customer_id: int) -> list[dict]:
-    """Customer's active numbers."""
-    return []
+    return [n for n in STORE["numbers"] if n["customer_id"] == customer_id]
 
 
-async def get_my_recent_sms(customer_id: int) -> list[dict]:
-    """Recent SMS received on customer's numbers."""
-    return []
+async def get_my_recent_sms(customer_id: int, limit: int = 20) -> list[dict]:
+    rows = [s for s in STORE["sms"] if s["customer_id"] == customer_id]
+    rows.sort(key=lambda s: s["created_at"], reverse=True)
+    return rows[:limit]
 
 
 # ══════════════════════════════════════════════════════════════
-# Routes
+# Pydantic models
+# ══════════════════════════════════════════════════════════════
+class OrderCreate(BaseModel):
+    country: str
+    service: str
+
+
+class DepositCreate(BaseModel):
+    amount: float = Field(..., ge=5)
+    method: str
+
+
+class TicketCreate(BaseModel):
+    subject: str
+    message: str
+    order_id: str | None = None
+
+
+class PasswordChange(BaseModel):
+    current: str
+    new: str = Field(..., min_length=8)
+
+
+class ProfileUpdate(BaseModel):
+    name: str | None = None
+    phone: str | None = None
+    country: str | None = None
+
+
+class PreferencesUpdate(BaseModel):
+    email_notifications: bool | None = None
+    sms_notifications: bool | None = None
+    marketing_emails: bool | None = None
+
+
+# ══════════════════════════════════════════════════════════════
+# System routes
 # ══════════════════════════════════════════════════════════════
 @app.get("/health")
 async def health():
@@ -235,31 +387,6 @@ async def health():
         "uptime": _fmt_uptime(time.time() - START_TIME),
         "timestamp": _now_iso(),
     }
-
-
-@app.get("/", response_class=HTMLResponse)
-async def dashboard(request: Request):
-    customer = await get_current_customer()
-    cid = customer["id"]
-
-    stats = await get_my_stats(cid)
-    orders_by_status = await get_my_orders_by_status(cid)
-    top_services = await get_my_top_services(cid)
-    my_numbers = await get_my_numbers(cid)
-    recent_sms = await get_my_recent_sms(cid)
-
-    return templates.TemplateResponse(
-        request=request,
-        name="dashboard.html",
-        context={
-            "customer": customer,
-            "stats": stats,
-            "orders_by_status": orders_by_status,
-            "top_services": top_services,
-            "my_numbers": my_numbers,
-            "recent_sms": recent_sms,
-        },
-    )
 
 
 @app.get("/status", response_class=HTMLResponse)
@@ -344,3 +471,481 @@ async def sse_events(request: Request):
             _subscribers.discard(queue)
 
     return EventSourceResponse(event_generator())
+
+
+# ══════════════════════════════════════════════════════════════
+# Page routes
+# ══════════════════════════════════════════════════════════════
+@app.get("/", response_class=HTMLResponse)
+async def dashboard(request: Request):
+    customer = await get_current_customer()
+    cid = customer["id"]
+
+    return templates.TemplateResponse(
+        request=request,
+        name="dashboard.html",
+        context={
+            "customer": customer,
+            "stats": await get_my_stats(cid),
+            "orders_by_status": await get_my_orders_by_status(cid),
+            "top_services": await get_my_top_services(cid),
+            "my_numbers": await get_my_numbers(cid),
+            "recent_sms": await get_my_recent_sms(cid, limit=5),
+        },
+    )
+
+
+@app.get("/buy", response_class=HTMLResponse)
+async def buy_page(request: Request, country: str | None = None, service: str | None = None):
+    customer = await get_current_customer()
+    return templates.TemplateResponse(
+        request=request,
+        name="buy.html",
+        context={
+            "customer": customer,
+            "countries": COUNTRIES,
+            "services": SERVICES,
+            "preselected_country": country,
+            "preselected_service": service,
+        },
+    )
+
+
+@app.get("/catalog", response_class=HTMLResponse)
+async def catalog_page(request: Request):
+    customer = await get_current_customer()
+    return templates.TemplateResponse(
+        request=request,
+        name="catalog.html",
+        context={
+            "customer": customer,
+            "countries": COUNTRIES,
+        },
+    )
+
+
+@app.get("/my-numbers", response_class=HTMLResponse)
+async def my_numbers_page(request: Request):
+    customer = await get_current_customer()
+    cid = customer["id"]
+    return templates.TemplateResponse(
+        request=request,
+        name="my_numbers.html",
+        context={
+            "customer": customer,
+            "stats": await get_my_stats(cid),
+            "my_numbers": await get_my_numbers(cid),
+        },
+    )
+
+
+@app.get("/orders", response_class=HTMLResponse)
+async def orders_page(request: Request):
+    customer = await get_current_customer()
+    cid = customer["id"]
+    orders = [o for o in STORE["orders"] if o["customer_id"] == cid]
+    orders.sort(key=lambda o: o["created_at"], reverse=True)
+    return templates.TemplateResponse(
+        request=request,
+        name="orders.html",
+        context={
+            "customer": customer,
+            "orders": orders,
+        },
+    )
+
+
+@app.get("/orders/{order_id}", response_class=HTMLResponse)
+async def order_detail_page(request: Request, order_id: int):
+    customer = await get_current_customer()
+    order = next(
+        (o for o in STORE["orders"]
+         if o["id"] == order_id and o["customer_id"] == customer["id"]),
+        None,
+    )
+    if not order:
+        raise HTTPException(status_code=404, detail="الطلب غير موجود")
+
+    # For simplicity, reuse orders.html with a single-order list
+    return templates.TemplateResponse(
+        request=request,
+        name="orders.html",
+        context={
+            "customer": customer,
+            "orders": [order],
+        },
+    )
+
+
+@app.get("/inbox", response_class=HTMLResponse)
+async def inbox_page(request: Request, number: str | None = None):
+    customer = await get_current_customer()
+    cid = customer["id"]
+    sms_list = await get_my_recent_sms(cid, limit=100)
+    if number:
+        sms_list = [s for s in sms_list if s["phone"] == number]
+
+    return templates.TemplateResponse(
+        request=request,
+        name="inbox.html",
+        context={
+            "customer": customer,
+            "my_numbers": await get_my_numbers(cid),
+            "recent_sms": sms_list,
+        },
+    )
+
+
+@app.get("/wallet", response_class=HTMLResponse)
+async def wallet_page(request: Request):
+    customer = await get_current_customer()
+    cid = customer["id"]
+    deposits = [d for d in STORE["deposits"] if d["customer_id"] == cid]
+    deposits.sort(key=lambda d: d["created_at"], reverse=True)
+    return templates.TemplateResponse(
+        request=request,
+        name="wallet.html",
+        context={
+            "customer": customer,
+            "payment_methods": PAYMENT_METHODS,
+            "recent_deposits": deposits[:5],
+        },
+    )
+
+
+@app.get("/transactions", response_class=HTMLResponse)
+async def transactions_page(request: Request):
+    customer = await get_current_customer()
+    cid = customer["id"]
+    txs = [t for t in STORE["transactions"] if t["customer_id"] == cid]
+    txs.sort(key=lambda t: t["created_at"], reverse=True)
+
+    total_deposits = sum(t["amount"] for t in txs if t["type"] == "deposit")
+    total_spent    = sum(-t["amount"] for t in txs if t["type"] == "purchase")
+    month_start = datetime.now(timezone.utc).date().replace(day=1)
+    this_month = sum(
+        -t["amount"] for t in txs
+        if t["type"] == "purchase"
+        and datetime.fromisoformat(t["created_at"]).date() >= month_start
+    )
+
+    return templates.TemplateResponse(
+        request=request,
+        name="transactions.html",
+        context={
+            "customer": customer,
+            "transactions": txs,
+            "summary": {
+                "total_deposits": total_deposits,
+                "total_spent": total_spent,
+                "count": len(txs),
+                "this_month": this_month,
+            },
+        },
+    )
+
+
+@app.get("/support", response_class=HTMLResponse)
+async def support_page(request: Request):
+    customer = await get_current_customer()
+    cid = customer["id"]
+    tickets = [t for t in STORE["tickets"] if t["customer_id"] == cid]
+    tickets.sort(key=lambda t: t["created_at"], reverse=True)
+    return templates.TemplateResponse(
+        request=request,
+        name="support.html",
+        context={
+            "customer": customer,
+            "tickets": tickets,
+            "faqs": FAQS,
+        },
+    )
+
+
+@app.get("/profile", response_class=HTMLResponse)
+async def profile_page(request: Request):
+    customer = await get_current_customer()
+    cid = customer["id"]
+    return templates.TemplateResponse(
+        request=request,
+        name="profile.html",
+        context={
+            "customer": customer,
+            "stats": await get_my_stats(cid),
+            "countries": COUNTRIES,
+        },
+    )
+
+
+@app.get("/security", response_class=HTMLResponse)
+async def security_page(request: Request):
+    customer = await get_current_customer()
+    return templates.TemplateResponse(
+        request=request,
+        name="security.html",
+        context={
+            "customer": customer,
+            "sessions": STORE["sessions"],
+        },
+    )
+
+
+@app.get("/logout")
+async def logout():
+    return RedirectResponse(url="/", status_code=303)
+
+
+# ══════════════════════════════════════════════════════════════
+# API — Orders / Numbers
+# ══════════════════════════════════════════════════════════════
+@app.post("/api/v1/orders")
+async def create_order(payload: OrderCreate):
+    customer = await get_current_customer()
+    cid = customer["id"]
+
+    country = COUNTRIES_BY_CODE.get(payload.country)
+    service = SERVICES_BY_ID.get(payload.service)
+    if not country or not service:
+        raise HTTPException(status_code=400, detail="دولة أو خدمة غير صالحة")
+
+    price = country["min_price"]
+    if customer["balance"] < price:
+        raise HTTPException(status_code=400, detail="الرصيد غير كافٍ")
+
+    now = datetime.now(timezone.utc)
+    order_id = len(STORE["orders"]) + 1
+    number_id = len(STORE["numbers"]) + 1
+
+    # Fake phone number
+    fake_phone = f"+{country['code']}{1000000000 + number_id}"
+
+    # Order
+    order = {
+        "id": order_id,
+        "customer_id": cid,
+        "country": country["name"],
+        "country_code": country["code"],
+        "flag": country["flag"],
+        "service": service["name"],
+        "service_id": service["id"],
+        "phone": fake_phone,
+        "price": price,
+        "status": "active",
+        "created_at": now.isoformat(),
+    }
+    STORE["orders"].append(order)
+
+    # Number
+    number = {
+        "id": number_id,
+        "customer_id": cid,
+        "phone": fake_phone,
+        "country": country["name"],
+        "country_code": country["code"],
+        "flag": country["flag"],
+        "service": service["name"],
+        "service_id": service["id"],
+        "status": "active",
+        "price": price,
+        "sms_count": 0,
+        "expires_in": "20:00",
+        "created_at": now.isoformat(),
+    }
+    STORE["numbers"].append(number)
+
+    # Ledger — debit
+    customer["balance"] -= price
+    STORE["transactions"].append({
+        "id": len(STORE["transactions"]) + 1,
+        "customer_id": cid,
+        "type": "purchase",
+        "description": f"شراء رقم {service['name']} — {country['name']}",
+        "amount": -price,
+        "balance_after": customer["balance"],
+        "created_at": now.isoformat(),
+        "date": now.strftime("%Y-%m-%d %H:%M"),
+    })
+
+    return {"id": order_id, "phone": fake_phone, "status": "active"}
+
+
+@app.post("/api/v1/numbers/{number_id}/renew")
+async def renew_number(number_id: int):
+    customer = await get_current_customer()
+    number = next(
+        (n for n in STORE["numbers"]
+         if n["id"] == number_id and n["customer_id"] == customer["id"]),
+        None,
+    )
+    if not number:
+        raise HTTPException(status_code=404, detail="الرقم غير موجود")
+    if customer["balance"] < number["price"]:
+        raise HTTPException(status_code=400, detail="الرصيد غير كافٍ")
+
+    customer["balance"] -= number["price"]
+    number["status"] = "active"
+    number["expires_in"] = "20:00"
+
+    now = datetime.now(timezone.utc)
+    STORE["transactions"].append({
+        "id": len(STORE["transactions"]) + 1,
+        "customer_id": customer["id"],
+        "type": "purchase",
+        "description": f"تجديد رقم {number['phone']}",
+        "amount": -number["price"],
+        "balance_after": customer["balance"],
+        "created_at": now.isoformat(),
+        "date": now.strftime("%Y-%m-%d %H:%M"),
+    })
+    return {"status": "renewed"}
+
+
+# ══════════════════════════════════════════════════════════════
+# API — SMS
+# ══════════════════════════════════════════════════════════════
+@app.delete("/api/v1/sms/{sms_id}")
+async def delete_sms(sms_id: int):
+    customer = await get_current_customer()
+    for i, s in enumerate(STORE["sms"]):
+        if s["id"] == sms_id and s["customer_id"] == customer["id"]:
+            STORE["sms"].pop(i)
+            return {"status": "deleted"}
+    raise HTTPException(status_code=404, detail="الرسالة غير موجودة")
+
+
+# ══════════════════════════════════════════════════════════════
+# API — Wallet
+# ══════════════════════════════════════════════════════════════
+@app.post("/api/v1/wallet/deposit")
+async def deposit(payload: DepositCreate):
+    customer = await get_current_customer()
+    cid = customer["id"]
+    now = datetime.now(timezone.utc)
+
+    deposit_id = len(STORE["deposits"]) + 1
+    STORE["deposits"].append({
+        "id": deposit_id,
+        "customer_id": cid,
+        "amount": payload.amount,
+        "method": payload.method,
+        "status": "completed",  # in real life: pending → webhook → completed
+        "created_at": now.isoformat(),
+        "date": now.strftime("%Y-%m-%d %H:%M"),
+    })
+
+    customer["balance"] += payload.amount
+    STORE["transactions"].append({
+        "id": len(STORE["transactions"]) + 1,
+        "customer_id": cid,
+        "type": "deposit",
+        "description": f"إيداع رصيد ({payload.method})",
+        "amount": payload.amount,
+        "balance_after": customer["balance"],
+        "created_at": now.isoformat(),
+        "date": now.strftime("%Y-%m-%d %H:%M"),
+    })
+
+    # Real implementation would redirect to checkout.
+    # For now, return to wallet immediately.
+    return {"status": "completed", "checkout_url": "/wallet"}
+
+
+# ══════════════════════════════════════════════════════════════
+# API — Support
+# ══════════════════════════════════════════════════════════════
+@app.post("/api/v1/support/tickets")
+async def create_ticket(payload: TicketCreate):
+    customer = await get_current_customer()
+    cid = customer["id"]
+    now = datetime.now(timezone.utc)
+
+    ticket = {
+        "id": len(STORE["tickets"]) + 1,
+        "customer_id": cid,
+        "subject": payload.subject,
+        "preview": payload.message[:80],
+        "message": payload.message,
+        "order_id": payload.order_id,
+        "status": "open",
+        "created_at": now.isoformat(),
+        "date": now.strftime("%Y-%m-%d %H:%M"),
+    }
+    STORE["tickets"].append(ticket)
+    return {"id": ticket["id"], "status": "open"}
+
+
+# ══════════════════════════════════════════════════════════════
+# API — Profile
+# ══════════════════════════════════════════════════════════════
+@app.patch("/api/v1/profile")
+async def update_profile(payload: ProfileUpdate):
+    customer = await get_current_customer()
+    if payload.name is not None:
+        customer["name"] = payload.name
+        customer["initials"] = payload.name[:2]
+    if payload.phone is not None:
+        customer["phone"] = payload.phone
+    if payload.country is not None:
+        customer["country"] = payload.country
+    return {"status": "updated"}
+
+
+@app.patch("/api/v1/profile/preferences")
+async def update_preferences(payload: PreferencesUpdate):
+    customer = await get_current_customer()
+    prefs = customer.setdefault("prefs", {})
+    if payload.email_notifications is not None:
+        prefs["email_notifications"] = payload.email_notifications
+    if payload.sms_notifications is not None:
+        prefs["sms_notifications"] = payload.sms_notifications
+    if payload.marketing_emails is not None:
+        prefs["marketing_emails"] = payload.marketing_emails
+    return {"status": "updated"}
+
+
+@app.delete("/api/v1/profile")
+async def delete_profile():
+    # In real life: soft-delete + revoke sessions
+    return {"status": "deleted"}
+
+
+# ══════════════════════════════════════════════════════════════
+# API — Security
+# ══════════════════════════════════════════════════════════════
+@app.put("/api/v1/security/password")
+async def change_password(payload: PasswordChange):
+    # In real life: verify current password, hash new password
+    if len(payload.new) < 8:
+        raise HTTPException(status_code=400, detail="كلمة المرور قصيرة")
+    return {"status": "updated"}
+
+
+@app.post("/api/v1/security/2fa/enable")
+async def enable_2fa():
+    customer = await get_current_customer()
+    secret = uuid.uuid4().hex[:16].upper()
+    customer["two_fa_enabled"] = True
+    customer["security_score"] = min(100, customer["security_score"] + 20)
+    return {"secret": secret, "status": "enabled"}
+
+
+@app.post("/api/v1/security/2fa/disable")
+async def disable_2fa():
+    customer = await get_current_customer()
+    customer["two_fa_enabled"] = False
+    customer["security_score"] = max(0, customer["security_score"] - 20)
+    return {"status": "disabled"}
+
+
+@app.delete("/api/v1/security/sessions/{session_id}")
+async def end_session(session_id: str):
+    STORE["sessions"] = [
+        s for s in STORE["sessions"] if s["id"] != session_id
+    ]
+    return {"status": "ended"}
+
+
+@app.delete("/api/v1/security/sessions")
+async def end_all_sessions():
+    STORE["sessions"] = []
+    return {"status": "all_ended"}
