@@ -28,7 +28,7 @@
       <h3 class="text-base font-bold text-slate-800 mb-4">اختر مبلغ الإيداع</h3>
 
       <div class="grid grid-cols-3 sm:grid-cols-4 gap-2 mb-4">
-        {% for amt in [5, 10, 25, 50, 100, 200] %}
+        {% for amt in [10, 20, 30, 40, 50, 60] %}
         <button onclick="selectAmount({{ amt }}, this)"
                 data-amount="{{ amt }}"
                 class="amount-btn py-3 rounded-xl border-2 border-slate-100 hover:border-emerald-400 hover:bg-emerald-50 text-sm font-bold text-slate-700 transition-all">
@@ -41,7 +41,7 @@
         <label class="text-xs font-bold text-slate-500 mb-1.5 block">أو أدخل مبلغًا مخصصًا</label>
         <div class="relative">
           <span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
-          <input type="number" id="custom-amount" min="5" step="1" placeholder="0.00"
+          <input type="number" id="custom-amount" min="10" step="1" placeholder="0.00"
                  oninput="customAmount()"
                  class="w-full pr-8 pl-4 py-3 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 outline-none text-lg font-bold">
         </div>
@@ -171,7 +171,7 @@ function selectPayment(id) {
 
 function updateBtn() {
   const btn = document.getElementById('deposit-btn');
-  const ok = selectedAmount >= 5 && selectedPayment;
+  const ok = selectedAmount >= 10 && selectedPayment;
   btn.disabled = !ok;
   document.getElementById('btn-amount').textContent = ok ? `$${selectedAmount.toFixed(2)}` : '';
 }
