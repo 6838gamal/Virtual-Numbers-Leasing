@@ -2,28 +2,63 @@
 {% set active_page = "buy" %}
 {% block title %}شراء رقم جديد — جمال سولوشنز{% endblock %}
 {% block page_title %}شراء رقم جديد{% endblock %}
-{% block page_subtitle %}اختر الدولة والخدمة لبدء الشراء{% endblock %}
+{% block page_subtitle %}
+  {% if prices_meta.ok %}اختر الدولة والخدمة لبدء الشراء
+  {% else %}تعذّر تحميل البيانات من 5SIM{% endif %}
+{% endblock %}
 
 {% block content %}
 
-<!-- ══ Prices Source Bar ═══════════════════════════════════════ -->
+{# ═══════════════════════════════════════════════════════════ #}
+{# حالة الفشل: لا بيانات وهمية — فقط رسالة واضحة              #}
+{# ═══════════════════════════════════════════════════════════ #}
+{% if not prices_meta.ok %}
+<div class="max-w-2xl mx-auto mt-8">
+  <div class="bg-red-50 border-2 border-red-200 rounded-2xl p-8 text-center">
+    <div class="text-5xl mb-4">⚠️</div>
+    <h2 class="text-xl font-bold text-red-800 mb-3">تعذّر تحميل البيانات من 5SIM</h2>
+    <p class="text-sm text-red-700 mb-2">{{ prices_meta.error or 'خطأ غير معروف' }}</p>
+
+    {% if prices_meta.error_code %}
+      <p class="text-xs text-red-500 mb-4" dir="ltr">HTTP {{ prices_meta.error_code }}</p>
+    {% endif %}
+
+    <div class="bg-white rounded-lg p-4 mt-4 text-right text-xs text-slate-600 space-y-1">
+      <p class="font-bold text-slate-800 mb-2">ما الذي يمكن فعله؟</p>
+      <p>• تأكد من ضبط <code class="bg-slate-100 px-1 rounded" dir="ltr">SIM5_API_KEY</code> في متغيرات البيئة.</p>
+      <p>• تحقق من أن المفتاح صالح على <a href="https://5sim.net" target="_blank" class="text-blue-600 underline">5sim.net</a>.</p>
+      <p>• تحقق من أن الخادم يستطيع الوصول إلى <code class="bg-slate-100 px-1 rounded" dir="ltr">5sim.net</code>.</p>
+      <p>• إذا كنت متأكدًا من الإعداد، أعد المحاولة.</p>
+    </div>
+
+    <button onclick="refreshPrices(this)"
+            class="mt-6 bg-red-600 hover:bg-red-700 text-white font-bold px-6 py-2.5 rounded-lg text-sm transition-colors">
+      🔄 إعادة المحاولة
+    </button>
+
+    <div class="mt-4">
+      <a href="/api/v1/system/sim5-profile" target="_blank"
+         class="text-xs text-slate-500 hover:text-slate-700 underline">
+        فحص حالة 5SIM مباشرة
+      </a>
+    </div>
+  </div>
+</div>
+{% else %}
+
+{# ═══════════════════════════════════════════════════════════ #}
+{# حالة النجاح: كل البيانات من 5SIM                          #}
+{# ═══════════════════════════════════════════════════════════ #}
+
+<!-- ══ شريط مصدر الأسعار ══ -->
 <div class="mb-4 flex items-center justify-between gap-3 flex-wrap">
   <div class="flex items-center gap-2 flex-wrap">
-    {% if prices_meta.source == '5sim' %}
-      <span class="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold px-2.5 py-1 rounded-full">
-        <span class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
-        أسعار حية من 5SIM
-      </span>
-      {% if prices_meta.fetched_at %}
-        <span class="text-[10px] text-slate-400" dir="ltr">{{ prices_meta.fetched_at }}</span>
-      {% endif %}
-    {% else %}
-      <span class="inline-flex items-center gap-1.5 bg-amber-50 text-amber-700 border border-amber-200 text-[11px] font-bold px-2.5 py-1 rounded-full">
-        ⚠️ أسعار ثابتة (5SIM غير متاح)
-      </span>
-      {% if prices_meta.error %}
-        <span class="text-[10px] text-slate-400">{{ prices_meta.error }}</span>
-      {% endif %}
+    <span class="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold px-2.5 py-1 rounded-full">
+      <span class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+      أسعار حية من 5SIM
+    </span>
+    {% if prices_meta.fetched_at %}
+      <span class="text-[10px] text-slate-400" dir="ltr">{{ prices_meta.fetched_at }}</span>
     {% endif %}
   </div>
   <button type="button" onclick="refreshPrices(this)"
@@ -32,7 +67,8 @@
   </button>
 </div>
 
-<!-- ══ Most Popular Services ═══════════════════════════════════ -->
+<!-- ══ الأكثر طلباً ══ -->
+{% if popular_services %}
 <div class="mb-6">
   <div class="flex items-center justify-between mb-3">
     <div class="flex items-center gap-2">
@@ -45,10 +81,10 @@
   <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
     {% for p in popular_services %}
     <button type="button"
-            onclick="quickBuy('{{ p.country }}', '{{ p.service }}')"
+            onclick="quickBuy('{{ p.country_slug }}', '{{ p.service_id }}')"
             class="group relative bg-white rounded-2xl shadow-sm border border-slate-100 hover:border-blue-400 hover:shadow-md transition-all p-3 text-right overflow-hidden">
       <span class="absolute top-2 left-2 bg-gradient-to-r from-orange-500 to-red-500 text-white text-[9px] font-bold px-2 py-0.5 rounded-full">
-        {{ p.orders_count }}+
+        {{ p.count }}+
       </span>
 
       <div class="flex flex-col items-center gap-1.5 pt-3">
@@ -65,27 +101,25 @@
         </div>
       </div>
     </button>
-    {% else %}
-    <div class="col-span-full text-center text-xs text-slate-400 py-4">
-      لا توجد عروض متوفرة حالياً
-    </div>
     {% endfor %}
   </div>
 </div>
+{% endif %}
 
-<!-- ══ Available Numbers with Prices ═══════════════════════════ -->
+<!-- ══ الأرقام المتاحة الآن ══ -->
+{% if available_numbers %}
 <div class="mb-6">
   <div class="flex items-center justify-between mb-3">
     <div class="flex items-center gap-2">
       <div class="w-1.5 h-5 bg-gradient-to-b from-emerald-400 to-teal-500 rounded-full"></div>
       <h3 class="text-base font-bold text-slate-800">الأرقام المتاحة الآن</h3>
       <span class="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
-        {{ available_numbers|length }} متاح
+        {{ available_numbers|length }} عرض
       </span>
     </div>
     <div class="flex items-center gap-1 text-[10px] text-slate-400">
       <span class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
-      تحديث مباشر
+      تحديث مباشر من 5SIM
     </div>
   </div>
 
@@ -96,8 +130,8 @@
           <tr class="text-[11px] text-slate-500 font-bold">
             <th class="px-4 py-3">الدولة</th>
             <th class="px-4 py-3">الخدمة</th>
-            <th class="px-4 py-3">الرقم</th>
-            <th class="px-4 py-3">المدة</th>
+            <th class="px-4 py-3">الكمية المتاحة</th>
+            <th class="px-4 py-3">نسبة التسليم</th>
             <th class="px-4 py-3">السعر</th>
             <th class="px-4 py-3"></th>
           </tr>
@@ -118,35 +152,24 @@
               </div>
             </td>
             <td class="px-4 py-3">
-              <code class="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded" dir="ltr">
-                {{ n.masked_number }}
-              </code>
+              <span class="text-xs font-bold text-emerald-600">{{ n.count }}</span>
+              <span class="text-[10px] text-slate-400">رقم</span>
             </td>
             <td class="px-4 py-3">
-              <span class="text-[11px] text-slate-500 flex items-center gap-1">
-                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
-                {{ n.duration }} د
-              </span>
-            </td>
-            <td class="px-4 py-3">
-              <span class="text-sm font-bold text-blue-600">${{ "%.2f"|format(n.price) }}</span>
               {% if n.rate %}
-                <div class="text-[10px] text-emerald-600">{{ "%.0f"|format(n.rate) }}% ✓</div>
+                <span class="text-[11px] text-emerald-600 font-bold">{{ "%.0f"|format(n.rate) }}%</span>
+              {% else %}
+                <span class="text-[10px] text-slate-300">—</span>
               {% endif %}
             </td>
             <td class="px-4 py-3">
-              <button onclick="quickBuy('{{ n.country_code }}', '{{ n.service_id }}')"
+              <span class="text-sm font-bold text-blue-600">${{ "%.2f"|format(n.price) }}</span>
+            </td>
+            <td class="px-4 py-3">
+              <button onclick="quickBuy('{{ n.country_slug }}', '{{ n.service_id }}')"
                       class="text-[11px] font-bold text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg transition-colors">
                 شراء
               </button>
-            </td>
-          </tr>
-          {% else %}
-          <tr>
-            <td colspan="6" class="px-4 py-8 text-center text-xs text-slate-400">
-              لا توجد أرقام متاحة حالياً
             </td>
           </tr>
           {% endfor %}
@@ -155,53 +178,57 @@
     </div>
   </div>
 </div>
+{% endif %}
 
-<!-- ══ Purchase Form ═══════════════════════════════════════════ -->
+<!-- ══ نموذج الشراء ══ -->
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-  <!-- Form -->
   <div class="lg:col-span-2 space-y-4">
 
-    <!-- Step 1: Country -->
+    <!-- الخطوة 1: الدولة -->
     <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
       <div class="flex items-center gap-3 mb-4">
         <div class="w-7 h-7 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center">1</div>
         <h3 class="text-base font-bold text-slate-800">اختر الدولة</h3>
+        <span class="text-[10px] text-slate-400">
+          {{ countries|length }} دولة متاحة من 5SIM
+        </span>
       </div>
 
       <div class="grid grid-cols-2 sm:grid-cols-3 gap-3" id="country-grid">
         {% for c in countries %}
         <button type="button"
-                onclick="selectCountry('{{ c.code }}', this)"
+                onclick="selectCountry('{{ c.slug }}', this)"
+                data-slug="{{ c.slug }}"
                 data-code="{{ c.code }}"
                 class="country-btn flex items-center gap-2 p-3 rounded-xl border-2 border-slate-100 hover:border-blue-400 hover:bg-blue-50 transition-all text-right">
           <span class="text-2xl">{{ c.flag }}</span>
           <div class="flex-1 min-w-0">
             <div class="text-sm font-bold text-slate-700 truncate">{{ c.name }}</div>
-            <div class="text-[10px] text-slate-400">{{ c.price }}</div>
+            <div class="text-[10px] text-slate-400">
+              {% if c.min_price %}${{ "%.2f"|format(c.min_price) }}{% else %}—{% endif %}
+              · {{ c.services_count }} خدمة
+            </div>
           </div>
         </button>
         {% endfor %}
       </div>
     </div>
 
-    <!-- Step 2: Service (dynamic per country) -->
+    <!-- الخطوة 2: الخدمة -->
     <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 opacity-50 pointer-events-none" id="service-step">
       <div class="flex items-center gap-3 mb-4">
         <div class="w-7 h-7 rounded-full bg-slate-300 text-white text-xs font-bold flex items-center justify-center">2</div>
         <h3 class="text-base font-bold text-slate-800">اختر الخدمة</h3>
       </div>
 
-      <div class="grid grid-cols-2 sm:grid-cols-3 gap-3" id="service-grid">
-        <!-- تُملأ ديناميكياً بالـ JS حسب الدولة المختارة -->
-      </div>
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-3" id="service-grid"></div>
 
       <div id="service-empty" class="hidden text-center text-xs text-slate-400 py-6">
         لا توجد خدمات متاحة لهذه الدولة حالياً
       </div>
     </div>
 
-    <!-- Step 3: Confirm -->
+    <!-- الخطوة 3: التأكيد -->
     <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 opacity-50 pointer-events-none" id="confirm-step">
       <div class="flex items-center gap-3 mb-4">
         <div class="w-7 h-7 rounded-full bg-slate-300 text-white text-xs font-bold flex items-center justify-center">3</div>
@@ -218,8 +245,8 @@
           <span id="confirm-service" class="text-sm font-bold text-slate-700">—</span>
         </div>
         <div class="flex items-center justify-between py-2 border-b border-slate-200">
-          <span class="text-sm text-slate-500">مدة الرقم</span>
-          <span class="text-sm font-bold text-slate-700">20 دقيقة</span>
+          <span class="text-sm text-slate-500">الكمية المتاحة</span>
+          <span id="confirm-count" class="text-sm font-bold text-slate-700">—</span>
         </div>
         <div class="flex items-center justify-between pt-3">
           <span class="text-sm font-bold text-slate-700">التكلفة</span>
@@ -233,15 +260,17 @@
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>
         </svg>
-        شراء الآن
+        شراء الآن من 5SIM
       </button>
+
+      <p class="text-[10px] text-slate-400 text-center mt-2">
+        سيتم شراء رقم حقيقي من 5SIM. عند فشل الشراء ستظهر رسالة الخطأ بوضوح.
+      </p>
     </div>
   </div>
 
-  <!-- Sidebar -->
+  <!-- العمود الجانبي -->
   <div class="space-y-4">
-
-    <!-- Balance -->
     <div class="bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl p-5 text-white shadow-lg">
       <div class="text-xs text-blue-100 font-medium mb-1">رصيدك الحالي</div>
       <div class="text-3xl font-bold">${{ "%.2f"|format(customer.balance) }}</div>
@@ -253,7 +282,6 @@
       </a>
     </div>
 
-    <!-- Stats -->
     <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
       <h4 class="text-sm font-bold text-slate-800 mb-3">إحصائيات سريعة</h4>
       <div class="grid grid-cols-2 gap-3">
@@ -266,17 +294,16 @@
           <div class="text-[10px] text-slate-500">طلبات نشطة</div>
         </div>
         <div class="bg-purple-50 rounded-xl p-3 text-center">
-          <div class="text-lg font-bold text-purple-600">{{ stats.countries_count }}</div>
-          <div class="text-[10px] text-slate-500">دولة متاحة</div>
+          <div class="text-lg font-bold text-purple-600">{{ stats.countries_count or 0 }}</div>
+          <div class="text-[10px] text-slate-500">دولة من 5SIM</div>
         </div>
         <div class="bg-amber-50 rounded-xl p-3 text-center">
-          <div class="text-lg font-bold text-amber-600">{{ stats.services_count }}</div>
-          <div class="text-[10px] text-slate-500">خدمة مدعومة</div>
+          <div class="text-lg font-bold text-amber-600">{{ stats.services_count or 0 }}</div>
+          <div class="text-[10px] text-slate-500">خدمة متاحة</div>
         </div>
       </div>
     </div>
 
-    <!-- How it works -->
     <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
       <h4 class="text-sm font-bold text-slate-800 mb-3">كيف يعمل؟</h4>
       <ol class="space-y-3 text-xs text-slate-600">
@@ -286,7 +313,7 @@
         </li>
         <li class="flex gap-2">
           <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-bold flex-shrink-0">2</span>
-          سيصلك رقم جديد فورًا
+          يتم شراء الرقم مباشرة من 5SIM
         </li>
         <li class="flex gap-2">
           <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-bold flex-shrink-0">3</span>
@@ -294,12 +321,11 @@
         </li>
         <li class="flex gap-2">
           <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-bold flex-shrink-0">4</span>
-          ستظهر الرسالة في صندوقك مباشرة
+          ستظهر الرسالة في صفحة الطلب مباشرة
         </li>
       </ol>
     </div>
 
-    <!-- Support -->
     <div class="bg-amber-50 border border-amber-200 rounded-2xl p-4">
       <div class="flex items-start gap-2">
         <span class="text-lg">💡</span>
@@ -312,26 +338,36 @@
   </div>
 </div>
 
-<!-- ══ Countries data (JSON) ═══════════════════════════════════ -->
+<!-- بيانات الدول إلى JavaScript (من 5SIM) -->
 <script id="countries-data" type="application/json">
 {{ countries | tojson }}
 </script>
 
+{% endif %}
+
 {% endblock %}
+
 
 {% block scripts %}
 <script>
-// ── بيانات الدول (من الـ backend) ──
-const COUNTRIES = JSON.parse(
-  document.getElementById('countries-data').textContent
-);
+// ══════════════════════════════════════════════════════════════
+// البيانات المضمّنة من الـ backend — كلها من 5SIM
+// ══════════════════════════════════════════════════════════════
+let COUNTRIES = [];
+try {
+  const el = document.getElementById('countries-data');
+  if (el) COUNTRIES = JSON.parse(el.textContent);
+} catch (e) {
+  console.error('فشل تحميل بيانات الدول', e);
+}
 
 let selectedCountry = null;
 let selectedService = null;
 let currentPrice = 0;
+let currentCount = 0;
 
 // ── اختيار الدولة ──
-function selectCountry(code, btn) {
+function selectCountry(slug, btn) {
   document.querySelectorAll('.country-btn').forEach(b => {
     b.classList.remove('border-blue-500', 'bg-blue-50');
     b.classList.add('border-slate-100');
@@ -339,24 +375,23 @@ function selectCountry(code, btn) {
   btn.classList.add('border-blue-500', 'bg-blue-50');
   btn.classList.remove('border-slate-100');
 
-  const country = COUNTRIES.find(c => c.code === code);
+  const country = COUNTRIES.find(c => c.slug === slug);
   selectedCountry = country
-    ? { code: country.code, name: country.name, services: country.services }
-    : { code, name: code, services: [] };
+    ? { slug: country.slug, code: country.code, name: country.name, services: country.services || [] }
+    : null;
 
-  // امسح الخدمة السابقة
   selectedService = null;
   currentPrice = 0;
+  currentCount = 0;
   updateConfirm();
 
-  // ابنِ شبكة الخدمات لهذه الدولة
-  renderServices(selectedCountry.services);
+  renderServices(selectedCountry ? selectedCountry.services : []);
 
   document.getElementById('service-step').classList.remove('opacity-50','pointer-events-none');
   document.getElementById('confirm-step').classList.add('opacity-50','pointer-events-none');
 }
 
-// ── عرض الخدمات مع الأسعار ──
+// ── عرض الخدمات ──
 function renderServices(services) {
   const grid = document.getElementById('service-grid');
   const empty = document.getElementById('service-empty');
@@ -373,22 +408,22 @@ function renderServices(services) {
     btn.type = 'button';
     btn.dataset.id = s.id;
     btn.className = 'service-btn flex flex-col items-center gap-1 p-3 rounded-xl border-2 border-slate-100 transition-all ' +
-      (s.available
-        ? 'hover:border-blue-400 hover:bg-blue-50'
-        : 'opacity-40 cursor-not-allowed');
+      (s.available ? 'hover:border-blue-400 hover:bg-blue-50' : 'opacity-40 cursor-not-allowed');
 
     if (s.available) {
-      btn.onclick = () => selectService(s.id, s.cost, btn);
+      btn.onclick = () => selectService(s.id, s.cost, s.count, btn);
     } else {
       btn.disabled = true;
     }
 
-    // السعر
     const priceHtml = s.available
       ? `<span class="text-[11px] font-bold text-blue-600">$${Number(s.cost).toFixed(2)}</span>`
       : `<span class="text-[10px] text-slate-400">غير متاح</span>`;
 
-    // نسبة التسليم
+    const countHtml = s.available
+      ? `<span class="text-[9px] text-slate-400">${s.count} متاح</span>`
+      : '';
+
     const rateHtml = (s.available && s.rate)
       ? `<span class="text-[9px] text-emerald-600">${Number(s.rate).toFixed(0)}% ✓</span>`
       : '';
@@ -397,6 +432,7 @@ function renderServices(services) {
       <span class="text-2xl">${s.icon}</span>
       <span class="text-xs font-bold text-slate-700">${s.name}</span>
       ${priceHtml}
+      ${countHtml}
       ${rateHtml}
     `;
     grid.appendChild(btn);
@@ -404,7 +440,7 @@ function renderServices(services) {
 }
 
 // ── اختيار الخدمة ──
-function selectService(id, cost, btn) {
+function selectService(id, cost, count, btn) {
   document.querySelectorAll('.service-btn').forEach(b => {
     b.classList.remove('border-blue-500', 'bg-blue-50');
     b.classList.add('border-slate-100');
@@ -412,67 +448,94 @@ function selectService(id, cost, btn) {
   btn.classList.add('border-blue-500', 'bg-blue-50');
   btn.classList.remove('border-slate-100');
 
-  const svc = selectedCountry.services.find(s => s.id === id);
+  const svc = (selectedCountry?.services || []).find(s => s.id === id);
   selectedService = { id, name: svc?.name || id };
   currentPrice = parseFloat(cost) || 0;
+  currentCount = parseInt(count) || 0;
 
   document.getElementById('confirm-step').classList.remove('opacity-50','pointer-events-none');
   updateConfirm();
 }
 
-// ── تحديث صندوق التأكيد ──
+// ── تحديث التأكيد ──
 function updateConfirm() {
-  document.getElementById('confirm-country').textContent = selectedCountry?.name || '—';
-  document.getElementById('confirm-service').textContent = selectedService?.name || '—';
-  document.getElementById('confirm-price').textContent = `$${currentPrice.toFixed(2)}`;
+  const set = (id, v) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = v;
+  };
+  set('confirm-country', selectedCountry?.name || '—');
+  set('confirm-service', selectedService?.name || '—');
+  set('confirm-count', currentCount ? `${currentCount} رقم` : '—');
+  set('confirm-price', `$${currentPrice.toFixed(2)}`);
 }
 
-// ── شراء سريع من البطاقات العلوية ──
-function quickBuy(countryCode, serviceId) {
-  const countryBtn = document.querySelector(`.country-btn[data-code="${countryCode}"]`);
-  if (!countryBtn) return;
-  selectCountry(countryCode, countryBtn);
+// ── شراء سريع من البطاقات ──
+function quickBuy(countrySlug, serviceId) {
+  const countryBtn = document.querySelector(`.country-btn[data-slug="${countrySlug}"]`);
+  if (!countryBtn) {
+    showAlert('الدولة غير موجودة في القائمة', 'error');
+    return;
+  }
+  selectCountry(countrySlug, countryBtn);
 
-  // انتظر لحظة حتى تُرسم الأزرار
   setTimeout(() => {
     const svcBtn = document.querySelector(`.service-btn[data-id="${serviceId}"]`);
     if (svcBtn && !svcBtn.disabled) {
-      const country = COUNTRIES.find(c => c.code === countryCode);
+      const country = COUNTRIES.find(c => c.slug === countrySlug);
       const svc = country?.services.find(s => s.id === serviceId);
-      selectService(serviceId, svc?.cost || 0, svcBtn);
+      selectService(serviceId, svc?.cost || 0, svc?.count || 0, svcBtn);
     }
-    document.getElementById('confirm-step').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    document.getElementById('confirm-step')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, 50);
 }
 
-// ── تأكيد الشراء ──
+// ── تنبيه بسيط ──
+function showAlert(msg, type = 'info') {
+  const colors = {
+    error: 'bg-red-100 border-red-300 text-red-800',
+    success: 'bg-emerald-100 border-emerald-300 text-emerald-800',
+    info: 'bg-blue-100 border-blue-300 text-blue-800',
+  };
+  const div = document.createElement('div');
+  div.className = `fixed top-4 left-1/2 -translate-x-1/2 z-50 border-2 rounded-xl px-6 py-3 text-sm font-bold shadow-lg ${colors[type] || colors.info}`;
+  div.textContent = msg;
+  document.body.appendChild(div);
+  setTimeout(() => div.remove(), 5000);
+}
+
+// ── تأكيد الشراء من 5SIM ──
 async function confirmPurchase() {
   if (!selectedCountry || !selectedService) return;
   const btn = document.getElementById('buy-btn');
+  const original = btn.innerHTML;
   btn.disabled = true;
-  btn.innerHTML = 'جارٍ الشراء...';
+  btn.innerHTML = 'جارٍ الشراء من 5SIM...';
 
   try {
     const r = await fetch('/api/v1/orders', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
-        country: selectedCountry.code,
+        country: selectedCountry.slug,
         service: selectedService.id,
       }),
     });
     const d = await r.json();
+
     if (r.ok) {
-      window.location.href = `/orders/${d.id}`;
+      showAlert('✅ تم الشراء بنجاح — جارٍ التحويل...', 'success');
+      setTimeout(() => {
+        window.location.href = `/orders/${d.id}`;
+      }, 800);
     } else {
-      alert(d.detail || 'حدث خطأ');
+      showAlert('❌ ' + (d.detail || 'فشل الشراء'), 'error');
       btn.disabled = false;
-      btn.innerHTML = 'شراء الآن';
+      btn.innerHTML = original;
     }
   } catch (e) {
-    alert('خطأ في الاتصال');
+    showAlert('❌ خطأ في الاتصال بالخادم', 'error');
     btn.disabled = false;
-    btn.innerHTML = 'شراء الآن';
+    btn.innerHTML = original;
   }
 }
 
@@ -484,34 +547,35 @@ async function refreshPrices(btn) {
   try {
     const r = await fetch('/api/v1/prices/refresh', { method: 'POST' });
     const j = await r.json();
-    if (j.error) {
-      alert('فشل التحديث: ' + j.error);
+    if (!r.ok) {
+      showAlert('فشل التحديث: ' + (j.detail || 'خطأ غير معروف'), 'error');
       btn.disabled = false;
       btn.innerHTML = old;
     } else {
       location.reload();
     }
   } catch (e) {
-    alert('خطأ في الاتصال');
+    showAlert('خطأ في الاتصال', 'error');
     btn.disabled = false;
     btn.innerHTML = old;
   }
 }
 
-// ── تحديد الدولة/الخدمة مسبقاً (من query params) ──
+// ── التحديد المسبق من query params ──
 document.addEventListener('DOMContentLoaded', () => {
   const preCountry = "{{ preselected_country or '' }}";
   const preService = "{{ preselected_service or '' }}";
   if (preCountry) {
-    const btn = document.querySelector(`.country-btn[data-code="${preCountry}"]`);
-    if (btn) selectCountry(preCountry, btn);
+    const btn = document.querySelector(`.country-btn[data-slug="${preCountry}"]`)
+              || document.querySelector(`.country-btn[data-code="${preCountry}"]`);
+    if (btn) selectCountry(btn.dataset.slug, btn);
     if (preService) {
       setTimeout(() => {
         const svcBtn = document.querySelector(`.service-btn[data-id="${preService}"]`);
         if (svcBtn && !svcBtn.disabled) {
-          const c = COUNTRIES.find(x => x.code === preCountry);
+          const c = COUNTRIES.find(x => x.slug === preCountry || x.code === preCountry);
           const s = c?.services.find(x => x.id === preService);
-          selectService(preService, s?.cost || 0, svcBtn);
+          selectService(preService, s?.cost || 0, s?.count || 0, svcBtn);
         }
       }, 60);
     }
