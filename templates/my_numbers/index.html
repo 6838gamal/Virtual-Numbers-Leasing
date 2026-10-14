@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% set active_page = "my-numbers" %}
+{% block title %}أرقامي — جمال سولوشنز{% endblock %}
+{% block page_title %}أرقامي{% endblock %}
+{% block page_subtitle %}إدارة أرقامك النشطة والمنتهية{% endblock %}
+
+{% block content %}
+
+<!-- Filter tabs -->
+<div class="flex flex-wrap gap-2 mb-6">
+  <button onclick="filterNumbers('all')" data-filter="all"
+          class="filter-btn active-tab px-4 py-2 rounded-xl text-xs font-bold bg-blue-600 text-white">الكل ({{ stats.my_numbers }})</button>
+  <button onclick="filterNumbers('active')" data-filter="active"
+          class="filter-btn px-4 py-2 rounded-xl text-xs font-bold bg-white text-slate-600 border border-slate-200 hover:border-blue-400">نشطة ({{ stats.active_numbers }})</button>
+  <button onclick="filterNumbers('expiring')" data-filter="expiring"
+          class="filter-btn px-4 py-2 rounded-xl text-xs font-bold bg-white text-slate-600 border border-slate-200 hover:border-blue-400">تنتهي قريبًا ({{ stats.expiring_soon }})</button>
+  <button onclick="filterNumbers('expired')" data-filter="expired"
+          class="filter-btn px-4 py-2 rounded-xl text-xs font-bold bg-white text-slate-600 border border-slate-200 hover:border-blue-400">منتهية</button>
+</div>
+
+{% if my_numbers %}
+<div id="numbers-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+
+  {% for n in my_numbers %}
+  <div class="number-card bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden"
+       data-status="{{ n.status }}">
+
+    <!-- Header -->
+    <div class="p-4 border-b border-slate-100 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="text-2xl">{{ n.flag }}</span>
+        <div>
+          <div class="text-xs font-bold text-slate-700">{{ n.country }}</div>
+          <div class="text-[10px] text-slate-400">{{ n.service }}</div>
+        </div>
+      </div>
+      <span class="text-[10px] font-bold px-2 py-1 rounded-full
+        {% if n.status == 'active' %}bg-emerald-50 text-emerald-700
+        {% elif n.status == 'expiring' %}bg-amber-50 text-amber-700
+        {% else %}bg-slate-100 text-slate-500{% endif %}">
+        {% if n.status == 'active' %}نشط
+        {% elif n.status == 'expiring' %}ينتهي قريبًا
+        {% else %}منتهي{% endif %}
+      </span>
+    </div>
+
+    <!-- Phone number -->
+    <div class="p-4 bg-slate-50">
+      <div class="text-[10px] text-slate-400 mb-1">الرقم</div>
+      <div class="flex items-center gap-2">
+        <span class="font-mono text-lg font-bold text-slate-800 flex-1">{{ n.phone }}</span>
+        <button onclick="copyText('{{ n.phone }}')"
+                class="w-8 h-8 rounded-lg bg-white border border-slate-200 hover:border-blue-400 hover:bg-blue-50 flex items-center justify-center text-slate-500 hover:text-blue-600 transition-colors">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="grid grid-cols-3 divide-x divide-x-reverse divide-slate-100 border-t border-slate-100">
+      <div class="p-3 text-center">
+        <div class="text-[10px] text-slate-400">الرسائل</div>
+        <div class="text-sm font-bold text-slate-700">{{ n.sms_count }}</div>
+      </div>
+      <div class="p-3 text-center">
+        <div class="text-[10px] text-slate-400">متبقي</div>
+        <div class="text-sm font-bold text-slate-700">{{ n.expires_in }}</div>
+      </div>
+      <div class="p-3 text-center">
+        <div class="text-[10px] text-slate-400">التكلفة</div>
+        <div class="text-sm font-bold text-slate-700">${{ "%.2f"|format(n.price) }}</div>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="p-3 border-t border-slate-100 flex gap-2">
+      <a href="/inbox?number={{ n.id }}"
+         class="flex-1 text-center bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs py-2 rounded-lg transition-colors">
+        الرسائل
+      </a>
+      {% if n.status == 'active' or n.status == 'expiring' %}
+      <button onclick="renewNumber({{ n.id }})"
+              class="flex-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs py-2 rounded-lg transition-colors">
+        تجديد
+      </button>
+      {% else %}
+      <button onclick="buyAgain('{{ n.country_code }}', '{{ n.service_id }}')"
+              class="flex-1 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-xs py-2 rounded-lg transition-colors">
+        شراء مرة أخرى
+      </button>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div id="no-results" class="hidden bg-white rounded-2xl shadow-sm border border-slate-100 p-10 text-center">
+  <p class="text-sm text-slate-500">لا توجد أرقام في هذه الفئة</p>
+</div>
+
+{% else %}
+<div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-12 text-center">
+  <div class="w-16 h-16 mx-auto bg-slate-100 rounded-2xl flex items-center justify-center mb-4">
+    <svg class="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"/>
+    </svg>
+  </div>
+  <h3 class="text-base font-bold text-slate-700 mb-1">لا تملك أرقامًا بعد</h3>
+  <p class="text-sm text-slate-500 mb-5">ابدأ بشراء رقمك الأول وابدأ باستقبال الرسائل</p>
+  <a href="/buy" class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-3 rounded-xl transition-colors">
+    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+    </svg>
+    شراء رقم جديد
+  </a>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filterNumbers(status) {
+  document.querySelectorAll('.filter-btn').forEach(b => {
+    b.classList.remove('active-tab','bg-blue-600','text-white');
+    b.classList.add('bg-white','text-slate-600','border','border-slate-200');
+  });
+  const btn = document.querySelector(`[data-filter="${status}"]`);
+  btn.classList.add('active-tab','bg-blue-600','text-white');
+  btn.classList.remove('bg-white','text-slate-600','border','border-slate-200');
+
+  let visible = 0;
+  document.querySelectorAll('.number-card').forEach(c => {
+    const match = status === 'all' || c.dataset.status === status;
+    c.style.display = match ? '' : 'none';
+    if (match) visible++;
+  });
+  document.getElementById('no-results')?.classList.toggle('hidden', visible > 0);
+}
+
+function copyText(text) {
+  navigator.clipboard.writeText(text).then(() => {
+    alert('تم نسخ الرقم ✓');
+  });
+}
+
+async function renewNumber(id) {
+  if (!confirm('تجديد هذا الرقم بنفس المدة؟')) return;
+  const r = await fetch(`/api/v1/numbers/${id}/renew`, { method: 'POST' });
+  if (r.ok) location.reload();
+  else alert('تعذر التجديد');
+}
+
+function buyAgain(countryCode, serviceId) {
+  window.location.href = `/buy?country=${countryCode}&service=${serviceId}`;
+}
+</script>
+{% endblock %}
