@@ -56,6 +56,14 @@ Customer Portal (FastAPI + Jinja2 + SSE keepalive + Google OAuth + 5SIM)
 - RedirectResponse بعد OAuth: التحقق من سلامة next (منع Open Redirect).
 - طباعة واضحة في السجل لكل تحويل 303.
 - التحقق من صحة next قبل التحويل بعد الدخول.
+
+✅ إصلاحات 2026-10-14 (1.0.7) — الجلسة المنزلقة (Sliding Session):
+- إضافة SESSION_IDLE_TIMEOUT من البيئة (افتراضي: 7 أيام).
+- دالة _session_is_expired() لفحص خمول الجلسة.
+- auth_guard يمسح الجلسة إذا تجاوز الخمول المدة المحددة.
+- auth_guard يجدّد _last_seen عند كل طلب محمي (sliding فعلي).
+- التحويل البسيط إلى "/" (بدون ?next=...) — شاشة الدخول الافتراضية.
+- تحديث /api/v1/system/version ليعكس الميزات الجديدة.
 """
 from __future__ import annotations
 
@@ -118,6 +126,15 @@ if not SECRET_KEY:
 
 SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true"
 SESSION_MAX_AGE = int(os.getenv("SESSION_MAX_AGE", str(30 * 24 * 3600)))  # 30 يوم
+
+# ══════════════════════════════════════════════════════════════
+# Sliding session — يبقى المستخدم مسجّلاً طالما يزور الموقع
+# خلال هذه المدة، حتى لو تجاوز max_age الأصلي.
+# ══════════════════════════════════════════════════════════════
+SESSION_IDLE_TIMEOUT = int(os.getenv(
+    "SESSION_IDLE_TIMEOUT",
+    str(7 * 24 * 3600),  # 7 أيام — لا يخرج المستخدم إلا إذا غاب أسبوعاً كاملاً
+))
 
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
@@ -243,10 +260,13 @@ _REQUEST_STATS: dict[str, Any] = {
     "total": 0,
     "protected_401": 0,
     "protected_redirect": 0,
+    "session_expired": 0,
     "last_401": None,
     "last_401_path": None,
     "last_401_ua": None,
     "last_401_referer": None,
+    "last_expired": None,
+    "last_expired_path": None,
     "top_401_paths": {},
     "top_redirect_paths": {},
 }
@@ -271,6 +291,14 @@ async def _record_redirect(path: str) -> None:
         _REQUEST_STATS["protected_redirect"] += 1
         top = _REQUEST_STATS["top_redirect_paths"]
         top[path] = top.get(path, 0) + 1
+
+
+async def _record_expired(path: str) -> None:
+    """يسجل إحصائيات الجلسات المنتهية بسبب الخمول."""
+    async with _401_LOCK:
+        _REQUEST_STATS["session_expired"] += 1
+        _REQUEST_STATS["last_expired"] = _now_iso()
+        _REQUEST_STATS["last_expired_path"] = path
 
 
 # ══════════════════════════════════════════════════════════════
@@ -304,6 +332,35 @@ def _is_safe_next(next_url: str) -> bool:
     if parsed.scheme or parsed.netloc:
         return False
     return True
+
+
+def _session_is_expired(request: Request) -> bool:
+    """
+    يفحص إذا كانت الجلسة منتهية بسبب الخمول.
+
+    - إذا تجاوز آخر نشاط (_last_seen) مدة SESSION_IDLE_TIMEOUT → True.
+    - إذا لم يوجد _last_seen (جلسة قديمة قبل التحديث) → False (لأننا سنضيفه الآن).
+    """
+    try:
+        last_seen_iso = request.session.get("_last_seen")
+    except Exception:
+        return True
+
+    if not last_seen_iso:
+        # جلسة قديمة بدون _last_seen → اعتبرها صالحة، وسيُضاف الآن
+        return False
+
+    try:
+        last_seen = datetime.fromisoformat(last_seen_iso)
+        if last_seen.tzinfo is None:
+            last_seen = last_seen.replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        return True
+
+    now = datetime.now(timezone.utc)
+    idle_seconds = (now - last_seen).total_seconds()
+
+    return idle_seconds > SESSION_IDLE_TIMEOUT
 
 
 def _push_history(ok: bool) -> None:
@@ -393,8 +450,11 @@ async def lifespan(app: FastAPI):
     else:
         print("⚠️  5SIM معطّل (SIM5_API_KEY غير مضبوط) — سيتم استخدام الأسعار الثابتة.")
 
+    idle_days = SESSION_IDLE_TIMEOUT / 86400
     print(f"🔧 DEBUG={DEBUG} | SESSION_COOKIE_SECURE={SESSION_COOKIE_SECURE} "
-          f"| SESSION_MAX_AGE={SESSION_MAX_AGE}s | Version={app.version}")
+          f"| SESSION_MAX_AGE={SESSION_MAX_AGE}s "
+          f"| SESSION_IDLE_TIMEOUT={SESSION_IDLE_TIMEOUT}s ({idle_days:.1f} يوم) "
+          f"| Version={app.version}")
 
     task = asyncio.create_task(_keepalive_loop(app))
     try:
@@ -413,7 +473,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Jamal Solutions — Customer Portal",
     description="Virtual Numbers Platform",
-    version="1.0.6",
+    version="1.0.7",
     lifespan=lifespan,
 )
 
@@ -825,7 +885,6 @@ async def health_check():
     """
     نقطة نهاية مخصصة لـ Render Health Check.
     استخدمها كـ Health Check Path في Render Dashboard.
-    لا تتطلب تسجيل دخول، وترجع 200 دائماً.
     """
     return {
         "status": "healthy",
@@ -847,6 +906,9 @@ async def system_version():
         "has_health_check": True,
         "has_sim5_prices": True,
         "has_login_redirect_fix": True,
+        "has_sliding_session": True,          # ✅ جديد
+        "session_idle_timeout_seconds": SESSION_IDLE_TIMEOUT,
+        "session_idle_timeout_days": round(SESSION_IDLE_TIMEOUT / 86400, 2),
         "sim5_enabled": SIM5_ENABLED,
         "sim5_cached": _PRICES_CACHE["data"] is not None,
         "sim5_error": _PRICES_CACHE["error"],
@@ -881,6 +943,18 @@ async def middleware_order():
 @app.get("/api/v1/system/whoami")
 async def whoami(request: Request):
     """يرجع محتوى الجلسة الحالية (بدون بيانات حساسة) للتشخيص."""
+    # فحص الخمول
+    idle_seconds = None
+    try:
+        ls = request.session.get("_last_seen")
+        if ls:
+            last_seen = datetime.fromisoformat(ls)
+            if last_seen.tzinfo is None:
+                last_seen = last_seen.replace(tzinfo=timezone.utc)
+            idle_seconds = (datetime.now(timezone.utc) - last_seen).total_seconds()
+    except Exception:
+        pass
+
     return {
         "has_session": bool(request.session),
         "session_keys": sorted(request.session.keys()),
@@ -889,6 +963,9 @@ async def whoami(request: Request):
         "name": request.session.get("name"),
         "logged_in_at": request.session.get("logged_in_at"),
         "last_seen": request.session.get("_last_seen"),
+        "idle_seconds": idle_seconds,
+        "idle_timeout_seconds": SESSION_IDLE_TIMEOUT,
+        "is_expired": _session_is_expired(request) if request.session else None,
         "cookies_received": sorted(request.cookies.keys()),
         "user_agent": request.headers.get("user-agent", "")[:120],
         "accept": request.headers.get("accept", ""),
@@ -902,10 +979,7 @@ async def whoami(request: Request):
 
 @app.get("/api/v1/system/whoami-detailed")
 async def whoami_detailed(request: Request):
-    """
-    تشخيص مفصّل: يعرض كل الترويسات + حالة الطلب + إحصائيات 401.
-    لا يعرض قيم الكوكيز الحساسة، فقط أسماءها.
-    """
+    """تشخيص مفصّل: يعرض كل الترويسات + حالة الطلب + إحصائيات 401."""
     return {
         "request": {
             "method": request.method,
@@ -962,6 +1036,8 @@ async def status_page(request: Request):
         for p, c in sorted(top_redirect.items(), key=lambda x: -x[1])[:10]
     ) or "<tr><td colspan=2>لا توجد</td></tr>"
 
+    idle_days = SESSION_IDLE_TIMEOUT / 86400
+
     html = f"""<!doctype html>
 <html lang="ar" dir="rtl">
 <head>
@@ -977,16 +1053,21 @@ async def status_page(request: Request):
     .meta {{ display:flex; gap:1rem; margin-bottom:1rem; font-size:14px; color:#475569; flex-wrap:wrap; }}
     .ok  {{ color:#16a34a; font-weight:600; }}
     .bad {{ color:#dc2626; font-weight:600; }}
+    .badge {{ display:inline-block; background:#dbeafe; color:#1e40af; padding:2px 8px; border-radius:6px; font-size:12px; }}
   </style>
 </head>
 <body>
   <div class="card">
-    <h1>🩺 حالة الخدمة</h1>
+    <h1>🩺 حالة الخدمة <span class="badge">v{app.version}</span></h1>
     <div class="meta">
       <span>Uptime: <b>{uptime}</b></span>
       <span>Ping ✓: <b class="ok">{KA_STATE['ping_count']}</b></span>
       <span>Fail ✗: <b class="bad">{KA_STATE['fail_count']}</b></span>
       <span>Next ping: <b>{KA_STATE['next_ping_in']}s</b></span>
+    </div>
+    <div class="meta">
+      <span>Sliding Session: <b class="ok">مفعّل</b></span>
+      <span>مدة الخمول: <b>{idle_days:.1f} يوم</b></span>
     </div>
     <h2>آخر عمليات الفحص</h2>
     <table>
@@ -996,12 +1077,15 @@ async def status_page(request: Request):
   </div>
 
   <div class="card">
-    <h1>🔒 إحصائيات 401 (API فقط)</h1>
+    <h1>🔒 إحصائيات الجلسات</h1>
     <div class="meta">
       <span>Total 401: <b class="bad">{_REQUEST_STATS['protected_401']}</b></span>
       <span>Total Redirect: <b class="ok">{_REQUEST_STATS['protected_redirect']}</b></span>
-      <span>Last: <b>{_REQUEST_STATS['last_401'] or '-'}</b></span>
-      <span>Last path: <b>{_REQUEST_STATS['last_401_path'] or '-'}</b></span>
+      <span>Session Expired: <b class="bad">{_REQUEST_STATS['session_expired']}</b></span>
+    </div>
+    <div class="meta">
+      <span>Last 401: <b>{_REQUEST_STATS['last_401'] or '-'}</b></span>
+      <span>Last expired: <b>{_REQUEST_STATS['last_expired'] or '-'}</b></span>
     </div>
     <h2>آخر User-Agent</h2>
     <div style="font-size:12px; color:#64748b; word-break:break-all;">
@@ -1095,9 +1179,13 @@ async def me_stats(request: Request):
 async def me_session(request: Request):
     """فحص سريع لحالة الجلسة من JavaScript."""
     cid = request.session.get("customer_id")
+    expired = _session_is_expired(request) if cid else False
     return {
-        "authenticated": bool(cid),
+        "authenticated": bool(cid) and not expired,
         "customer_id": cid,
+        "expired": expired,
+        "idle_timeout_seconds": SESSION_IDLE_TIMEOUT,
+        "last_seen": request.session.get("_last_seen"),
         "session_keys": sorted(request.session.keys()),
     }
 
@@ -1109,8 +1197,6 @@ async def me_session(request: Request):
 async def api_prices(country: str | None = None):
     """
     أسعار حية من 5SIM — للاستخدام من JavaScript في صفحة /buy.
-    - بدون country: كل الدول
-    - مع country=YE: دولة واحدة فقط
     """
     countries = await build_country_prices()
     if country:
@@ -1151,12 +1237,13 @@ async def api_prices_refresh(request: Request):
 @app.get("/", response_class=HTMLResponse)
 async def login_page(request: Request):
     """شاشة تسجيل الدخول الرئيسية."""
+    # إذا كان مسجّلاً، تحقق من عدم انتهاء الجلسة بالخمول
     if request.session.get("customer_id"):
-        # ✅ إذا كان مسجّلاً بالفعل، حوّله للصفحة المطلوبة أو dashboard
-        nxt = request.query_params.get("next", "/dashboard")
-        if not _is_safe_next(nxt):
-            nxt = "/dashboard"
-        return RedirectResponse(url=nxt, status_code=303)
+        if _session_is_expired(request):
+            print("⏰ SESSION EXPIRED on / | clearing session")
+            request.session.clear()
+        else:
+            return RedirectResponse(url="/dashboard", status_code=303)
 
     return templates.TemplateResponse(
         request=request,
@@ -1178,16 +1265,15 @@ async def auth_google(request: Request):
         request.session["name"] = STORE["customers"][1]["name"]
         request.session["logged_in_at"] = _now_iso()
         request.session["_last_seen"] = _now_iso()
-        nxt = request.query_params.get("next", "/dashboard")
-        if not _is_safe_next(nxt):
-            nxt = "/dashboard"
-        return RedirectResponse(url=nxt, status_code=303)
+        return RedirectResponse(url="/dashboard", status_code=303)
 
     redirect_uri = str(request.url_for("auth_google_callback"))
-    next_url = request.query_params.get("next", "/dashboard")
-    if not _is_safe_next(next_url):
-        next_url = "/dashboard"
-    request.session["oauth_next"] = next_url
+    # نحفظ next فقط إن وُجد وكان آمناً
+    next_url = request.query_params.get("next", "")
+    if next_url and _is_safe_next(next_url):
+        request.session["oauth_next"] = next_url
+    else:
+        request.session.pop("oauth_next", None)
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 
@@ -1251,9 +1337,9 @@ async def auth_google_callback(request: Request):
     request.session["logged_in_at"] = _now_iso()
     request.session["_last_seen"] = _now_iso()
 
-    # ✅ تحقق من سلامة next
-    nxt = request.session.pop("oauth_next", "/dashboard")
-    if not _is_safe_next(nxt):
+    # ✅ إن وُجد next آمن، استخدمه، وإلا /dashboard
+    nxt = request.session.pop("oauth_next", None)
+    if not nxt or not _is_safe_next(nxt):
         nxt = "/dashboard"
 
     print(f"✅ OAuth success: {email} → redirect to {nxt}")
@@ -1841,7 +1927,7 @@ async def end_all_sessions(request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# ⚠️  Middleware — Auth Guard
+# ⚠️  Middleware — Auth Guard with Sliding Session
 # ══════════════════════════════════════════════════════════════
 #  ملاحظة مهمة عن الترتيب في Starlette:
 #  - @app.middleware("http") تضيف middleware إلى القائمة.
@@ -1856,14 +1942,19 @@ async def end_all_sessions(request: Request):
 @app.middleware("http")
 async def auth_guard(request: Request, call_next):
     """
-    يحمي المسارات الخاصة.
+    يحمي المسارات الخاصة مع جلسة منزلقة (sliding session).
 
-    ✅ القاعدة (1.0.6):
+    ✅ القاعدة (1.0.7):
 
     - "/" → عام (صفحة تسجيل الدخول)
     - PUBLIC_PATHS → عامة (بما فيها /auth/google, /logout, /static)
-    - "/api/..." (غير عام) → 401 JSON دائماً إذا لم يكن مسجّلاً
-    - أي صفحة محمية → 303 Redirect إلى /?next=... إذا لم يكن مسجّلاً
+    - "/api/..." (غير عام) → 401 JSON إذا لم يكن مسجّلاً
+    - صفحة محمية → 303 Redirect إلى / إذا لم يكن مسجّلاً
+
+    ✅ الجلسة المنزلقة:
+
+    - إذا تجاوز خمول الجلسة SESSION_IDLE_TIMEOUT → امسح الجلسة.
+    - إذا كان النشاط داخل المدة → جدّد _last_seen (تمديد الجلسة).
     """
     path = request.url.path
     method = request.method
@@ -1873,7 +1964,6 @@ async def auth_guard(request: Request, call_next):
         return await call_next(request)
 
     # ── مسارات عامة أخرى ──
-    # ✅ نستخدم مطابقة دقيقة أو prefix مع "/"
     if any(
         path == p or path.startswith(p + "/") or path.startswith(p + "?")
         for p in PUBLIC_PATHS
@@ -1886,27 +1976,44 @@ async def auth_guard(request: Request, call_next):
         path == p or path.startswith(p + "/") for p in PROTECTED_PREFIXES
     )
 
-    # إذا لم يكن محمياً ولا API → مرّره
     if not is_protected:
         return await call_next(request)
 
-    # ── فحص الجلسة (بحذر: قد لا تكون متاحة إذا ترتيب middleware خاطئ) ──
+    # ══════════════════════════════════════════════════════════
+    # فحص الجلسة + الجلسة المنزلقة
+    # ══════════════════════════════════════════════════════════
+    cid = None
+    expired = False
+
     try:
         cid = request.session.get("customer_id")
+
+        if cid and _session_is_expired(request):
+            # ⚠️ الجلسة انتهت بسبب الخمول → امسحها
+            print(
+                f"⏰ SESSION EXPIRED (idle > {SESSION_IDLE_TIMEOUT}s) | "
+                f"path={path} | last_seen={request.session.get('_last_seen')}"
+            )
+            request.session.clear()
+            cid = None
+            expired = True
+            await _record_expired(path)
     except Exception as e:
         print(f"⚠️  session access error: {type(e).__name__}: {e}")
         cid = None
 
+    # ── إذا كان مسجّلاً وما زال نشطاً → جدّد _last_seen (sliding) ──
     if cid:
-        # ✅ sliding refresh
         try:
+            # تحديث _last_seen يجعل Starlette يرسل Set-Cookie جديداً
+            # مع max_age جديد = تمديد فعلي للجلسة
             request.session["_last_seen"] = _now_iso()
         except Exception:
             pass
         return await call_next(request)
 
     # ══════════════════════════════════════════════════════════
-    # غير مسجّل → 401 للـ API / 303 Redirect للصفحات
+    # غير مسجّل → 401 للـ API / 303 Redirect إلى / للصفحات
     # ══════════════════════════════════════════════════════════
     ua = request.headers.get("user-agent", "NONE")[:120]
     referer = request.headers.get("referer", "NONE")[:120]
@@ -1914,36 +2021,31 @@ async def auth_guard(request: Request, call_next):
     xff = request.headers.get("x-forwarded-for", "NONE")[:80]
 
     if is_api:
-        # ── API → 401 JSON ──
         await _record_401(path, ua, referer)
         print(
             f"🔒 401 API | {method} {path} | "
             f"client={client_host} | xff={xff} | "
+            f"expired={expired} | "
             f"has_cookie={'cookie' in request.headers} | "
             f"ua={ua!r}"
         )
         return JSONResponse(
-            {"detail": "غير مسجّل", "error": "not_authenticated"},
+            {
+                "detail": "انتهت الجلسة" if expired else "غير مسجّل",
+                "error": "session_expired" if expired else "not_authenticated",
+            },
             status_code=401,
         )
 
-    # ── صفحة محمية → 303 Redirect إلى شاشة الدخول ──
+    # ── صفحة محمية → 303 Redirect إلى / ──
     await _record_redirect(path)
 
-    # احتفظ بالمسار الكامل مع query string
-    next_url = path
-    if request.url.query:
-        next_url += "?" + request.url.query
-
-    # تأكد أن next آمن
-    if not _is_safe_next(next_url):
-        next_url = "/dashboard"
-
-    redirect_url = f"/?next={quote(next_url, safe='/')}"
+    redirect_url = "/"
 
     print(
         f"↪️  303 REDIRECT | {method} {path} → {redirect_url} | "
         f"client={client_host} | xff={xff} | "
+        f"expired={expired} | "
         f"has_cookie={'cookie' in request.headers} | "
         f"ua={ua!r}"
     )
