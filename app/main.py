@@ -1,6 +1,6 @@
 """
 Jamal Solutions — Virtual Numbers Platform
-Customer Portal (FastAPI + Jinja2 + SSE keepalive + Google OAuth)
+Customer Portal (FastAPI + Jinja2 + SSE keepalive + Google OAuth + 5SIM)
 
 ✅ إصلاحات الجلسة:
 - SECRET_KEY ثابت من متغير البيئة (إلزامي في الإنتاج).
@@ -37,6 +37,15 @@ Customer Portal (FastAPI + Jinja2 + SSE keepalive + Google OAuth)
 - إضافة /api/v1/system/whoami-detailed لمزيد من التشخيص.
 - إضافة middleware لتسجيل كل الطلبات المحمية (عند DEBUG).
 - تحسين رسائل الـ logging لتحديد مصدر طلبات 401.
+
+✅ إضافات 2026-10-14 (1.0.5) — 5SIM Integration:
+- إضافة SIM5_API_KEY / SIM5_BASE من البيئة.
+- fetch_sim5_prices() مع كاش 60 ثانية.
+- _best_offer_for() لاختيار أرخص عرض متوفر.
+- build_country_prices() لدمج الأسعار الحية مع بيانات الدول.
+- /buy يعرض الآن الأسعار الحية + popular_services + available_numbers.
+- /api/v1/prices و /api/v1/prices/refresh للاستخدام من JavaScript.
+- fallback تلقائي للأسعار الثابتة عند فشل 5SIM.
 """
 from __future__ import annotations
 
@@ -112,6 +121,54 @@ if OAUTH_ENABLED:
         server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
         client_kwargs={"scope": "openid email profile"},
     )
+
+# ══════════════════════════════════════════════════════════════
+# 5SIM API config
+# ══════════════════════════════════════════════════════════════
+SIM5_BASE = os.getenv("SIM5_BASE", "https://5sim.net/v1").rstrip("/")
+SIM5_API_KEY = os.getenv("SIM5_API_KEY", "").strip()
+SIM5_ENABLED = bool(SIM5_API_KEY)
+
+# كاش للأسعار (تحديث كل 60 ثانية)
+_PRICES_CACHE: dict[str, Any] = {
+    "data": None,
+    "fetched_at": 0.0,
+    "error": None,
+}
+_PRICES_TTL = 60  # ثانية
+_PRICES_LOCK = asyncio.Lock()
+
+# ربط اسم الدولة عندنا → اسم 5SIM
+COUNTRY_TO_SIM5: dict[str, str] = {
+    "YE": "yemen",
+    "SA": "saudiarabia",
+    "EG": "egypt",
+    "US": "usa",
+    "GB": "england",
+    "DE": "germany",
+    "FR": "france",
+    "TR": "turkey",
+    "AE": "uae",
+    "IN": "india",
+    "BR": "brazil",
+    "ID": "indonesia",
+}
+
+# ربط اسم الخدمة عندنا → اسم المنتج في 5SIM
+SERVICE_TO_SIM5: dict[str, str] = {
+    "whatsapp":  "whatsapp",
+    "telegram":  "telegram",
+    "google":    "google",
+    "facebook":  "facebook",
+    "twitter":   "twitter",
+    "instagram": "instagram",
+    "tiktok":    "tiktok",
+    "amazon":    "amazon",
+    "snapchat":  "snapchat",
+    "discord":   "discord",
+    "uber":      "uber",
+    "netflix":   "netflix",
+}
 
 # المسارات التي تتطلب تسجيل دخول
 PROTECTED_PREFIXES = (
@@ -269,6 +326,11 @@ async def lifespan(app: FastAPI):
     else:
         print(f"✅ OAuth مفعّل — Client ID: {GOOGLE_CLIENT_ID[:20]}...")
 
+    if SIM5_ENABLED:
+        print(f"✅ 5SIM مفعّل — Base: {SIM5_BASE}")
+    else:
+        print("⚠️  5SIM معطّل (SIM5_API_KEY غير مضبوط) — سيتم استخدام الأسعار الثابتة.")
+
     print(f"🔧 DEBUG={DEBUG} | SESSION_COOKIE_SECURE={SESSION_COOKIE_SECURE} "
           f"| SESSION_MAX_AGE={SESSION_MAX_AGE}s | Version={app.version}")
 
@@ -289,7 +351,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Jamal Solutions — Customer Portal",
     description="Virtual Numbers Platform",
-    version="1.0.4",
+    version="1.0.5",
     lifespan=lifespan,
 )
 
@@ -396,6 +458,156 @@ FAQS: list[dict] = [
 
 COUNTRIES_BY_CODE = {c["code"]: c for c in COUNTRIES}
 SERVICES_BY_ID = {s["id"]: s for s in SERVICES}
+
+
+# ══════════════════════════════════════════════════════════════
+# 5SIM Prices fetcher (with cache)
+# ══════════════════════════════════════════════════════════════
+async def fetch_sim5_prices(force: bool = False) -> dict:
+    """
+    يجلب الأسعار من 5SIM (guest/prices) مع كاش 60 ثانية.
+    يُرجع الشكل الخام: {country: {product: {operator: {cost,count,rate}}}}
+    """
+    now = time.time()
+    if (
+        not force
+        and _PRICES_CACHE["data"] is not None
+        and (now - _PRICES_CACHE["fetched_at"]) < _PRICES_TTL
+    ):
+        return _PRICES_CACHE["data"]
+
+    async with _PRICES_LOCK:
+        # double-check بعد الحصول على القفل
+        now = time.time()
+        if (
+            not force
+            and _PRICES_CACHE["data"] is not None
+            and (now - _PRICES_CACHE["fetched_at"]) < _PRICES_TTL
+        ):
+            return _PRICES_CACHE["data"]
+
+        if not SIM5_ENABLED:
+            _PRICES_CACHE["error"] = "SIM5_API_KEY غير مضبوط"
+            return {}
+
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                r = await client.get(
+                    f"{SIM5_BASE}/guest/prices",
+                    headers={
+                        "Accept": "application/json",
+                        "Authorization": f"Bearer {SIM5_API_KEY}",
+                    },
+                )
+                r.raise_for_status()
+                data = r.json()
+                _PRICES_CACHE["data"] = data
+                _PRICES_CACHE["fetched_at"] = time.time()
+                _PRICES_CACHE["error"] = None
+                return data
+        except Exception as exc:
+            _PRICES_CACHE["error"] = f"{type(exc).__name__}: {exc}"
+            print(f"⚠️  فشل جلب أسعار 5SIM: {_PRICES_CACHE['error']}")
+            return _PRICES_CACHE["data"] or {}
+
+
+def _best_offer_for(
+    raw: dict, country_name: str, product_name: str
+) -> dict | None:
+    """
+    من الشكل الخام لـ 5SIM، استخرج أفضل عرض (أرخص سعر مع توفّر > 0).
+    يُرجع: {cost, count, rate, operator} أو None.
+    """
+    country = raw.get(country_name) or {}
+    product = country.get(product_name) or {}
+    if not product:
+        return None
+
+    best = None
+    for operator, info in product.items():
+        try:
+            cost = float(info.get("cost", 0))
+            count = int(info.get("count", 0))
+            rate = float(info.get("rate", 0))
+        except (TypeError, ValueError):
+            continue
+        if count <= 0 or cost <= 0:
+            continue
+        if best is None or cost < best["cost"]:
+            best = {
+                "cost": cost,
+                "count": count,
+                "rate": rate,
+                "operator": operator,
+            }
+    return best
+
+
+async def build_country_prices() -> list[dict]:
+    """
+    يبني قائمة الدول مع أفضل سعر لكل خدمة من الخدمات المدعومة.
+    كل عنصر: {"code","name","flag","continent","continent_label",
+              "min_price","available","services":[{"id","name","icon",
+              "cost","count","rate","operator","available"}]}
+    """
+    raw = await fetch_sim5_prices()
+    sim5_ok = bool(raw)
+
+    out: list[dict] = []
+    for c in COUNTRIES:
+        sim5_country = COUNTRY_TO_SIM5.get(c["code"])
+        services_out: list[dict] = []
+
+        for s in SERVICES:
+            sim5_product = SERVICE_TO_SIM5.get(s["id"])
+            offer = None
+            if sim5_ok and sim5_country and sim5_product:
+                offer = _best_offer_for(raw, sim5_country, sim5_product)
+
+            if offer:
+                services_out.append({
+                    "id": s["id"],
+                    "name": s["name"],
+                    "icon": s["icon"],
+                    "cost": offer["cost"],
+                    "count": offer["count"],
+                    "rate": offer["rate"],
+                    "operator": offer["operator"],
+                    "available": True,
+                })
+            else:
+                # fallback للبيانات الثابتة
+                services_out.append({
+                    "id": s["id"],
+                    "name": s["name"],
+                    "icon": s["icon"],
+                    "cost": c["min_price"],
+                    "count": c["available"],
+                    "rate": None,
+                    "operator": None,
+                    "available": False,
+                })
+
+        # أفضل سعر للدولة = أرخص خدمة متوفرة
+        avail = [s for s in services_out if s["available"]]
+        if avail:
+            best = min(avail, key=lambda x: x["cost"])
+            min_price = best["cost"]
+            available = sum(s["count"] for s in avail)
+        else:
+            min_price = c["min_price"]
+            available = c["available"]
+
+        out.append({
+            **c,
+            "min_price": min_price,
+            "price": f"${min_price:.2f}",
+            "available": available,
+            "services": services_out,
+            "sim5_country": sim5_country,
+        })
+
+    return out
 
 
 # ══════════════════════════════════════════════════════════════
@@ -571,6 +783,10 @@ async def system_version():
         "has_me_stats": True,
         "has_detailed_logging": True,
         "has_health_check": True,
+        "has_sim5_prices": True,
+        "sim5_enabled": SIM5_ENABLED,
+        "sim5_cached": _PRICES_CACHE["data"] is not None,
+        "sim5_error": _PRICES_CACHE["error"],
         "debug": DEBUG,
         "oauth_enabled": OAUTH_ENABLED,
         "secret_key_from_env": _SECRET_KEY_FROM_ENV,
@@ -792,6 +1008,49 @@ async def me_session(request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
+# API — Prices (5SIM)
+# ══════════════════════════════════════════════════════════════
+@app.get("/api/v1/prices")
+async def api_prices(country: str | None = None):
+    """
+    أسعار حية من 5SIM — للاستخدام من JavaScript في صفحة /buy.
+    - بدون country: كل الدول
+    - مع country=YE: دولة واحدة فقط
+    """
+    countries = await build_country_prices()
+    if country:
+        countries = [c for c in countries if c["code"] == country.upper()]
+
+    return {
+        "source": "5sim" if _PRICES_CACHE["data"] else "static",
+        "fetched_at": (
+            datetime.fromtimestamp(
+                _PRICES_CACHE["fetched_at"], tz=timezone.utc
+            ).isoformat()
+            if _PRICES_CACHE["fetched_at"]
+            else None
+        ),
+        "error": _PRICES_CACHE["error"],
+        "count": len(countries),
+        "countries": countries,
+    }
+
+
+@app.post("/api/v1/prices/refresh")
+async def api_prices_refresh(request: Request):
+    """يجبر تحديث الكاش (يتطلب تسجيل دخول)."""
+    await get_current_customer(request)
+    await fetch_sim5_prices(force=True)
+    return {
+        "status": "refreshed",
+        "fetched_at": datetime.fromtimestamp(
+            _PRICES_CACHE["fetched_at"], tz=timezone.utc
+        ).isoformat() if _PRICES_CACHE["fetched_at"] else None,
+        "error": _PRICES_CACHE["error"],
+    }
+
+
+# ══════════════════════════════════════════════════════════════
 # Auth routes
 # ══════════════════════════════════════════════════════════════
 @app.get("/", response_class=HTMLResponse)
@@ -942,19 +1201,89 @@ async def dashboard(request: Request):
 
 
 @app.get("/buy", response_class=HTMLResponse)
-async def buy_page(request: Request, country: str | None = None, service: str | None = None):
+async def buy_page(
+    request: Request,
+    country: str | None = None,
+    service: str | None = None,
+):
     customer = await get_current_customer(request)
     cid = customer["id"]
+
+    # ── اجلب الأسعار الحية (مع كاش) ──
+    countries_priced = await build_country_prices()
+
+    # ── الأكثر طلباً: أرخص 6 عروض متوفرة ──
+    popular_services: list[dict] = []
+    for c in countries_priced:
+        for s in c["services"]:
+            if s["available"]:
+                popular_services.append({
+                    "country": c["code"],
+                    "country_code": c["code"],
+                    "country_name": c["name"],
+                    "country_flag": c["flag"],
+                    "service": s["id"],
+                    "service_id": s["id"],
+                    "service_name": s["name"],
+                    "service_icon": s["icon"],
+                    "price": s["cost"],
+                    "orders_count": max(10, s["count"] // 10),
+                })
+    popular_services.sort(key=lambda x: x["price"])
+    popular_services = popular_services[:6]
+
+    # ── الأرقام المتاحة الآن ──
+    available_numbers: list[dict] = []
+    for c in countries_priced:
+        for s in c["services"]:
+            if s["available"]:
+                available_numbers.append({
+                    "country_code": c["code"],
+                    "country_name": c["name"],
+                    "country_flag": c["flag"],
+                    "service_id": s["id"],
+                    "service_name": s["name"],
+                    "service_icon": s["icon"],
+                    "masked_number": f"+{c['code']} *** *** {s['count'] % 900 + 100}",
+                    "duration": 20,
+                    "price": s["cost"],
+                    "rate": s.get("rate"),
+                })
+    available_numbers.sort(key=lambda x: x["price"])
+    available_numbers = available_numbers[:12]
+
+    # ── معلومات مصدر الأسعار ──
+    prices_meta = {
+        "source": "5sim" if SIM5_ENABLED and _PRICES_CACHE["data"] else "static",
+        "fetched_at": (
+            datetime.fromtimestamp(
+                _PRICES_CACHE["fetched_at"], tz=timezone.utc
+            ).isoformat()
+            if _PRICES_CACHE["fetched_at"]
+            else None
+        ),
+        "error": _PRICES_CACHE["error"],
+        "enabled": SIM5_ENABLED,
+    }
+
+    # ── إثراء stats بعدد الدول/الخدمات ──
+    stats = await get_my_stats(cid)
+    stats["countries_count"] = len(countries_priced)
+    stats["services_count"] = len(SERVICES)
+
     return templates.TemplateResponse(
         request=request,
         name="buy.html",
         context={
             "customer": customer,
-            "countries": COUNTRIES,
+            "countries": countries_priced,
             "services": SERVICES,
             "preselected_country": country,
             "preselected_service": service,
-            "stats": await get_my_stats(cid),
+            "stats": stats,
+            "prices_meta": prices_meta,
+            "popular_services": popular_services,
+            "available_numbers": available_numbers,
         },
     )
 
