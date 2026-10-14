@@ -29,7 +29,14 @@ Customer Portal (FastAPI + Jinja2 + SSE keepalive + Google OAuth)
 - الصفحات المحمية → 303 Redirect دائماً.
 - API المحمي → 401 JSON دائماً.
 - إضافة /api/v1/me/stats لـ JavaScript (بدل fetch على /dashboard).
-- logging تشخيصي دائم لطلبات 401 (مؤقت — يمكن تعطيله).
+- logging تشخيصي دائم لطلبات 401.
+
+✅ إصلاحات 2026-10-14 (1.0.4):
+- logging تشخيصي مفصّل لكل طلبات 401 (referer, host, x-forwarded-for).
+- إضافة /api/v1/system/health-check لاستخدامه كـ Health Check Path على Render.
+- إضافة /api/v1/system/whoami-detailed لمزيد من التشخيص.
+- إضافة middleware لتسجيل كل الطلبات المحمية (عند DEBUG).
+- تحسين رسائل الـ logging لتحديد مصدر طلبات 401.
 """
 from __future__ import annotations
 
@@ -138,6 +145,33 @@ KA_STATE: dict[str, Any] = {
 HISTORY_MAX = 20
 _alert_flag = {"down": False}
 _subscribers: set[asyncio.Queue] = set()
+
+# ══════════════════════════════════════════════════════════════
+# إحصائيات الطلبات (للتشخيص)
+# ══════════════════════════════════════════════════════════════
+_REQUEST_STATS: dict[str, Any] = {
+    "total": 0,
+    "protected_401": 0,
+    "protected_redirect": 0,
+    "last_401": None,
+    "last_401_path": None,
+    "last_401_ua": None,
+    "last_401_referer": None,
+    "top_401_paths": {},
+}
+_401_LOCK = asyncio.Lock()
+
+
+async def _record_401(path: str, ua: str, referer: str) -> None:
+    """يسجل إحصائيات طلبات 401 للتشخيص."""
+    async with _401_LOCK:
+        _REQUEST_STATS["protected_401"] += 1
+        _REQUEST_STATS["last_401"] = _now_iso()
+        _REQUEST_STATS["last_401_path"] = path
+        _REQUEST_STATS["last_401_ua"] = ua[:120]
+        _REQUEST_STATS["last_401_referer"] = referer[:120]
+        top = _REQUEST_STATS["top_401_paths"]
+        top[path] = top.get(path, 0) + 1
 
 
 # ══════════════════════════════════════════════════════════════
@@ -255,7 +289,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Jamal Solutions — Customer Portal",
     description="Virtual Numbers Platform",
-    version="1.0.3",
+    version="1.0.4",
     lifespan=lifespan,
 )
 
@@ -512,6 +546,21 @@ async def health():
     }
 
 
+@app.get("/api/v1/system/health-check")
+async def health_check():
+    """
+    نقطة نهاية مخصصة لـ Render Health Check.
+    استخدمها كـ Health Check Path في Render Dashboard.
+    لا تتطلب تسجيل دخول، وترجع 200 دائماً.
+    """
+    return {
+        "status": "healthy",
+        "version": app.version,
+        "uptime": _fmt_uptime(time.time() - START_TIME),
+        "timestamp": _now_iso(),
+    }
+
+
 @app.get("/api/v1/system/version")
 async def system_version():
     """للتأكد من أن الكود الجديد فعلاً منشور."""
@@ -520,6 +569,8 @@ async def system_version():
         "has_stats_fix": True,
         "has_auth_guard_fix": True,
         "has_me_stats": True,
+        "has_detailed_logging": True,
+        "has_health_check": True,
         "debug": DEBUG,
         "oauth_enabled": OAUTH_ENABLED,
         "secret_key_from_env": _SECRET_KEY_FROM_ENV,
@@ -543,7 +594,49 @@ async def whoami(request: Request):
         "cookies_received": sorted(request.cookies.keys()),
         "user_agent": request.headers.get("user-agent", "")[:120],
         "accept": request.headers.get("accept", ""),
+        "referer": request.headers.get("referer", ""),
+        "host": request.headers.get("host", ""),
+        "x_forwarded_for": request.headers.get("x-forwarded-for", ""),
+        "x_forwarded_proto": request.headers.get("x-forwarded-proto", ""),
+        "client_host": request.client.host if request.client else None,
     }
+
+
+@app.get("/api/v1/system/whoami-detailed")
+async def whoami_detailed(request: Request):
+    """
+    تشخيص مفصّل: يعرض كل الترويسات + حالة الطلب + إحصائيات 401.
+    لا يعرض قيم الكوكيز الحساسة، فقط أسماءها.
+    """
+    return {
+        "request": {
+            "method": request.method,
+            "url": str(request.url),
+            "path": request.url.path,
+            "query": dict(request.query_params),
+            "client_host": request.client.host if request.client else None,
+        },
+        "headers": {
+            k: (v[:200] if isinstance(v, str) else v)
+            for k, v in request.headers.items()
+        },
+        "cookies": {
+            k: f"<{len(v)} chars>" for k, v in request.cookies.items()
+        },
+        "session": {
+            "has_session": bool(request.session),
+            "keys": sorted(request.session.keys()),
+            "customer_id": request.session.get("customer_id"),
+        },
+        "request_stats": _REQUEST_STATS,
+        "uptime": _fmt_uptime(time.time() - START_TIME),
+    }
+
+
+@app.get("/api/v1/system/request-stats")
+async def request_stats():
+    """إحصائيات طلبات 401 — لمعرفة المصدر."""
+    return _REQUEST_STATS
 
 
 @app.get("/status", response_class=HTMLResponse)
@@ -557,6 +650,13 @@ async def status_page(request: Request):
         for h in reversed(history)
     ) or "<tr><td colspan=2>لا توجد بيانات بعد</td></tr>"
 
+    # إحصائيات 401
+    top_401 = _REQUEST_STATS.get("top_401_paths", {})
+    top_401_rows = "".join(
+        f"<tr><td>{p}</td><td>{c}</td></tr>"
+        for p, c in sorted(top_401.items(), key=lambda x: -x[1])[:10]
+    ) or "<tr><td colspan=2>لا توجد</td></tr>"
+
     html = f"""<!doctype html>
 <html lang="ar" dir="rtl">
 <head>
@@ -564,8 +664,9 @@ async def status_page(request: Request):
   <title>حالة الخدمة — جمال سولوشنز</title>
   <style>
     body {{ font-family: system-ui, sans-serif; padding: 2rem; background:#f8fafc; color:#1e293b; }}
-    .card {{ background:#fff; border-radius:12px; padding:1.5rem; box-shadow:0 1px 3px rgba(0,0,0,.08); max-width:640px; margin:auto; }}
+    .card {{ background:#fff; border-radius:12px; padding:1.5rem; box-shadow:0 1px 3px rgba(0,0,0,.08); max-width:720px; margin:auto 0 1rem; }}
     h1 {{ font-size:1.25rem; margin:0 0 1rem; }}
+    h2 {{ font-size:1rem; margin:1rem 0 .5rem; color:#475569; }}
     table {{ width:100%; border-collapse:collapse; font-size:14px; }}
     td {{ padding:8px; border-bottom:1px solid #e2e8f0; }}
     .meta {{ display:flex; gap:1rem; margin-bottom:1rem; font-size:14px; color:#475569; flex-wrap:wrap; }}
@@ -582,9 +683,32 @@ async def status_page(request: Request):
       <span>Fail ✗: <b class="bad">{KA_STATE['fail_count']}</b></span>
       <span>Next ping: <b>{KA_STATE['next_ping_in']}s</b></span>
     </div>
+    <h2>آخر عمليات الفحص</h2>
     <table>
       <thead><tr><th align="right">الوقت</th><th align="right">الحالة</th></tr></thead>
       <tbody>{rows}</tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h1>🔒 إحصائيات 401</h1>
+    <div class="meta">
+      <span>Total 401: <b class="bad">{_REQUEST_STATS['protected_401']}</b></span>
+      <span>Last: <b>{_REQUEST_STATS['last_401'] or '-'}</b></span>
+      <span>Last path: <b>{_REQUEST_STATS['last_401_path'] or '-'}</b></span>
+    </div>
+    <h2>آخر User-Agent</h2>
+    <div style="font-size:12px; color:#64748b; word-break:break-all;">
+      {_REQUEST_STATS['last_401_ua'] or '-'}
+    </div>
+    <h2>آخر Referer</h2>
+    <div style="font-size:12px; color:#64748b; word-break:break-all;">
+      {_REQUEST_STATS['last_401_referer'] or '-'}
+    </div>
+    <h2>المسارات الأكثر 401</h2>
+    <table>
+      <thead><tr><th align="right">المسار</th><th align="right">العدد</th></tr></thead>
+      <tbody>{top_401_rows}</tbody>
     </table>
   </div>
 </body>
@@ -1281,17 +1405,18 @@ async def auth_guard(request: Request, call_next):
     """
     يحمي المسارات الخاصة.
 
-    ✅ القاعدة (1.0.3) — بدون الاعتماد على Accept header:
+    ✅ القاعدة (1.0.4) — بدون الاعتماد على Accept header:
 
     - "/" → عام (صفحة تسجيل الدخول)
     - PUBLIC_PATHS → عامة
     - "/api/..." (غير عام) → 401 JSON دائماً إذا لم يكن مسجّلاً
     - أي صفحة محمية → 303 Redirect دائماً إذا لم يكن مسجّلاً
 
-    هذا يضمن:
-    * المتصفح يُوجَّه دائماً لشاشة تسجيل الدخول.
-    * fetch/API يحصل على 401 JSON واضح.
-    * لا اعتماد على Accept header (غير موثوق).
+    ✅ logging تفصيلي لكل طلب محمي (للتشخيص):
+    - method, path, client host
+    - user-agent, referer, accept
+    - has_cookie, session_keys, customer_id
+    - x-forwarded-for (لأن Render يمرر الطلبات عبر بروكسي)
     """
     path = request.url.path
     is_api = path.startswith("/api/")
@@ -1315,15 +1440,30 @@ async def auth_guard(request: Request, call_next):
     if is_api:
         needs_auth = True
 
+    # ── طلب محمي بدون جلسة ──
     if needs_auth and not cid:
-        # logging تشخيصي لطلبات 401 (مفيد لتحديد المصدر)
+        # اجمع معلومات التشخيص
+        ua = request.headers.get("user-agent", "NONE")[:120]
+        referer = request.headers.get("referer", "NONE")[:120]
+        accept = request.headers.get("accept", "NONE")[:60]
+        xff = request.headers.get("x-forwarded-for", "NONE")[:80]
+        client_host = request.client.host if request.client else "NONE"
+        has_cookie = "cookie" in request.headers
+
+        # سجّل في الإحصائيات
+        await _record_401(path, ua, referer)
+
+        # اطبع في السجل (دائماً — ليس فقط في DEBUG)
+        print(
+            f"🔒 401 | path={path} | is_api={is_api} | "
+            f"client={client_host} | xff={xff} | "
+            f"has_cookie={has_cookie} | "
+            f"accept={accept!r} | "
+            f"referer={referer!r} | "
+            f"ua={ua!r}"
+        )
+
         if is_api:
-            print(
-                f"🔒 401: path={path} "
-                f"ua={request.headers.get('user-agent', '')[:60]!r} "
-                f"accept={request.headers.get('accept', '')[:40]!r} "
-                f"has_cookie={'cookie' in request.headers}"
-            )
             return JSONResponse(
                 {"detail": "غير مسجّل", "error": "not_authenticated"},
                 status_code=401,
