@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% set active_page = "support" %}
+{% block title %}الدعم الفني — جمال سولوشنز{% endblock %}
+{% block page_title %}الدعم الفني{% endblock %}
+{% block page_subtitle %}نحن هنا لمساعدتك{% endblock %}
+
+{% block content %}
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+  <!-- New ticket form -->
+  <div class="lg:col-span-2">
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+      <h3 class="text-base font-bold text-slate-800 mb-4">فتح تذكرة جديدة</h3>
+
+      <div class="space-y-4">
+        <div>
+          <label class="text-xs font-bold text-slate-500 mb-1.5 block">الموضوع</label>
+          <select id="ticket-subject"
+                  class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-blue-500 outline-none text-sm bg-white">
+            <option value="">اختر موضوعًا...</option>
+            <option value="number-issue">مشكلة في رقم</option>
+            <option value="no-sms">لم تصلني رسالة</option>
+            <option value="payment">مشكلة في الدفع</option>
+            <option value="refund">طلب استرداد</option>
+            <option value="other">موضوع آخر</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="text-xs font-bold text-slate-500 mb-1.5 block">رقم الطلب (اختياري)</label>
+          <input type="text" id="ticket-order" placeholder="#12345"
+                 class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-blue-500 outline-none text-sm">
+        </div>
+
+        <div>
+          <label class="text-xs font-bold text-slate-500 mb-1.5 block">الرسالة</label>
+          <textarea id="ticket-message" rows="6" placeholder="اشرح مشكلتك بالتفصيل..."
+                    class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-blue-500 outline-none text-sm resize-none"></textarea>
+        </div>
+
+        <button onclick="submitTicket()" id="submit-ticket-btn"
+                class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-colors flex items-center justify-center gap-2">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+          </svg>
+          إرسال التذكرة
+        </button>
+      </div>
+    </div>
+
+    <!-- My tickets -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 mt-6 overflow-hidden">
+      <div class="p-5 border-b border-slate-100">
+        <h3 class="text-base font-bold text-slate-800">تذاكري السابقة</h3>
+      </div>
+
+      {% if tickets %}
+      <div class="divide-y divide-slate-100">
+        {% for t in tickets %}
+        <a href="/support/{{ t.id }}" class="block p-4 hover:bg-slate-50">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-sm font-bold text-slate-700">{{ t.subject }}</span>
+            <span class="text-[10px] font-bold px-2 py-0.5 rounded-full
+              {% if t.status == 'open' %}bg-blue-50 text-blue-700
+              {% elif t.status == 'pending' %}bg-amber-50 text-amber-700
+              {% else %}bg-emerald-50 text-emerald-700{% endif %}">
+              {% if t.status == 'open' %}مفتوحة
+              {% elif t.status == 'pending' %}قيد المراجعة
+              {% else %}مغلقة{% endif %}
+            </span>
+          </div>
+          <div class="text-xs text-slate-500 truncate">{{ t.preview }}</div>
+          <div class="text-[10px] text-slate-400 mt-1">{{ t.date }}</div>
+        </a>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="p-8 text-center">
+        <p class="text-xs text-slate-400">لا توجد تذاكر سابقة</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Sidebar -->
+  <div class="space-y-4">
+
+    <!-- Contact cards -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+      <h4 class="text-sm font-bold text-slate-800 mb-3">قنوات التواصل</h4>
+      <div class="space-y-2">
+        <a href="#" class="flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50">
+          <div class="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/>
+            </svg>
+          </div>
+          <div class="flex-1">
+            <div class="text-xs font-bold text-slate-700">واتساب</div>
+            <div class="text-[10px] text-slate-400">رد فوري</div>
+          </div>
+        </a>
+        <a href="#" class="flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50">
+          <div class="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+            </svg>
+          </div>
+          <div class="flex-1">
+            <div class="text-xs font-bold text-slate-700">البريد الإلكتروني</div>
+            <div class="text-[10px] text-slate-400">خلال ساعة</div>
+          </div>
+        </a>
+      </div>
+    </div>
+
+    <!-- FAQ -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+      <h4 class="text-sm font-bold text-slate-800 mb-3">أسئلة شائعة</h4>
+      <div class="space-y-2">
+        {% for q in faqs %}
+        <details class="group">
+          <summary class="flex items-center justify-between cursor-pointer py-2 text-xs font-bold text-slate-700 hover:text-blue-600">
+            {{ q.question }}
+            <svg class="w-3.5 h-3.5 text-slate-400 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </summary>
+          <p class="text-xs text-slate-500 leading-relaxed pb-2">{{ q.answer }}</p>
+        </details>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function submitTicket() {
+  const subject = document.getElementById('ticket-subject').value;
+  const order = document.getElementById('ticket-order').value;
+  const message = document.getElementById('ticket-message').value.trim();
+
+  if (!subject || !message) {
+    alert('يرجى ملء الموضوع والرسالة');
+    return;
+  }
+
+  const btn = document.getElementById('submit-ticket-btn');
+  btn.disabled = true;
+  btn.innerHTML = 'جارٍ الإرسال...';
+
+  try {
+    const r = await fetch('/api/v1/support/tickets', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ subject, order_id: order, message }),
+    });
+    if (r.ok) {
+      alert('تم إرسال التذكرة ✓');
+      location.reload();
+    } else {
+      alert('فشل الإرسال');
+      btn.disabled = false;
+      btn.innerHTML = 'إرسال التذكرة';
+    }
+  } catch {
+    alert('خطأ في الاتصال');
+    btn.disabled = false;
+    btn.innerHTML = 'إرسال التذكرة';
+  }
+}
+</script>
+{% endblock %}
