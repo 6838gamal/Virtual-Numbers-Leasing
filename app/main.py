@@ -2,6 +2,11 @@
 Jamal Solutions — Virtual Numbers Platform
 Customer Portal (FastAPI + Jinja2 + SSE + Google OAuth + 5SIM)
 
+✅ 1.1.1 — إصلاحات بعد النشر الأول:
+- إعادة get_my_orders_by_status و get_my_top_services.
+- تمريرهما في سياق /dashboard (كان سببه UndefinedError → 500).
+- تمريرهما في سياق كل الصفحات التي قد تحتاجهما.
+
 ✅ 1.1.0 — قراءة خالصة من 5SIM (لا بيانات وهمية إطلاقًا):
 - كل الدول والخدمات والأسعار تُقرأ مباشرة من 5SIM عبر المفتاح.
 - لا قوائم يدوية، لا أرقام وهمية، لا أسعار ثابتة، لا fallback.
@@ -97,7 +102,6 @@ SIM5_BASE = os.getenv("SIM5_BASE", "https://5sim.net/v1").rstrip("/")
 SIM5_API_KEY = os.getenv("SIM5_API_KEY", "").strip()
 SIM5_ENABLED = bool(SIM5_API_KEY)
 
-# كاش مشترك (60 ثانية للأسعار، 5 دقائق للدول)
 _SIM5_CACHE: dict[str, dict] = {
     "prices": {"data": None, "at": 0.0},
     "countries": {"data": None, "at": 0.0},
@@ -620,7 +624,6 @@ async def lifespan(app: FastAPI):
 
     if SIM5_ENABLED:
         print(f"✅ 5SIM مفعّل — Base: {SIM5_BASE}")
-        # فحص المفتاح عند البدء
         try:
             profile = await _sim5_get("/user/profile", auth=True)
             print(f"✅ 5SIM profile: balance={profile.get('balance')} rating={profile.get('rating')}")
@@ -649,7 +652,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Jamal Solutions — Customer Portal",
     description="Virtual Numbers Platform",
-    version="1.1.0",
+    version="1.1.1",
     lifespan=lifespan,
 )
 
@@ -726,6 +729,57 @@ async def get_my_stats(customer_id: int) -> dict:
     }
 
 
+async def get_my_orders_by_status(customer_id: int) -> dict:
+    """
+    يعيد قاموسًا: {"pending": N, "active": N, "completed": N, "expired": N, "cancelled": N}
+    متوافق مع statuses 5SIM الحقيقية (PENDING, RECEIVED, CANCELED, TIMEOUT, FINISHED, BANNED).
+    """
+    buckets = {
+        "pending": 0,
+        "active": 0,
+        "completed": 0,
+        "expired": 0,
+        "cancelled": 0,
+    }
+    for o in STORE["orders"]:
+        if o["customer_id"] != customer_id:
+            continue
+        st = (o.get("status") or "").upper()
+        if st == "PENDING":
+            buckets["pending"] += 1
+        elif st == "RECEIVED":
+            buckets["active"] += 1
+        elif st == "FINISHED":
+            buckets["completed"] += 1
+        elif st in ("TIMEOUT", "EXPIRED"):
+            buckets["expired"] += 1
+        elif st in ("CANCELED", "CANCELLED", "BANNED"):
+            buckets["cancelled"] += 1
+    return buckets
+
+
+async def get_my_top_services(customer_id: int) -> list[dict]:
+    """
+    يعيد أكثر 5 خدمات استخدامًا للعميل (من STORE["numbers"]).
+    متوافق مع القالب الذي يتوقع: {"name": ..., "icon": ..., "count": ...}
+    """
+    counts: dict[str, int] = {}
+    for n in STORE["numbers"]:
+        if n["customer_id"] == customer_id:
+            sid = n.get("service_id") or n.get("service") or ""
+            counts[sid] = counts.get(sid, 0) + 1
+
+    rows = []
+    for sid, cnt in counts.items():
+        rows.append({
+            "name": sid,
+            "icon": _service_icon(sid),
+            "count": cnt,
+        })
+    rows.sort(key=lambda r: r["count"], reverse=True)
+    return rows[:5]
+
+
 async def get_my_numbers(customer_id: int) -> list[dict]:
     return [n for n in STORE["numbers"] if n["customer_id"] == customer_id]
 
@@ -740,8 +794,8 @@ async def get_my_recent_sms(customer_id: int, limit: int = 20) -> list[dict]:
 # Pydantic models
 # ══════════════════════════════════════════════════════════════
 class OrderCreate(BaseModel):
-    country: str      # slug من 5SIM
-    service: str      # product slug من 5SIM
+    country: str
+    service: str
 
 
 class DepositCreate(BaseModel):
@@ -752,10 +806,7 @@ class DepositCreate(BaseModel):
 class TicketCreate(BaseModel):
     subject: str
     message: str
-    order_id: str | None = None
-
-
-class PasswordChange(BaseModel):
+    order_id: str | None = Noneclass PasswordChange(BaseModel):
     current: str
     new: str = Field(..., min_length=8)
 
@@ -820,6 +871,8 @@ async def system_version():
         "has_real_purchase": True,
         "has_check_order": True,
         "has_cancel_finish": True,
+        "has_orders_by_status": True,
+        "has_top_services": True,
         "sim5": sim5_info,
         "debug": DEBUG,
         "oauth_enabled": OAUTH_ENABLED,
@@ -1195,6 +1248,8 @@ async def dashboard(request: Request):
             "stats": await get_my_stats(cid),
             "my_numbers": await get_my_numbers(cid),
             "recent_sms": await get_my_recent_sms(cid, limit=5),
+            "orders_by_status": await get_my_orders_by_status(cid),
+            "top_services": await get_my_top_services(cid),
         },
     )
 
@@ -1215,7 +1270,6 @@ async def buy_page(
     result = await build_live_catalog()
     stats = await get_my_stats(cid)
 
-    # ── حالة الفشل: نمرّر رسالة واضحة فقط ──
     if not result["ok"]:
         return templates.TemplateResponse(
             request=request,
@@ -1241,7 +1295,6 @@ async def buy_page(
 
     countries = result["countries"]
 
-    # الأكثر طلباً: أرخص 6 عروض متوفرة
     popular: list[dict] = []
     for c in countries:
         for s in c["services"]:
@@ -1260,7 +1313,6 @@ async def buy_page(
     popular.sort(key=lambda x: x["price"])
     popular = popular[:6]
 
-    # الأرقام المتاحة — نعرض العدّاد الحقيقي فقط
     available: list[dict] = []
     for c in countries:
         for s in c["services"]:
@@ -1400,7 +1452,6 @@ async def wallet_page(request: Request):
     cid = customer["id"]
     deposits = [d for d in STORE["deposits"] if d["customer_id"] == cid]
     deposits.sort(key=lambda d: d["created_at"], reverse=True)
-    # لا payment_methods محلية — تُبنى من 5SIM /user/payments عند الحاجة
     return templates.TemplateResponse(
         request=request,
         name="wallet.html",
@@ -1509,7 +1560,6 @@ async def create_order(payload: OrderCreate, request: Request):
     if not SIM5_ENABLED:
         raise HTTPException(503, "5SIM غير مفعّل — لا يمكن الشراء")
 
-    # ابحث عن الدولة والخدمة في الكتالوج الحي
     result = await build_live_catalog()
     if not result["ok"]:
         raise HTTPException(503, f"تعذّر الاتصال بـ 5SIM: {result['error']}")
@@ -1534,7 +1584,6 @@ async def create_order(payload: OrderCreate, request: Request):
     if not service.get("operator"):
         raise HTTPException(400, "لم يُحدد مشغل متاح لهذه الخدمة")
 
-    # ── الشراء الفعلي من 5SIM ──
     try:
         sim5_order = await _sim5_get(
             f"/user/buy/activation/{country['slug']}/{service['operator']}/{service['id']}",
@@ -1547,7 +1596,6 @@ async def create_order(payload: OrderCreate, request: Request):
             detail=f"فشل الشراء من 5SIM: {e.message}",
         )
 
-    # ── خزّن الطلب الحقيقي ──
     now = datetime.now(timezone.utc)
     order_id = len(STORE["orders"]) + 1
 
@@ -1571,7 +1619,6 @@ async def create_order(payload: OrderCreate, request: Request):
     }
     STORE["orders"].append(order)
 
-    # سجّل الرقم أيضًا
     STORE["numbers"].append({
         "id": len(STORE["numbers"]) + 1,
         "customer_id": cid,
@@ -1589,7 +1636,6 @@ async def create_order(payload: OrderCreate, request: Request):
         "created_at": order["created_at"],
     })
 
-    # خصم من الرصيد المحلي (المحاسبة الداخلية)
     customer["balance"] -= order["price"]
     STORE["transactions"].append({
         "id": len(STORE["transactions"]) + 1,
@@ -1675,7 +1721,6 @@ async def check_order(order_id: int, request: Request):
     order["status"] = data.get("status", order["status"])
     order["expires"] = data.get("expires", order.get("expires"))
 
-    # استورد الرسائل الجديدة فقط (بدون تكرار)
     existing_keys = {
         (s.get("order_id"), s.get("created_at"))
         for s in STORE["sms"]
@@ -1699,7 +1744,6 @@ async def check_order(order_id: int, request: Request):
         })
         imported += 1
 
-    # حدّث عدّاد SMS في الرقم
     for n in STORE["numbers"]:
         if n.get("sim5_id") == order["sim5_id"]:
             n["sms_count"] = len([s for s in STORE["sms"] if s.get("order_id") == order_id])
@@ -1750,7 +1794,6 @@ async def cancel_order(order_id: int, request: Request):
 
     order["status"] = data.get("status", "CANCELED")
 
-    # استرداد للعميل
     refund = order["price"]
     customer["balance"] += refund
     STORE["transactions"].append({
@@ -1764,7 +1807,6 @@ async def cancel_order(order_id: int, request: Request):
         "date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"),
     })
 
-    # حدّث حالة الرقم
     for n in STORE["numbers"]:
         if n.get("sim5_id") == order["sim5_id"]:
             n["status"] = "cancelled"
