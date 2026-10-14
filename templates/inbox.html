@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% set active_page = "inbox" %}
+{% block title %}صندوق الرسائل — جمال سولوشنز{% endblock %}
+{% block page_title %}صندوق الرسائل{% endblock %}
+{% block page_subtitle %}جميع الرسائل الواردة على أرقامك{% endblock %}
+
+{% block content %}
+
+<!-- Toolbar -->
+<div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 mb-6">
+  <div class="flex flex-col sm:flex-row gap-3">
+    <div class="flex-1 relative">
+      <svg class="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+      </svg>
+      <input type="text" id="search-sms" placeholder="ابحث في الرسائل..."
+             oninput="filterSms()"
+             class="w-full pr-10 pl-4 py-2.5 rounded-xl border border-slate-200 focus:border-blue-500 outline-none text-sm">
+    </div>
+    <select id="number-filter" onchange="filterSms()"
+            class="px-4 py-2.5 rounded-xl border border-slate-200 focus:border-blue-500 outline-none text-sm bg-white">
+      <option value="">كل الأرقام</option>
+      {% for n in my_numbers %}
+      <option value="{{ n.phone }}">{{ n.phone }} — {{ n.country }}</option>
+      {% endfor %}
+    </select>
+    <button onclick="location.reload()"
+            class="px-4 py-2.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-600 font-bold text-sm transition-colors flex items-center gap-2 justify-center">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+      </svg>
+      تحديث
+    </button>
+  </div>
+</div>
+
+{% if recent_sms %}
+<div id="sms-list" class="space-y-3">
+
+  {% for s in recent_sms %}
+  <div class="sms-item bg-white rounded-2xl shadow-sm border border-slate-100 p-4 hover:shadow-md transition-shadow"
+       data-phone="{{ s.phone }}" data-text="{{ s.text|lower }}">
+
+    <div class="flex items-start gap-3">
+      <!-- Service icon -->
+      <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-lg flex-shrink-0">
+        {{ s.icon }}
+      </div>
+
+      <!-- Content -->
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center justify-between mb-1 gap-2">
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="font-bold text-slate-800 text-sm truncate">{{ s.service }}</span>
+            {% if not s.read %}
+            <span class="text-[10px] bg-red-500 text-white px-1.5 py-0.5 rounded-full font-bold flex-shrink-0">جديد</span>
+            {% endif %}
+          </div>
+          <span class="text-[10px] text-slate-400 flex-shrink-0">{{ s.time }}</span>
+        </div>
+
+        <div class="flex items-center gap-2 mb-2">
+          <span class="font-mono text-[11px] text-slate-500">{{ s.phone }}</span>
+          <span class="text-[10px] text-slate-300">·</span>
+          <span class="text-[10px] text-slate-400">{{ s.country }}</span>
+        </div>
+
+        <div class="bg-slate-50 rounded-xl p-3 text-sm text-slate-700 leading-relaxed">
+          {{ s.text }}
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="flex flex-col gap-1.5">
+        <button onclick="copyText('{{ s.text }}')"
+                title="نسخ الرسالة"
+                class="w-8 h-8 rounded-lg bg-white border border-slate-200 hover:border-blue-400 hover:bg-blue-50 flex items-center justify-center text-slate-500 hover:text-blue-600 transition-colors">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+          </svg>
+        </button>
+        <button onclick="deleteSms({{ s.id }})"
+                title="حذف"
+                class="w-8 h-8 rounded-lg bg-white border border-slate-200 hover:border-red-400 hover:bg-red-50 flex items-center justify-center text-slate-500 hover:text-red-600 transition-colors">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+
+</div>
+
+<div id="no-results" class="hidden bg-white rounded-2xl shadow-sm border border-slate-100 p-10 text-center">
+  <p class="text-sm text-slate-500">لا توجد رسائل مطابقة</p>
+</div>
+
+{% else %}
+<div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-12 text-center">
+  <div class="w-16 h-16 mx-auto bg-slate-100 rounded-2xl flex items-center justify-center mb-4">
+    <svg class="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
+    </svg>
+  </div>
+  <h3 class="text-base font-bold text-slate-700 mb-1">لا توجد رسائل واردة</h3>
+  <p class="text-sm text-slate-500">ستظهر الرسائل هنا تلقائيًا فور وصولها لأرقامك</p>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filterSms() {
+  const q = document.getElementById('search-sms').value.toLowerCase().trim();
+  const numberFilter = document.getElementById('number-filter').value;
+  const items = document.querySelectorAll('.sms-item');
+  let visible = 0;
+
+  items.forEach(it => {
+    const matchQ = !q || it.dataset.text.includes(q) || it.dataset.phone.includes(q);
+    const matchN = !numberFilter || it.dataset.phone === numberFilter;
+    const show = matchQ && matchN;
+    it.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+
+  document.getElementById('no-results').classList.toggle('hidden', visible > 0);
+}
+
+function copyText(text) {
+  navigator.clipboard.writeText(text).then(() => alert('تم النسخ ✓'));
+}
+
+async function deleteSms(id) {
+  if (!confirm('حذف هذه الرسالة؟')) return;
+  const r = await fetch(`/api/v1/sms/${id}`, { method: 'DELETE' });
+  if (r.ok) location.reload();
+}
+
+/* Auto-refresh every 30s for new SMS */
+setInterval(() => location.reload(), 30000);
+</script>
+{% endblock %}
