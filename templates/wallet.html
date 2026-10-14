@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+{% set active_page = "wallet" %}
+{% block title %}محفظتي — جمال سولوشنز{% endblock %}
+{% block page_title %}محفظتي{% endblock %}
+{% block page_subtitle %}إدارة رصيدك والإيداعات{% endblock %}
+
+{% block content %}
+
+<!-- ══ Balance card ═══════════════════════════════════════════ -->
+<div class="bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-600 rounded-2xl p-6 text-white shadow-lg mb-6 relative overflow-hidden">
+  <div class="absolute -top-10 -left-10 w-40 h-40 bg-white/10 rounded-full blur-2xl"></div>
+  <div class="absolute -bottom-10 -right-10 w-40 h-40 bg-white/10 rounded-full blur-2xl"></div>
+
+  <div class="relative">
+    <div class="text-xs text-white/80 font-medium mb-1">الرصيد المتاح</div>
+    <div class="text-5xl font-bold tracking-tight mb-1">${{ "%.2f"|format(customer.balance) }}</div>
+    <div class="text-xs text-white/70">آخر تحديث: الآن</div>
+  </div>
+</div>
+
+<!-- ══ Deposit methods ════════════════════════════════════════ -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+  <div class="lg:col-span-2 space-y-4">
+
+    <!-- Amount selector -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+      <h3 class="text-base font-bold text-slate-800 mb-4">اختر مبلغ الإيداع</h3>
+
+      <div class="grid grid-cols-3 sm:grid-cols-4 gap-2 mb-4">
+        {% for amt in [5, 10, 25, 50, 100, 200] %}
+        <button onclick="selectAmount({{ amt }}, this)"
+                data-amount="{{ amt }}"
+                class="amount-btn py-3 rounded-xl border-2 border-slate-100 hover:border-emerald-400 hover:bg-emerald-50 text-sm font-bold text-slate-700 transition-all">
+          ${{ amt }}
+        </button>
+        {% endfor %}
+      </div>
+
+      <div class="mb-4">
+        <label class="text-xs font-bold text-slate-500 mb-1.5 block">أو أدخل مبلغًا مخصصًا</label>
+        <div class="relative">
+          <span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
+          <input type="number" id="custom-amount" min="5" step="1" placeholder="0.00"
+                 oninput="customAmount()"
+                 class="w-full pr-8 pl-4 py-3 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 outline-none text-lg font-bold">
+        </div>
+      </div>
+    </div>
+
+    <!-- Payment method -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+      <h3 class="text-base font-bold text-slate-800 mb-4">طريقة الدفع</h3>
+
+      <div class="space-y-2">
+        {% for pm in payment_methods %}
+        <label class="payment-method flex items-center gap-3 p-4 rounded-xl border-2 border-slate-100 hover:border-emerald-400 cursor-pointer transition-all">
+          <input type="radio" name="payment_method" value="{{ pm.id }}" class="sr-only peer"
+                 onchange="selectPayment('{{ pm.id }}')">
+          <div class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-lg">
+            {{ pm.icon }}
+          </div>
+          <div class="flex-1">
+            <div class="text-sm font-bold text-slate-700">{{ pm.name }}</div>
+            <div class="text-[10px] text-slate-400">{{ pm.description }}</div>
+          </div>
+          <div class="w-5 h-5 rounded-full border-2 border-slate-200 peer-checked:border-emerald-500 peer-checked:bg-emerald-500 flex items-center justify-center">
+            <div class="w-2 h-2 rounded-full bg-white hidden peer-checked:block"></div>
+          </div>
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Submit -->
+    <button onclick="submitDeposit()" id="deposit-btn" disabled
+            class="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold py-4 rounded-2xl transition-colors flex items-center justify-center gap-2">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M12 4v16m8-8H4"/>
+      </svg>
+      إيداع <span id="btn-amount"></span>
+    </button>
+  </div>
+
+  <!-- Sidebar -->
+  <div class="space-y-4">
+
+    <!-- Recent top-ups -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+      <h4 class="text-sm font-bold text-slate-800 mb-3">آخر الإيداعات</h4>
+      {% if recent_deposits %}
+      <div class="space-y-3">
+        {% for d in recent_deposits %}
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="text-xs font-bold text-slate-700">${{ "%.2f"|format(d.amount) }}</div>
+            <div class="text-[10px] text-slate-400">{{ d.date }}</div>
+          </div>
+          <span class="text-[10px] font-bold px-2 py-0.5 rounded-full
+            {% if d.status == 'completed' %}bg-emerald-50 text-emerald-700
+            {% else %}bg-amber-50 text-amber-700{% endif %}">
+            {{ d.status }}
+          </span>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="text-xs text-slate-400 text-center py-4">لا توجد إيداعات بعد</p>
+      {% endif %}
+      <a href="/transactions" class="block text-center text-xs text-blue-600 hover:text-blue-700 font-medium mt-4">
+        عرض كل المعاملات ←
+      </a>
+    </div>
+
+    <!-- Info -->
+    <div class="bg-blue-50 border border-blue-200 rounded-2xl p-4">
+      <div class="flex items-start gap-2">
+        <span class="text-lg">ℹ️</span>
+        <div class="text-xs text-blue-800">
+          <p class="font-bold mb-1">ملاحظة</p>
+          <p>يتم إضافة الرصيد خلال دقائق من تأكيد الدفع.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let selectedAmount = 0;
+let selectedPayment = null;
+
+function selectAmount(amount, btn) {
+  document.querySelectorAll('.amount-btn').forEach(b => {
+    b.classList.remove('border-emerald-500','bg-emerald-50');
+    b.classList.add('border-slate-100');
+  });
+  btn.classList.add('border-emerald-500','bg-emerald-50');
+  btn.classList.remove('border-slate-100');
+  selectedAmount = amount;
+  document.getElementById('custom-amount').value = '';
+  updateBtn();
+}
+
+function customAmount() {
+  const v = parseFloat(document.getElementById('custom-amount').value) || 0;
+  selectedAmount = v;
+  document.querySelectorAll('.amount-btn').forEach(b => {
+    b.classList.remove('border-emerald-500','bg-emerald-50');
+    b.classList.add('border-slate-100');
+  });
+  updateBtn();
+}
+
+function selectPayment(id) {
+  selectedPayment = id;
+  document.querySelectorAll('.payment-method').forEach(l => {
+    l.classList.remove('border-emerald-500','bg-emerald-50');
+  });
+  event.currentTarget.closest('.payment-method').classList.add('border-emerald-500','bg-emerald-50');
+  updateBtn();
+}
+
+function updateBtn() {
+  const btn = document.getElementById('deposit-btn');
+  const ok = selectedAmount >= 5 && selectedPayment;
+  btn.disabled = !ok;
+  document.getElementById('btn-amount').textContent = ok ? `$${selectedAmount.toFixed(2)}` : '';
+}
+
+async function submitDeposit() {
+  const btn = document.getElementById('deposit-btn');
+  btn.disabled = true;
+  btn.innerHTML = 'جارٍ المعالجة...';
+
+  try {
+    const r = await fetch('/api/v1/wallet/deposit', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ amount: selectedAmount, method: selectedPayment }),
+    });
+    const d = await r.json();
+    if (r.ok && d.checkout_url) {
+      window.location.href = d.checkout_url;
+    } else {
+      alert(d.detail || 'فشل الإيداع');
+      location.reload();
+    }
+  } catch (e) {
+    alert('خطأ في الاتصال');
+    location.reload();
+  }
+}
+</script>
+{% endblock %}
