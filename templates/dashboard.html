@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% set active_page = "dashboard" %}
 {% block title %}لوحة التحكم — جمال سولوشنز{% endblock %}
-{% block page_title %}لوحة التحكم{% endblock %}
-{% block page_subtitle %}نظرة عامة على منصة الأرقام الافتراضية{% endblock %}
+{% block page_title %}مرحبًا، {{ customer.name }} 👋{% endblock %}
+{% block page_subtitle %}نظرة سريعة على أرقامك ورسائلك{% endblock %}
 
 {% block content %}
 
@@ -12,7 +12,58 @@
      style="min-width:300px; max-width:360px">
 </div>
 
-<!-- ══ Stats Row 1: Core KPIs ══════════════════════════════════════ -->
+<!-- ══ Wallet banner ══════════════════════════════════════════════ -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+
+  <!-- Balance card -->
+  <div class="lg:col-span-2 bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-600 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden">
+    <div class="absolute -top-10 -left-10 w-40 h-40 bg-white/10 rounded-full blur-2xl"></div>
+    <div class="absolute -bottom-10 -right-10 w-40 h-40 bg-white/10 rounded-full blur-2xl"></div>
+
+    <div class="relative flex items-start justify-between">
+      <div>
+        <div class="text-xs text-blue-100 font-medium mb-1">رصيد محفظتك</div>
+        <div class="text-4xl font-bold tracking-tight">${{ "%.2f"|format(customer.balance) }}</div>
+        <div class="text-[11px] text-blue-100 mt-2">متاح لشراء أرقام جديدة</div>
+      </div>
+      <a href="/wallet"
+         class="bg-white/20 hover:bg-white/30 backdrop-blur text-white text-xs font-bold px-3 py-2 rounded-lg transition-colors flex items-center gap-1">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+        </svg>
+        إيداع
+      </a>
+    </div>
+
+    <div class="relative grid grid-cols-2 gap-3 mt-5">
+      <div class="bg-white/10 backdrop-blur rounded-xl p-3">
+        <div class="text-[10px] text-blue-100">أنفقت هذا الشهر</div>
+        <div class="text-lg font-bold">${{ "%.2f"|format(stats.spent_this_month) }}</div>
+      </div>
+      <div class="bg-white/10 backdrop-blur rounded-xl p-3">
+        <div class="text-[10px] text-blue-100">إجمالي الإنفاق</div>
+        <div class="text-lg font-bold">${{ "%.2f"|format(stats.total_spent) }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick action -->
+  <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex flex-col">
+    <h3 class="text-sm font-bold text-slate-800 mb-3">شراء سريع</h3>
+    <a href="/buy" class="flex-1 flex items-center justify-center gap-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-xl transition-colors py-6 text-sm">
+      <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>
+      </svg>
+      شراء رقم جديد
+    </a>
+    <a href="/catalog" class="mt-3 text-center text-xs text-slate-500 hover:text-blue-600 font-medium">
+      أو تصفح الكتالوج ←
+    </a>
+  </div>
+</div>
+
+<!-- ══ My Stats Row ═══════════════════════════════════════════════ -->
 <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
 
   <div class="stat-card">
@@ -24,9 +75,26 @@
         </svg>
       </div>
     </div>
-    <div class="text-2xl font-bold text-slate-800">{{ stats.total_numbers }}</div>
-    <div class="text-slate-500 text-sm">إجمالي الأرقام</div>
+    <div class="text-2xl font-bold text-slate-800">{{ stats.my_numbers }}</div>
+    <div class="text-slate-500 text-sm">أرقامي</div>
     <div class="text-emerald-600 text-xs mt-1 font-medium">{{ stats.active_numbers }} نشط</div>
+  </div>
+
+  <div class="stat-card">
+    <div class="flex items-center justify-between mb-3">
+      <div class="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center">
+        <svg class="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
+        </svg>
+      </div>
+      {% if stats.unread_sms %}
+      <span class="text-[10px] bg-red-500 text-white px-2 py-0.5 rounded-full font-bold">{{ stats.unread_sms }} جديد</span>
+      {% endif %}
+    </div>
+    <div class="text-2xl font-bold text-slate-800">{{ stats.my_sms }}</div>
+    <div class="text-slate-500 text-sm">الرسائل المستلمة</div>
+    <div class="text-blue-600 text-xs mt-1 font-medium">{{ stats.sms_today }} اليوم</div>
   </div>
 
   <div class="stat-card">
@@ -38,65 +106,23 @@
         </svg>
       </div>
     </div>
-    <div class="text-2xl font-bold text-slate-800">{{ stats.total_orders }}</div>
-    <div class="text-slate-500 text-sm">إجمالي الطلبات</div>
+    <div class="text-2xl font-bold text-slate-800">{{ stats.my_orders }}</div>
+    <div class="text-slate-500 text-sm">طلباتي</div>
     <div class="text-amber-600 text-xs mt-1 font-medium">{{ stats.pending_orders }} قيد التنفيذ</div>
   </div>
 
   <div class="stat-card">
     <div class="flex items-center justify-between mb-3">
-      <div class="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center">
-        <svg class="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div class="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
+        <svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
+                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
         </svg>
       </div>
     </div>
-    <div class="text-2xl font-bold text-slate-800">{{ stats.total_sms }}</div>
-    <div class="text-slate-500 text-sm">الرسائل الواردة</div>
-    <div class="text-blue-600 text-xs mt-1 font-medium">{{ stats.sms_today }} اليوم</div>
-  </div>
-
-  <div class="stat-card">
-    <div class="flex items-center justify-between mb-3">
-      <div class="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center">
-        <svg class="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5"/>
-        </svg>
-      </div>
-    </div>
-    <div class="text-2xl font-bold text-slate-800">{{ stats.total_providers }}</div>
-    <div class="text-slate-500 text-sm">المزودون</div>
-    <div class="text-emerald-600 text-xs mt-1 font-medium">{{ stats.active_providers }} متصل</div>
-  </div>
-</div>
-
-<!-- ══ Stats Row 2: Finance ════════════════════════════════════════ -->
-<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-
-  <div class="stat-card bg-gradient-to-br from-blue-500 to-indigo-600 text-white border-0">
-    <div class="text-xs text-blue-100 mb-1 font-medium">الرصيد الحالي</div>
-    <div class="text-2xl font-bold">${{ "%.2f"|format(stats.balance) }}</div>
-    <div class="text-[11px] text-blue-100 mt-1">متاح للاستخدام</div>
-  </div>
-
-  <div class="stat-card">
-    <div class="text-xs text-slate-500 mb-1 font-medium">إجمالي الإيرادات</div>
-    <div class="text-2xl font-bold text-slate-800">${{ "%.2f"|format(stats.total_revenue) }}</div>
-    <div class="text-[11px] text-emerald-600 mt-1 font-medium">+0% هذا الشهر</div>
-  </div>
-
-  <div class="stat-card">
-    <div class="text-xs text-slate-500 mb-1 font-medium">أرقام متاحة</div>
-    <div class="text-2xl font-bold text-slate-800">{{ stats.available_numbers }}</div>
-    <div class="text-[11px] text-slate-400 mt-1">جاهزة للطلب</div>
-  </div>
-
-  <div class="stat-card">
-    <div class="text-xs text-slate-500 mb-1 font-medium">طلبات مكتملة</div>
-    <div class="text-2xl font-bold text-slate-800">{{ stats.completed_orders }}</div>
-    <div class="text-[11px] text-emerald-600 mt-1 font-medium">بانتظار SMS</div>
+    <div class="text-2xl font-bold text-slate-800">{{ stats.expiring_soon }}</div>
+    <div class="text-slate-500 text-sm">تنتهي قريبًا</div>
+    <div class="text-red-500 text-xs mt-1 font-medium">خلال 24 ساعة</div>
   </div>
 </div>
 
@@ -112,7 +138,7 @@
         <span id="ka-dot"
               class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
       </span>
-      مراقبة السيرفر والمزودين
+      حالة الخدمة
     </h3>
 
     <div class="flex items-center gap-3">
@@ -128,7 +154,7 @@
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
         </svg>
-        صفحة الحالة
+        تفاصيل
       </a>
 
       <button onclick="manualPing()" id="ping-btn"
@@ -137,14 +163,14 @@
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
         </svg>
-        ping الآن
+        تحديث
       </button>
     </div>
   </div>
 
   <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
     <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-4 text-center">
-      <div class="text-xs text-slate-500 mb-1 font-medium">التنشيط التالي</div>
+      <div class="text-xs text-slate-500 mb-1 font-medium">الفحص التالي</div>
       <div id="ka-countdown"
            class="text-2xl font-bold text-blue-700 font-mono tracking-wider">—:——</div>
       <div class="text-xs text-slate-400 mt-1">من أصل 7:00 دقائق</div>
@@ -156,29 +182,28 @@
     </div>
 
     <div class="bg-slate-50 rounded-xl p-4 text-center">
-      <div class="text-xs text-slate-500 mb-1 font-medium">آخر اتصال</div>
+      <div class="text-xs text-slate-500 mb-1 font-medium">آخر فحص</div>
       <div id="ka-last-icon" class="text-2xl mb-0.5">⏳</div>
       <div id="ka-last-time" class="text-xs text-slate-500">جارٍ التحميل...</div>
       <div id="ka-last-status" class="text-xs font-bold mt-0.5 text-slate-400">—</div>
     </div>
 
     <div class="bg-emerald-50 rounded-xl p-4 text-center">
-      <div class="text-xs text-slate-500 mb-1 font-medium">اتصالات ناجحة</div>
+      <div class="text-xs text-slate-500 mb-1 font-medium">فحوصات ناجحة</div>
       <div id="ka-ping-count" class="text-2xl font-bold text-emerald-600">—</div>
-      <div class="text-xs text-emerald-500 mt-1">ping ✓</div>
+      <div class="text-xs text-emerald-500 mt-1">✓ سليم</div>
     </div>
 
     <div class="bg-violet-50 rounded-xl p-4 text-center">
-      <div class="text-xs text-slate-500 mb-1 font-medium">قاعدة البيانات</div>
-      <div id="ka-db-icon" class="text-2xl mb-0.5">⏳</div>
-      <div id="ka-uptime" class="text-xs font-medium text-violet-700">—</div>
-      <div id="ka-fail-count" class="text-xs text-slate-400 mt-0.5">— فشل</div>
+      <div class="text-xs text-slate-500 mb-1 font-medium">مدة التشغيل</div>
+      <div id="ka-uptime" class="text-lg font-bold text-violet-700 mt-1.5">—</div>
+      <div id="ka-fail-count" class="text-xs text-slate-400 mt-0.5">— انقطاع</div>
     </div>
   </div>
 
   <div>
     <div class="flex items-center justify-between text-xs text-slate-400 mb-2">
-      <span>آخر الاتصالات</span>
+      <span>آخر الفحوصات</span>
       <span id="ka-sync-label" class="text-slate-300 flex items-center gap-1">
         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -196,12 +221,12 @@
     </div>
     <div class="flex items-center gap-4 mt-2 text-xs text-slate-400">
       <span class="flex items-center gap-1">
-        <span class="w-2.5 h-2.5 rounded-sm bg-emerald-400 inline-block"></span> ناجح
+        <span class="w-2.5 h-2.5 rounded-sm bg-emerald-400 inline-block"></span> سليم
       </span>
       <span class="flex items-center gap-1">
-        <span class="w-2.5 h-2.5 rounded-sm bg-red-400 inline-block"></span> فشل
+        <span class="w-2.5 h-2.5 rounded-sm bg-red-400 inline-block"></span> منقطع
       </span>
-      <span class="mr-auto text-slate-300">كل 7 دقائق — server + browser</span>
+      <span class="mr-auto text-slate-300">كل 7 دقائق — تلقائي</span>
     </div>
   </div>
 
@@ -211,122 +236,122 @@
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
               d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17H3a2 2 0 01-2-2V5a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2h-2"/>
       </svg>
-      <span>آخر ping من المتصفح:</span>
+      <span>آخر فحص من المتصفح:</span>
       <span id="browser-ping-time" class="font-medium text-blue-600">—</span>
       <span id="browser-ping-status" class="font-bold">—</span>
     </div>
   </div>
 </div>
 
-<!-- ══ CHARTS + TOP COUNTRIES ══════════════════════════════════════ -->
+<!-- ══ MY NUMBERS + TOP SERVICES ══════════════════════════════════ -->
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
 
-  <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 lg:col-span-1">
-    <h3 class="text-base font-bold text-slate-800 mb-4">الطلبات حسب الحالة</h3>
-    <canvas id="ordersChart" height="220"></canvas>
-  </div>
+  <!-- My numbers -->
+  <div class="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+    <div class="flex items-center justify-between p-5 border-b border-slate-100">
+      <h3 class="text-base font-bold text-slate-800">أرقامي النشطة</h3>
+      <a href="/my-numbers" class="text-xs text-blue-600 hover:text-blue-700 font-medium">عرض الكل ←</a>
+    </div>
 
-  <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 lg:col-span-1">
-    <h3 class="text-base font-bold text-slate-800 mb-4">أعلى الدول</h3>
-    <div class="space-y-3">
-      {% for c in top_countries %}
-      <div class="flex items-center gap-3">
-        <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600">
-          {{ c.code }}
+    {% if my_numbers %}
+    <div class="divide-y divide-slate-100">
+      {% for n in my_numbers %}
+      <div class="p-4 hover:bg-slate-50 flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-lg">
+          {{ n.flag or '🌐' }}
         </div>
         <div class="flex-1 min-w-0">
-          <div class="text-sm font-medium text-slate-700 truncate">{{ c.name }}</div>
-          <div class="h-1.5 bg-slate-100 rounded-full mt-1 overflow-hidden">
-            <div class="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full"
-                 style="width:{{ (c.count / (top_countries|map(attribute='count')|max or 1)) * 100 }}%"></div>
-          </div>
+          <div class="font-mono text-sm font-bold text-slate-800">{{ n.phone }}</div>
+          <div class="text-[11px] text-slate-500">{{ n.country }} · {{ n.service }}</div>
         </div>
-        <div class="text-sm font-bold text-slate-700">{{ c.count }}</div>
+        <div class="text-left">
+          <span class="text-[10px] font-bold px-2 py-1 rounded-full
+            {% if n.status == 'active' %}bg-emerald-50 text-emerald-700
+            {% elif n.status == 'expiring' %}bg-amber-50 text-amber-700
+            {% else %}bg-slate-100 text-slate-600{% endif %}">
+            {{ n.status }}
+          </span>
+          <div class="text-[10px] text-slate-400 mt-1">{{ n.expires_in }}</div>
+        </div>
       </div>
       {% endfor %}
-    </div>
-  </div>
-
-  <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 lg:col-span-1">
-    <h3 class="text-base font-bold text-slate-800 mb-4">ملخص المنصة</h3>
-    <canvas id="systemChart" height="220"></canvas>
-  </div>
-</div>
-
-<!-- ══ RECENT ORDERS + RECENT SMS ══════════════════════════════════ -->
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-  <!-- Recent Orders -->
-  <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-    <div class="flex items-center justify-between p-5 border-b border-slate-100">
-      <h3 class="text-base font-bold text-slate-800">أحدث الطلبات</h3>
-      <a href="/orders" class="text-xs text-blue-600 hover:text-blue-700 font-medium">عرض الكل ←</a>
-    </div>
-
-    {% if recent_orders %}
-    <div class="overflow-x-auto">
-      <table class="w-full text-sm">
-        <thead class="bg-slate-50 text-slate-500 text-xs">
-          <tr>
-            <th class="text-right font-medium px-4 py-2.5">الرقم</th>
-            <th class="text-right font-medium px-4 py-2.5">الدولة</th>
-            <th class="text-right font-medium px-4 py-2.5">الخدمة</th>
-            <th class="text-right font-medium px-4 py-2.5">الحالة</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-slate-100">
-          {% for o in recent_orders %}
-          <tr class="hover:bg-slate-50">
-            <td class="px-4 py-3 font-mono text-xs text-slate-700">{{ o.phone }}</td>
-            <td class="px-4 py-3 text-slate-600">{{ o.country }}</td>
-            <td class="px-4 py-3 text-slate-600">{{ o.service }}</td>
-            <td class="px-4 py-3">
-              <span class="text-xs font-medium px-2 py-1 rounded-full
-                {% if o.status == 'active' %}bg-emerald-50 text-emerald-700
-                {% elif o.status == 'pending' %}bg-amber-50 text-amber-700
-                {% elif o.status == 'completed' %}bg-blue-50 text-blue-700
-                {% else %}bg-slate-100 text-slate-600{% endif %}">
-                {{ o.status }}
-              </span>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
     </div>
     {% else %}
     <div class="p-10 text-center">
       <div class="w-14 h-14 mx-auto bg-slate-100 rounded-2xl flex items-center justify-center mb-3">
         <svg class="w-7 h-7 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"/>
         </svg>
       </div>
-      <p class="text-sm text-slate-500">لا توجد طلبات بعد</p>
-      <a href="/orders/new" class="inline-flex items-center gap-1 mt-3 text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 py-2 rounded-lg">
-        + طلب رقم جديد
+      <p class="text-sm text-slate-500 mb-3">لا تملك أرقامًا بعد</p>
+      <a href="/buy" class="inline-flex items-center gap-1 text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-lg transition-colors">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+        </svg>
+        شراء أول رقم
       </a>
     </div>
     {% endif %}
   </div>
 
+  <!-- Top services -->
+  <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+    <h3 class="text-base font-bold text-slate-800 mb-4">خدماتي الأكثر استخدامًا</h3>
+    <div class="space-y-3">
+      {% for s in top_services %}
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-base">
+          {{ s.icon }}
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="text-sm font-medium text-slate-700 truncate">{{ s.name }}</div>
+          <div class="h-1.5 bg-slate-100 rounded-full mt-1 overflow-hidden">
+            <div class="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full"
+                 style="width:{{ (s.count / (top_services|map(attribute='count')|max or 1)) * 100 }}%"></div>
+          </div>
+        </div>
+        <div class="text-sm font-bold text-slate-700">{{ s.count }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<!-- ══ ORDER STATUS + RECENT SMS ══════════════════════════════════ -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+  <!-- Order doughnut -->
+  <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+    <h3 class="text-base font-bold text-slate-800 mb-4">حالة طلباتي</h3>
+    <canvas id="ordersChart" height="220"></canvas>
+  </div>
+
   <!-- Recent SMS -->
-  <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+  <div class="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
     <div class="flex items-center justify-between p-5 border-b border-slate-100">
-      <h3 class="text-base font-bold text-slate-800">أحدث الرسائل</h3>
-      <a href="/sms" class="text-xs text-blue-600 hover:text-blue-700 font-medium">عرض الكل ←</a>
+      <h3 class="text-base font-bold text-slate-800">أحدث الرسائل الواردة</h3>
+      <a href="/inbox" class="text-xs text-blue-600 hover:text-blue-700 font-medium">صندوق الرسائل ←</a>
     </div>
 
     {% if recent_sms %}
     <div class="divide-y divide-slate-100">
       {% for s in recent_sms %}
-      <div class="p-4 hover:bg-slate-50">
-        <div class="flex items-center justify-between mb-1.5">
-          <span class="font-mono text-xs text-slate-500">{{ s.phone }}</span>
-          <span class="text-[10px] text-slate-400">{{ s.time }}</span>
+      <div class="p-4 hover:bg-slate-50 flex items-start gap-3">
+        <div class="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center flex-shrink-0">
+          <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
+          </svg>
         </div>
-        <div class="text-sm text-slate-700 line-clamp-2">{{ s.text }}</div>
-        <div class="text-[11px] text-blue-600 mt-1 font-medium">{{ s.service }}</div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-xs font-bold text-slate-700">{{ s.service }}</span>
+            <span class="text-[10px] text-slate-400">{{ s.time }}</span>
+          </div>
+          <div class="font-mono text-[11px] text-slate-500 mb-1">{{ s.phone }}</div>
+          <div class="text-sm text-slate-700 line-clamp-2">{{ s.text }}</div>
+        </div>
       </div>
       {% endfor %}
     </div>
@@ -338,8 +363,8 @@
                 d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
         </svg>
       </div>
-      <p class="text-sm text-slate-500">لا توجد رسائل واردة بعد</p>
-      <p class="text-xs text-slate-400 mt-1">ستظهر الرسائل تلقائيًا عند وصولها</p>
+      <p class="text-sm text-slate-500">لا توجد رسائل واردة</p>
+      <p class="text-xs text-slate-400 mt-1">ستظهر الرسائل هنا فور وصولها لأرقامك</p>
     </div>
     {% endif %}
   </div>
@@ -368,7 +393,7 @@
 </style>
 
 <script>
-/* ═══════════════ CHARTS ═══════════════ */
+/* ═══════════════ CHART ═══════════════ */
 const orderLabels = {{ orders_by_status.keys() | list | tojson }};
 const orderData   = {{ orders_by_status.values() | list | tojson }};
 const labelMap = {pending:'معلق', active:'نشط', completed:'مكتمل', expired:'منتهي', cancelled:'ملغي'};
@@ -383,28 +408,6 @@ new Chart(document.getElementById('ordersChart'), {
   },
   options:{responsive:true,cutout:'65%',
     plugins:{legend:{position:'bottom',labels:{font:{family:'Cairo',size:11},padding:12}}}}
-});
-
-new Chart(document.getElementById('systemChart'), {
-  type:'bar',
-  data:{
-    labels:['الأرقام','الطلبات','الرسائل','المزودون','الدول'],
-    datasets:[{
-      label:'الإجمالي',
-      data:[
-        {{ stats.total_numbers }},
-        {{ stats.total_orders }},
-        {{ stats.total_sms }},
-        {{ stats.total_providers }},
-        {{ top_countries | length }}
-      ],
-      backgroundColor:['#3b82f6','#f59e0b','#8b5cf6','#10b981','#6366f1'],
-      borderRadius:8
-    }]
-  },
-  options:{responsive:true,
-    plugins:{legend:{display:false}},
-    scales:{y:{beginAtZero:true,ticks:{precision:0}}}}
 });
 
 /* ═══════════════ TOAST ═══════════════ */
@@ -481,13 +484,8 @@ function applyStatus(d) {
   document.getElementById('ka-last-status').className   = `text-xs font-bold mt-0.5 ${lastOk?'text-emerald-500':'text-red-500'}`;
 
   document.getElementById('ka-ping-count').textContent = d.ping_count ?? '—';
-  document.getElementById('ka-fail-count').textContent = `${d.fail_count ?? 0} فشل`;
+  document.getElementById('ka-fail-count').textContent = `${d.fail_count ?? 0} انقطاع`;
   document.getElementById('ka-uptime').textContent     = d.uptime || '—';
-
-  const dbEl = document.getElementById('ka-db-icon');
-  if (d.db_ok === true)        dbEl.textContent = '🟢';
-  else if (d.db_ok === false)  dbEl.textContent = '🔴';
-  else                          dbEl.textContent = '⏳';
 
   renderHistory(d.history);
 }
@@ -522,7 +520,7 @@ async function browserPing() {
     document.getElementById('browser-ping-time').textContent =
       new Date().toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
     const st = document.getElementById('browser-ping-status');
-    if (r.ok) { st.textContent='✓ ناجح'; st.className='font-bold text-emerald-500'; }
+    if (r.ok) { st.textContent='✓ سليم'; st.className='font-bold text-emerald-500'; }
     else       { st.textContent=`✗ ${r.status}`; st.className='font-bold text-red-500'; }
   } catch(e) {
     const st = document.getElementById('browser-ping-status');
@@ -537,7 +535,7 @@ async function manualPing() {
   btn.innerHTML = `<svg class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> جارٍ...`;
   await browserPing();
   btn.disabled = false;
-  btn.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> ping الآن`;
+  btn.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> تحديث`;
 }
 
 /* ═══════════════ SSE ═══════════════ */
@@ -550,18 +548,18 @@ function setSseBadge(state) {
   if (state === 'connected') {
     badge.className = 'flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-medium transition-all duration-300';
     dot.className   = 'w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse';
-    lbl.textContent = 'SSE مباشر';
+    lbl.textContent = 'متصل';
     sync.innerHTML  = `<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>مباشر — SSE`;
   } else if (state === 'reconnecting') {
     badge.className = 'flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 font-medium transition-all duration-300';
     dot.className   = 'w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping';
     lbl.textContent = 'إعادة اتصال...';
-    sync.textContent = 'إعادة اتصال SSE...';
+    sync.textContent = 'إعادة اتصال...';
   } else {
     badge.className = 'flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-red-50 text-red-600 font-medium transition-all duration-300';
     dot.className   = 'w-1.5 h-1.5 rounded-full bg-red-500';
-    lbl.textContent = 'SSE مقطوع';
-    sync.textContent = 'SSE مقطوع — وضع polling';
+    lbl.textContent = 'غير متصل';
+    sync.textContent = 'غير متصل';
   }
 }
 
@@ -572,7 +570,7 @@ function initSSE() {
 
   es.onopen = () => {
     setSseBadge('connected');
-    if (!firstEvent) showToast('عاد الاتصال المباشر بالسيرفر', 'success', 3000);
+    if (!firstEvent) showToast('عاد الاتصال بالخدمة', 'success', 3000);
     firstEvent = false;
   };
 
@@ -593,7 +591,7 @@ function initSSE() {
       const card = document.getElementById('ka-card');
       card.classList.add('flash-red');
       setTimeout(() => card.classList.remove('flash-red'), 1300);
-      showToast(d.message || 'تحذير من السيرفر', 'error', 8000);
+      showToast(d.message || 'تنبيه من الخدمة', 'error', 8000);
       syncStatus();
     } catch {}
   });
@@ -604,7 +602,7 @@ function initSSE() {
       const card = document.getElementById('ka-card');
       card.classList.add('flash-green');
       setTimeout(() => card.classList.remove('flash-green'), 1300);
-      showToast(d.message || 'السيرفر عاد للعمل', 'success', 5000);
+      showToast(d.message || 'الخدمة عادت للعمل', 'success', 5000);
       syncStatus();
     } catch {}
   });
@@ -621,7 +619,7 @@ function initSSE() {
   setInterval(syncStatus, 90_000);
   setInterval(browserPing, KA_INTERVAL * 1000);
   setTimeout(browserPing, 30_000);
-  setTimeout(() => showToast('مراقبة السيرفر والمزودين نشطة — SSE', 'info', 4000), 1500);
+  setTimeout(() => showToast('مرحبًا بك 👋 — خدمة مراقبة الخدمة نشطة', 'info', 4000), 1500);
 })();
 </script>
 {% endblock %}
