@@ -1,6 +1,6 @@
 """
-Jamal Solutions — FastAPI Application
-Virtual Numbers Platform
+Jamal Solutions — Virtual Numbers Platform
+FastAPI + Jinja2 + SSE keepalive
 """
 from __future__ import annotations
 
@@ -29,9 +29,9 @@ STATIC_DIR = BASE_DIR / "app" / "static"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 # ══════════════════════════════════════════════════════════════
-# Keepalive state (in-memory; swap for Redis in prod)
+# Keepalive state
 # ══════════════════════════════════════════════════════════════
-KA_INTERVAL = 420  # 7 minutes — matches dashboard.html
+KA_INTERVAL = 420
 START_TIME = time.time()
 
 KA_STATE: dict[str, Any] = {
@@ -43,11 +43,12 @@ KA_STATE: dict[str, Any] = {
     "fail_count": 0,
     "uptime": "0:00:00",
     "next_ping_in": KA_INTERVAL,
-    "history": [],           # list of {"ok": bool, "time": iso}
+    "history": [],
 }
 
 HISTORY_MAX = 20
 _alert_flag = {"down": False}
+_subscribers: set[asyncio.Queue] = set()
 
 
 # ══════════════════════════════════════════════════════════════
@@ -69,22 +70,27 @@ def _push_history(ok: bool) -> None:
         KA_STATE["history"] = KA_STATE["history"][-HISTORY_MAX:]
 
 
+async def _broadcast(event: str, data: dict) -> None:
+    payload = {"event": event, "data": json.dumps(data, default=str)}
+    for q in list(_subscribers):
+        try:
+            q.put_nowait(payload)
+        except asyncio.QueueFull:
+            pass
+
+
 # ══════════════════════════════════════════════════════════════
-# Background task — server-side keepalive every 7 min
+# Background keepalive
 # ══════════════════════════════════════════════════════════════
 async def _keepalive_loop(app: FastAPI) -> None:
-    """Pings /health every KA_INTERVAL seconds and updates KA_STATE."""
-    await asyncio.sleep(5)  # small initial delay
-
+    await asyncio.sleep(5)
     async with httpx.AsyncClient(timeout=10.0) as client:
         while True:
             try:
-                t0 = time.perf_counter()
                 r = await client.get("http://127.0.0.1:8000/health")
                 KA_STATE["last_status"] = r.status_code
                 KA_STATE["last_ping"] = _now_iso()
                 ok = r.status_code == 200
-
                 if ok:
                     KA_STATE["ping_count"] += 1
                     KA_STATE["server_ok"] = True
@@ -117,23 +123,7 @@ async def _keepalive_loop(app: FastAPI) -> None:
                         "message": f"🔴 السيرفر لا يستجيب: {type(exc).__name__}",
                         "time": _now_iso(),
                     })
-
             await asyncio.sleep(KA_INTERVAL)
-
-
-# ══════════════════════════════════════════════════════════════
-# SSE broadcaster (simple in-process pub/sub)
-# ══════════════════════════════════════════════════════════════
-_subscribers: set[asyncio.Queue] = set()
-
-
-async def _broadcast(event: str, data: dict) -> None:
-    payload = {"event": event, "data": json.dumps(data, default=str)}
-    for q in list(_subscribers):
-        try:
-            q.put_nowait(payload)
-        except asyncio.QueueFull:
-            pass
 
 
 # ══════════════════════════════════════════════════════════════
@@ -162,7 +152,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Static mount (optional — create app/static/ if needed)
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
@@ -171,30 +160,58 @@ if STATIC_DIR.exists():
 # Data stubs — replace with real DB queries
 # ══════════════════════════════════════════════════════════════
 async def get_stats() -> dict:
-    """Return dashboard stats. Replace with real DB queries."""
+    """Dashboard KPI numbers for virtual numbers platform."""
     return {
-        "total_agents": 0,
-        "active_agents": 0,
-        "total_customers": 0,
-        "total_conversations": 0,
-        "open_conversations": 0,
-        "total_tasks": 0,
-        "pending_tasks": 0,
-        "total_documents": 0,
-        "total_workflows": 0,
-        "total_users": 0,
+        # Numbers
+        "total_numbers": 0,
+        "active_numbers": 0,
+        "available_numbers": 0,
+        # Orders / Rentals
+        "total_orders": 0,
+        "pending_orders": 0,
+        "completed_orders": 0,
+        # SMS
+        "total_sms": 0,
+        "sms_today": 0,
+        # Providers
+        "total_providers": 0,
+        "active_providers": 0,
+        # Balance / Revenue
+        "total_revenue": 0.0,
+        "balance": 0.0,
     }
 
 
-async def get_customer_status_breakdown() -> dict:
-    """Return {status: count}. Replace with real DB query."""
+async def get_orders_by_status() -> dict:
+    """Order breakdown for the doughnut chart."""
     return {
-        "lead": 0,
-        "prospect": 0,
+        "pending": 0,
         "active": 0,
-        "inactive": 0,
-        "churned": 0,
+        "completed": 0,
+        "expired": 0,
+        "cancelled": 0,
     }
+
+
+async def get_top_countries() -> list[dict]:
+    """Top countries by number count."""
+    return [
+        {"code": "US", "name": "الولايات المتحدة", "count": 0},
+        {"code": "GB", "name": "المملكة المتحدة", "count": 0},
+        {"code": "DE", "name": "ألمانيا", "count": 0},
+        {"code": "FR", "name": "فرنسا", "count": 0},
+        {"code": "RU", "name": "روسيا", "count": 0},
+    ]
+
+
+async def get_recent_orders() -> list[dict]:
+    """Recent orders list for the table."""
+    return []
+
+
+async def get_recent_sms() -> list[dict]:
+    """Recent incoming SMS messages."""
+    return []
 
 
 # ══════════════════════════════════════════════════════════════
@@ -202,7 +219,6 @@ async def get_customer_status_breakdown() -> dict:
 # ══════════════════════════════════════════════════════════════
 @app.get("/health")
 async def health():
-    """Used by Docker HEALTHCHECK + browser ping + server keepalive."""
     return {
         "status": "ok",
         "uptime": _fmt_uptime(time.time() - START_TIME),
@@ -213,20 +229,26 @@ async def health():
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
     stats = await get_stats()
-    customer_by_status = await get_customer_status_breakdown()
+    orders_by_status = await get_orders_by_status()
+    top_countries = await get_top_countries()
+    recent_orders = await get_recent_orders()
+    recent_sms = await get_recent_sms()
+
     return templates.TemplateResponse(
         request=request,
         name="dashboard.html",
         context={
             "stats": stats,
-            "customer_by_status": customer_by_status,
+            "orders_by_status": orders_by_status,
+            "top_countries": top_countries,
+            "recent_orders": recent_orders,
+            "recent_sms": recent_sms,
         },
     )
 
 
 @app.get("/status", response_class=HTMLResponse)
 async def status_page(request: Request):
-    """Simple status page linked from dashboard."""
     uptime = _fmt_uptime(time.time() - START_TIME)
     history = KA_STATE["history"][-20:]
     rows = "".join(
@@ -273,7 +295,6 @@ async def status_page(request: Request):
 
 @app.get("/api/v1/system/keepalive-status")
 async def keepalive_status():
-    """REST fallback used by dashboard when SSE is disconnected."""
     elapsed = int(time.time() - START_TIME)
     KA_STATE["uptime"] = _fmt_uptime(elapsed)
     KA_STATE["next_ping_in"] = max(0, KA_INTERVAL - (elapsed % KA_INTERVAL))
@@ -282,42 +303,28 @@ async def keepalive_status():
 
 @app.get("/api/v1/system/events")
 async def sse_events(request: Request):
-    """Server-Sent Events stream consumed by dashboard.html."""
     queue: asyncio.Queue = asyncio.Queue(maxsize=100)
     _subscribers.add(queue)
 
     async def event_generator():
-        # Initial snapshot
         elapsed = int(time.time() - START_TIME)
         KA_STATE["uptime"] = _fmt_uptime(elapsed)
         KA_STATE["next_ping_in"] = max(0, KA_INTERVAL - (elapsed % KA_INTERVAL))
-        yield {
-            "event": "status",
-            "data": json.dumps(KA_STATE, default=str),
-        }
+        yield {"event": "status", "data": json.dumps(KA_STATE, default=str)}
 
         try:
             while True:
                 if await request.is_disconnected():
                     break
-
                 try:
                     payload = await asyncio.wait_for(queue.get(), timeout=15.0)
                     yield payload
                 except asyncio.TimeoutError:
-                    # heartbeat keeps connection alive through proxies
                     yield {"event": "heartbeat", "data": str(int(time.time()))}
-
-                    # also refresh status snapshot periodically
                     elapsed = int(time.time() - START_TIME)
                     KA_STATE["uptime"] = _fmt_uptime(elapsed)
-                    KA_STATE["next_ping_in"] = max(
-                        0, KA_INTERVAL - (elapsed % KA_INTERVAL)
-                    )
-                    yield {
-                        "event": "status",
-                        "data": json.dumps(KA_STATE, default=str),
-                    }
+                    KA_STATE["next_ping_in"] = max(0, KA_INTERVAL - (elapsed % KA_INTERVAL))
+                    yield {"event": "status", "data": json.dumps(KA_STATE, default=str)}
         finally:
             _subscribers.discard(queue)
 
