@@ -1,58 +1,32 @@
 {% extends "base.html" %}
+{% set active_page = "dashboard" %}
 {% block title %}لوحة التحكم — جمال سولوشنز{% endblock %}
 {% block page_title %}لوحة التحكم{% endblock %}
-{% block page_subtitle %}نظرة عامة على أداء المنصة{% endblock %}
+{% block page_subtitle %}نظرة عامة على منصة الأرقام الافتراضية{% endblock %}
 
 {% block content %}
 
-<!-- ══ TOAST CONTAINER ═══════════════════════════════════════════════ -->
+<!-- Toast container -->
 <div id="toast-container"
      class="fixed top-4 left-4 z-50 flex flex-col gap-2 pointer-events-none"
      style="min-width:300px; max-width:360px">
 </div>
 
-<!-- Stats Row 1 -->
+<!-- ══ Stats Row 1: Core KPIs ══════════════════════════════════════ -->
 <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+
   <div class="stat-card">
     <div class="flex items-center justify-between mb-3">
       <div class="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
         <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-            d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17H3a2 2 0 01-2-2V5a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2h-2"/>
+                d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"/>
         </svg>
       </div>
     </div>
-    <div class="text-2xl font-bold text-slate-800">{{ stats.total_agents }}</div>
-    <div class="text-slate-500 text-sm">إجمالي الوكلاء</div>
-    <div class="text-emerald-600 text-xs mt-1 font-medium">{{ stats.active_agents }} نشط</div>
-  </div>
-
-  <div class="stat-card">
-    <div class="flex items-center justify-between mb-3">
-      <div class="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center">
-        <svg class="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-            d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
-        </svg>
-      </div>
-    </div>
-    <div class="text-2xl font-bold text-slate-800">{{ stats.total_customers }}</div>
-    <div class="text-slate-500 text-sm">إجمالي العملاء</div>
-    <div class="text-blue-600 text-xs mt-1 font-medium">{{ customer_by_status.get('active', 0) }} عميل نشط</div>
-  </div>
-
-  <div class="stat-card">
-    <div class="flex items-center justify-between mb-3">
-      <div class="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center">
-        <svg class="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-            d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
-        </svg>
-      </div>
-    </div>
-    <div class="text-2xl font-bold text-slate-800">{{ stats.total_conversations }}</div>
-    <div class="text-slate-500 text-sm">المحادثات</div>
-    <div class="text-amber-600 text-xs mt-1 font-medium">{{ stats.open_conversations }} مفتوح</div>
+    <div class="text-2xl font-bold text-slate-800">{{ stats.total_numbers }}</div>
+    <div class="text-slate-500 text-sm">إجمالي الأرقام</div>
+    <div class="text-emerald-600 text-xs mt-1 font-medium">{{ stats.active_numbers }} نشط</div>
   </div>
 
   <div class="stat-card">
@@ -60,41 +34,77 @@
       <div class="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center">
         <svg class="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
         </svg>
       </div>
     </div>
-    <div class="text-2xl font-bold text-slate-800">{{ stats.total_tasks }}</div>
-    <div class="text-slate-500 text-sm">المهام</div>
-    <div class="text-red-500 text-xs mt-1 font-medium">{{ stats.pending_tasks }} معلق</div>
+    <div class="text-2xl font-bold text-slate-800">{{ stats.total_orders }}</div>
+    <div class="text-slate-500 text-sm">إجمالي الطلبات</div>
+    <div class="text-amber-600 text-xs mt-1 font-medium">{{ stats.pending_orders }} قيد التنفيذ</div>
+  </div>
+
+  <div class="stat-card">
+    <div class="flex items-center justify-between mb-3">
+      <div class="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center">
+        <svg class="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
+        </svg>
+      </div>
+    </div>
+    <div class="text-2xl font-bold text-slate-800">{{ stats.total_sms }}</div>
+    <div class="text-slate-500 text-sm">الرسائل الواردة</div>
+    <div class="text-blue-600 text-xs mt-1 font-medium">{{ stats.sms_today }} اليوم</div>
+  </div>
+
+  <div class="stat-card">
+    <div class="flex items-center justify-between mb-3">
+      <div class="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center">
+        <svg class="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5"/>
+        </svg>
+      </div>
+    </div>
+    <div class="text-2xl font-bold text-slate-800">{{ stats.total_providers }}</div>
+    <div class="text-slate-500 text-sm">المزودون</div>
+    <div class="text-emerald-600 text-xs mt-1 font-medium">{{ stats.active_providers }} متصل</div>
   </div>
 </div>
 
-<!-- Stats Row 2 -->
+<!-- ══ Stats Row 2: Finance ════════════════════════════════════════ -->
 <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-  <div class="stat-card">
-    <div class="text-2xl font-bold text-slate-800">{{ stats.total_documents }}</div>
-    <div class="text-slate-500 text-sm">وثائق المعرفة</div>
+
+  <div class="stat-card bg-gradient-to-br from-blue-500 to-indigo-600 text-white border-0">
+    <div class="text-xs text-blue-100 mb-1 font-medium">الرصيد الحالي</div>
+    <div class="text-2xl font-bold">${{ "%.2f"|format(stats.balance) }}</div>
+    <div class="text-[11px] text-blue-100 mt-1">متاح للاستخدام</div>
   </div>
+
   <div class="stat-card">
-    <div class="text-2xl font-bold text-slate-800">{{ stats.total_workflows }}</div>
-    <div class="text-slate-500 text-sm">سير العمل</div>
+    <div class="text-xs text-slate-500 mb-1 font-medium">إجمالي الإيرادات</div>
+    <div class="text-2xl font-bold text-slate-800">${{ "%.2f"|format(stats.total_revenue) }}</div>
+    <div class="text-[11px] text-emerald-600 mt-1 font-medium">+0% هذا الشهر</div>
   </div>
+
   <div class="stat-card">
-    <div class="text-2xl font-bold text-slate-800">{{ stats.total_users }}</div>
-    <div class="text-slate-500 text-sm">المستخدمون</div>
+    <div class="text-xs text-slate-500 mb-1 font-medium">أرقام متاحة</div>
+    <div class="text-2xl font-bold text-slate-800">{{ stats.available_numbers }}</div>
+    <div class="text-[11px] text-slate-400 mt-1">جاهزة للطلب</div>
   </div>
+
   <div class="stat-card">
-    <div class="text-2xl font-bold text-slate-800">{{ stats.active_agents }}</div>
-    <div class="text-slate-500 text-sm">وكلاء نشطون</div>
+    <div class="text-xs text-slate-500 mb-1 font-medium">طلبات مكتملة</div>
+    <div class="text-2xl font-bold text-slate-800">{{ stats.completed_orders }}</div>
+    <div class="text-[11px] text-emerald-600 mt-1 font-medium">بانتظار SMS</div>
   </div>
 </div>
 
-<!-- ══ SERVER KEEPALIVE MONITOR ════════════════════════════════════════ -->
+<!-- ══ SERVER KEEPALIVE MONITOR ════════════════════════════════════ -->
 <div id="ka-card"
-     class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 mb-8 transition-all duration-500">
+     class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 mb-6 transition-all duration-500">
 
-  <div class="flex items-center justify-between mb-5">
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
     <h3 class="text-base font-bold text-slate-800 flex items-center gap-2">
       <span class="relative flex h-3 w-3">
         <span id="ka-pulse"
@@ -102,7 +112,7 @@
         <span id="ka-dot"
               class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
       </span>
-      مراقبة يقظة السيرفر
+      مراقبة السيرفر والمزودين
     </h3>
 
     <div class="flex items-center gap-3">
@@ -208,15 +218,130 @@
   </div>
 </div>
 
-<!-- ══ CHARTS ══════════════════════════════════════════════════════════ -->
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-  <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
-    <h3 class="text-base font-bold text-slate-800 mb-4">توزيع العملاء حسب الحالة</h3>
-    <canvas id="customersChart" height="220"></canvas>
+<!-- ══ CHARTS + TOP COUNTRIES ══════════════════════════════════════ -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+
+  <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 lg:col-span-1">
+    <h3 class="text-base font-bold text-slate-800 mb-4">الطلبات حسب الحالة</h3>
+    <canvas id="ordersChart" height="220"></canvas>
   </div>
-  <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
-    <h3 class="text-base font-bold text-slate-800 mb-4">ملخص النظام</h3>
+
+  <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 lg:col-span-1">
+    <h3 class="text-base font-bold text-slate-800 mb-4">أعلى الدول</h3>
+    <div class="space-y-3">
+      {% for c in top_countries %}
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600">
+          {{ c.code }}
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="text-sm font-medium text-slate-700 truncate">{{ c.name }}</div>
+          <div class="h-1.5 bg-slate-100 rounded-full mt-1 overflow-hidden">
+            <div class="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full"
+                 style="width:{{ (c.count / (top_countries|map(attribute='count')|max or 1)) * 100 }}%"></div>
+          </div>
+        </div>
+        <div class="text-sm font-bold text-slate-700">{{ c.count }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 lg:col-span-1">
+    <h3 class="text-base font-bold text-slate-800 mb-4">ملخص المنصة</h3>
     <canvas id="systemChart" height="220"></canvas>
+  </div>
+</div>
+
+<!-- ══ RECENT ORDERS + RECENT SMS ══════════════════════════════════ -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+  <!-- Recent Orders -->
+  <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+    <div class="flex items-center justify-between p-5 border-b border-slate-100">
+      <h3 class="text-base font-bold text-slate-800">أحدث الطلبات</h3>
+      <a href="/orders" class="text-xs text-blue-600 hover:text-blue-700 font-medium">عرض الكل ←</a>
+    </div>
+
+    {% if recent_orders %}
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-50 text-slate-500 text-xs">
+          <tr>
+            <th class="text-right font-medium px-4 py-2.5">الرقم</th>
+            <th class="text-right font-medium px-4 py-2.5">الدولة</th>
+            <th class="text-right font-medium px-4 py-2.5">الخدمة</th>
+            <th class="text-right font-medium px-4 py-2.5">الحالة</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          {% for o in recent_orders %}
+          <tr class="hover:bg-slate-50">
+            <td class="px-4 py-3 font-mono text-xs text-slate-700">{{ o.phone }}</td>
+            <td class="px-4 py-3 text-slate-600">{{ o.country }}</td>
+            <td class="px-4 py-3 text-slate-600">{{ o.service }}</td>
+            <td class="px-4 py-3">
+              <span class="text-xs font-medium px-2 py-1 rounded-full
+                {% if o.status == 'active' %}bg-emerald-50 text-emerald-700
+                {% elif o.status == 'pending' %}bg-amber-50 text-amber-700
+                {% elif o.status == 'completed' %}bg-blue-50 text-blue-700
+                {% else %}bg-slate-100 text-slate-600{% endif %}">
+                {{ o.status }}
+              </span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="p-10 text-center">
+      <div class="w-14 h-14 mx-auto bg-slate-100 rounded-2xl flex items-center justify-center mb-3">
+        <svg class="w-7 h-7 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+        </svg>
+      </div>
+      <p class="text-sm text-slate-500">لا توجد طلبات بعد</p>
+      <a href="/orders/new" class="inline-flex items-center gap-1 mt-3 text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 py-2 rounded-lg">
+        + طلب رقم جديد
+      </a>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Recent SMS -->
+  <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+    <div class="flex items-center justify-between p-5 border-b border-slate-100">
+      <h3 class="text-base font-bold text-slate-800">أحدث الرسائل</h3>
+      <a href="/sms" class="text-xs text-blue-600 hover:text-blue-700 font-medium">عرض الكل ←</a>
+    </div>
+
+    {% if recent_sms %}
+    <div class="divide-y divide-slate-100">
+      {% for s in recent_sms %}
+      <div class="p-4 hover:bg-slate-50">
+        <div class="flex items-center justify-between mb-1.5">
+          <span class="font-mono text-xs text-slate-500">{{ s.phone }}</span>
+          <span class="text-[10px] text-slate-400">{{ s.time }}</span>
+        </div>
+        <div class="text-sm text-slate-700 line-clamp-2">{{ s.text }}</div>
+        <div class="text-[11px] text-blue-600 mt-1 font-medium">{{ s.service }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="p-10 text-center">
+      <div class="w-14 h-14 mx-auto bg-slate-100 rounded-2xl flex items-center justify-center mb-3">
+        <svg class="w-7 h-7 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
+        </svg>
+      </div>
+      <p class="text-sm text-slate-500">لا توجد رسائل واردة بعد</p>
+      <p class="text-xs text-slate-400 mt-1">ستظهر الرسائل تلقائيًا عند وصولها</p>
+    </div>
+    {% endif %}
   </div>
 </div>
 
@@ -233,38 +358,53 @@
 @keyframes flashGreen { 0%,100%{background:white} 30%{background:#f0fdf4} }
 .flash-red   { animation: flashRed   1.2s ease; }
 .flash-green { animation: flashGreen 1.2s ease; }
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 </style>
 
 <script>
 /* ═══════════════ CHARTS ═══════════════ */
-const customerLabels = {{ customer_by_status.keys() | list | tojson }};
-const customerData   = {{ customer_by_status.values() | list | tojson }};
-const labelMap = {lead:'عميل محتمل',prospect:'فرصة',active:'نشط',inactive:'غير نشط',churned:'مغادر'};
+const orderLabels = {{ orders_by_status.keys() | list | tojson }};
+const orderData   = {{ orders_by_status.values() | list | tojson }};
+const labelMap = {pending:'معلق', active:'نشط', completed:'مكتمل', expired:'منتهي', cancelled:'ملغي'};
 
-new Chart(document.getElementById('customersChart'), {
+new Chart(document.getElementById('ordersChart'), {
   type:'doughnut',
   data:{
-    labels:customerLabels.map(l=>labelMap[l]||l),
-    datasets:[{data:customerData,
-      backgroundColor:['#3b82f6','#10b981','#f59e0b','#6366f1','#ef4444'],borderWidth:0}]
+    labels:orderLabels.map(l=>labelMap[l]||l),
+    datasets:[{data:orderData,
+      backgroundColor:['#f59e0b','#10b981','#3b82f6','#ef4444','#94a3b8'],
+      borderWidth:0}]
   },
-  options:{responsive:true,
-    plugins:{legend:{position:'bottom',labels:{font:{family:'Cairo'}}}}}
+  options:{responsive:true,cutout:'65%',
+    plugins:{legend:{position:'bottom',labels:{font:{family:'Cairo',size:11},padding:12}}}}
 });
 
 new Chart(document.getElementById('systemChart'), {
   type:'bar',
   data:{
-    labels:['الوكلاء','العملاء','المحادثات','المهام','الوثائق','سير العمل'],
-    datasets:[{label:'الإجمالي',
-      data:[{{stats.total_agents}},{{stats.total_customers}},
-            {{stats.total_conversations}},{{stats.total_tasks}},
-            {{stats.total_documents}},{{stats.total_workflows}}],
-      backgroundColor:'#3b82f6',borderRadius:8}]
+    labels:['الأرقام','الطلبات','الرسائل','المزودون','الدول'],
+    datasets:[{
+      label:'الإجمالي',
+      data:[
+        {{ stats.total_numbers }},
+        {{ stats.total_orders }},
+        {{ stats.total_sms }},
+        {{ stats.total_providers }},
+        {{ top_countries | length }}
+      ],
+      backgroundColor:['#3b82f6','#f59e0b','#8b5cf6','#10b981','#6366f1'],
+      borderRadius:8
+    }]
   },
   options:{responsive:true,
     plugins:{legend:{display:false}},
-    scales:{y:{beginAtZero:true}}}
+    scales:{y:{beginAtZero:true,ticks:{precision:0}}}}
 });
 
 /* ═══════════════ TOAST ═══════════════ */
@@ -281,23 +421,16 @@ function showToast(message, type='info', duration=6000) {
   const el  = document.createElement('div');
   el.id = id;
   el.className = 'toast-enter pointer-events-auto rounded-xl shadow-lg overflow-hidden';
-  el.style.cssText = `
-    background:${cfg.bg};border:1px solid ${cfg.border};
-    color:${cfg.text};font-family:Cairo,sans-serif;
-    min-width:280px;max-width:340px;
-  `;
+  el.style.cssText = `background:${cfg.bg};border:1px solid ${cfg.border};color:${cfg.text};font-family:Cairo,sans-serif;min-width:280px;max-width:340px;`;
   el.innerHTML = `
     <div style="padding:12px 14px;display:flex;align-items:flex-start;gap:10px;direction:rtl;">
       <span style="font-size:18px;flex-shrink:0;margin-top:1px">${cfg.emoji}</span>
       <div style="flex:1;font-size:13px;font-weight:600;line-height:1.5">${message}</div>
-      <button onclick="dismissToast('${id}')"
-              style="flex-shrink:0;opacity:.5;font-size:16px;line-height:1;background:none;border:none;cursor:pointer;color:${cfg.text}">✕</button>
+      <button onclick="dismissToast('${id}')" style="flex-shrink:0;opacity:.5;font-size:16px;line-height:1;background:none;border:none;cursor:pointer;color:${cfg.text}">✕</button>
     </div>
     <div style="height:3px;background:#e2e8f0">
-      <div id="${id}-bar"
-           style="height:100%;width:100%;background:${cfg.bar};transition:width ${duration}ms linear"></div>
-    </div>
-  `;
+      <div id="${id}-bar" style="height:100%;width:100%;background:${cfg.bar};transition:width ${duration}ms linear"></div>
+    </div>`;
   document.getElementById('toast-container').appendChild(el);
   setTimeout(() => { const b=document.getElementById(id+'-bar'); if(b) b.style.width='0'; }, 50);
   setTimeout(() => dismissToast(id), duration);
@@ -345,8 +478,7 @@ function applyStatus(d) {
   document.getElementById('ka-last-icon').textContent   = d.last_ping ? (lastOk?'✅':'❌') : '⏳';
   document.getElementById('ka-last-time').textContent   = d.last_ping ? fmtTime(d.last_ping) : 'جارٍ الانتظار...';
   document.getElementById('ka-last-status').textContent = d.last_status ? `HTTP ${d.last_status}` : '—';
-  document.getElementById('ka-last-status').className   =
-    `text-xs font-bold mt-0.5 ${lastOk?'text-emerald-500':'text-red-500'}`;
+  document.getElementById('ka-last-status').className   = `text-xs font-bold mt-0.5 ${lastOk?'text-emerald-500':'text-red-500'}`;
 
   document.getElementById('ka-ping-count').textContent = d.ping_count ?? '—';
   document.getElementById('ka-fail-count').textContent = `${d.fail_count ?? 0} فشل`;
@@ -378,8 +510,7 @@ async function syncStatus() {
     const r = await fetch('/api/v1/system/keepalive-status');
     if (r.ok) applyStatus(await r.json());
   } catch(e) {
-    document.getElementById('ka-dot').className =
-      'relative inline-flex rounded-full h-3 w-3 bg-amber-500';
+    document.getElementById('ka-dot').className = 'relative inline-flex rounded-full h-3 w-3 bg-amber-500';
   }
 }
 
@@ -403,16 +534,10 @@ async function browserPing() {
 async function manualPing() {
   const btn = document.getElementById('ping-btn');
   btn.disabled = true;
-  btn.innerHTML = `<svg class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-  </svg> جارٍ...`;
+  btn.innerHTML = `<svg class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> جارٍ...`;
   await browserPing();
   btn.disabled = false;
-  btn.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-  </svg> ping الآن`;
+  btn.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> ping الآن`;
 }
 
 /* ═══════════════ SSE ═══════════════ */
@@ -426,9 +551,7 @@ function setSseBadge(state) {
     badge.className = 'flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-medium transition-all duration-300';
     dot.className   = 'w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse';
     lbl.textContent = 'SSE مباشر';
-    sync.innerHTML  = `<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-    </svg>مباشر — SSE`;
+    sync.innerHTML  = `<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>مباشر — SSE`;
   } else if (state === 'reconnecting') {
     badge.className = 'flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 font-medium transition-all duration-300';
     dot.className   = 'w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping';
@@ -487,7 +610,6 @@ function initSSE() {
   });
 
   es.onerror = () => setSseBadge('reconnecting');
-
   return es;
 }
 
@@ -499,7 +621,7 @@ function initSSE() {
   setInterval(syncStatus, 90_000);
   setInterval(browserPing, KA_INTERVAL * 1000);
   setTimeout(browserPing, 30_000);
-  setTimeout(() => showToast('مراقبة السيرفر نشطة — الإشعارات الفورية عبر SSE', 'info', 4000), 1500);
+  setTimeout(() => showToast('مراقبة السيرفر والمزودين نشطة — SSE', 'info', 4000), 1500);
 })();
 </script>
 {% endblock %}
