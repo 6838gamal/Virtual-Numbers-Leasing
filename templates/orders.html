@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% set active_page = "orders" %}
+{% block title %}طلباتي — جمال سولوشنز{% endblock %}
+{% block page_title %}طلباتي{% endblock %}
+{% block page_subtitle %}تتبع جميع طلباتك السابقة والحالية{% endblock %}
+
+{% block content %}
+
+<!-- Filter tabs -->
+<div class="flex flex-wrap gap-2 mb-6">
+  <button onclick="filterOrders('all')" data-filter="all" class="order-filter active-tab px-4 py-2 rounded-xl text-xs font-bold bg-blue-600 text-white">الكل</button>
+  <button onclick="filterOrders('pending')" data-filter="pending" class="order-filter px-4 py-2 rounded-xl text-xs font-bold bg-white text-slate-600 border border-slate-200">قيد التنفيذ</button>
+  <button onclick="filterOrders('active')" data-filter="active" class="order-filter px-4 py-2 rounded-xl text-xs font-bold bg-white text-slate-600 border border-slate-200">نشط</button>
+  <button onclick="filterOrders('completed')" data-filter="completed" class="order-filter px-4 py-2 rounded-xl text-xs font-bold bg-white text-slate-600 border border-slate-200">مكتمل</button>
+  <button onclick="filterOrders('cancelled')" data-filter="cancelled" class="order-filter px-4 py-2 rounded-xl text-xs font-bold bg-white text-slate-600 border border-slate-200">ملغي</button>
+</div>
+
+{% if orders %}
+<div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="bg-slate-50 text-slate-500 text-xs">
+        <tr>
+          <th class="text-right font-medium px-4 py-3">الطلب</th>
+          <th class="text-right font-medium px-4 py-3">الرقم</th>
+          <th class="text-right font-medium px-4 py-3">الدولة</th>
+          <th class="text-right font-medium px-4 py-3">الخدمة</th>
+          <th class="text-right font-medium px-4 py-3">التكلفة</th>
+          <th class="text-right font-medium px-4 py-3">التاريخ</th>
+          <th class="text-right font-medium px-4 py-3">الحالة</th>
+          <th class="text-right font-medium px-4 py-3"></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        {% for o in orders %}
+        <tr class="order-row hover:bg-slate-50" data-status="{{ o.status }}">
+          <td class="px-4 py-3 font-mono text-xs text-slate-500">#{{ o.id }}</td>
+          <td class="px-4 py-3 font-mono text-xs text-slate-700">{{ o.phone or '—' }}</td>
+          <td class="px-4 py-3">
+            <span class="flex items-center gap-1.5 text-slate-700">
+              <span class="text-base">{{ o.flag }}</span>
+              {{ o.country }}
+            </span>
+          </td>
+          <td class="px-4 py-3 text-slate-600">{{ o.service }}</td>
+          <td class="px-4 py-3 font-bold text-slate-800">${{ "%.2f"|format(o.price) }}</td>
+          <td class="px-4 py-3 text-xs text-slate-500">{{ o.created_at }}</td>
+          <td class="px-4 py-3">
+            <span class="text-[10px] font-bold px-2 py-1 rounded-full
+              {% if o.status == 'active' %}bg-emerald-50 text-emerald-700
+              {% elif o.status == 'pending' %}bg-amber-50 text-amber-700
+              {% elif o.status == 'completed' %}bg-blue-50 text-blue-700
+              {% elif o.status == 'cancelled' %}bg-red-50 text-red-700
+              {% else %}bg-slate-100 text-slate-600{% endif %}">
+              {% if o.status == 'active' %}نشط
+              {% elif o.status == 'pending' %}قيد التنفيذ
+              {% elif o.status == 'completed' %}مكتمل
+              {% elif o.status == 'cancelled' %}ملغي
+              {% else %}{{ o.status }}{% endif %}
+            </span>
+          </td>
+          <td class="px-4 py-3 text-left">
+            <a href="/orders/{{ o.id }}" class="text-xs text-blue-600 hover:text-blue-700 font-medium">تفاصيل ←</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div id="no-results" class="hidden bg-white rounded-2xl shadow-sm border border-slate-100 p-10 text-center">
+  <p class="text-sm text-slate-500">لا توجد طلبات في هذه الفئة</p>
+</div>
+
+{% else %}
+<div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-12 text-center">
+  <div class="w-16 h-16 mx-auto bg-slate-100 rounded-2xl flex items-center justify-center mb-4">
+    <svg class="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+    </svg>
+  </div>
+  <h3 class="text-base font-bold text-slate-700 mb-1">لا توجد طلبات بعد</h3>
+  <p class="text-sm text-slate-500 mb-5">عند شراء أي رقم، سيظهر الطلب هنا</p>
+  <a href="/buy" class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-3 rounded-xl">
+    شراء رقم جديد
+  </a>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filterOrders(status) {
+  document.querySelectorAll('.order-filter').forEach(b => {
+    b.classList.remove('active-tab','bg-blue-600','text-white');
+    b.classList.add('bg-white','text-slate-600','border','border-slate-200');
+  });
+  const btn = document.querySelector(`[data-filter="${status}"]`);
+  btn.classList.add('active-tab','bg-blue-600','text-white');
+  btn.classList.remove('bg-white','text-slate-600','border','border-slate-200');
+
+  let visible = 0;
+  document.querySelectorAll('.order-row').forEach(r => {
+    const match = status === 'all' || r.dataset.status === status;
+    r.style.display = match ? '' : 'none';
+    if (match) visible++;
+  });
+  document.getElementById('no-results')?.classList.toggle('hidden', visible > 0);
+}
+</script>
+{% endblock %}
