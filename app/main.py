@@ -1,6 +1,6 @@
 """
 Jamal Solutions — Virtual Numbers Platform
-FastAPI + Jinja2 + SSE keepalive
+Customer Portal (FastAPI + Jinja2 + SSE keepalive)
 """
 from __future__ import annotations
 
@@ -98,7 +98,7 @@ async def _keepalive_loop(app: FastAPI) -> None:
                     if _alert_flag["down"]:
                         _alert_flag["down"] = False
                         await _broadcast("recover", {
-                            "message": "✅ السيرفر عاد للعمل",
+                            "message": "✅ الخدمة عادت للعمل",
                             "time": _now_iso(),
                         })
                 else:
@@ -108,7 +108,7 @@ async def _keepalive_loop(app: FastAPI) -> None:
                     if not _alert_flag["down"]:
                         _alert_flag["down"] = True
                         await _broadcast("alert", {
-                            "message": f"⚠️ السيرفر أرجع HTTP {r.status_code}",
+                            "message": f"⚠️ الخدمة أررجعت HTTP {r.status_code}",
                             "time": _now_iso(),
                         })
             except Exception as exc:
@@ -120,7 +120,7 @@ async def _keepalive_loop(app: FastAPI) -> None:
                 if not _alert_flag["down"]:
                     _alert_flag["down"] = True
                     await _broadcast("alert", {
-                        "message": f"🔴 السيرفر لا يستجيب: {type(exc).__name__}",
+                        "message": f"🔴 الخدمة لا تستجيب: {type(exc).__name__}",
                         "time": _now_iso(),
                     })
             await asyncio.sleep(KA_INTERVAL)
@@ -146,7 +146,7 @@ async def lifespan(app: FastAPI):
 # App
 # ══════════════════════════════════════════════════════════════
 app = FastAPI(
-    title="Jamal Solutions",
+    title="Jamal Solutions — Customer Portal",
     description="Virtual Numbers Platform",
     version="1.0.0",
     lifespan=lifespan,
@@ -157,33 +157,44 @@ if STATIC_DIR.exists():
 
 
 # ══════════════════════════════════════════════════════════════
-# Data stubs — replace with real DB queries
+# Current customer (stub — replace with auth/session)
 # ══════════════════════════════════════════════════════════════
-async def get_stats() -> dict:
-    """Dashboard KPI numbers for virtual numbers platform."""
+async def get_current_customer() -> dict:
     return {
-        # Numbers
-        "total_numbers": 0,
-        "active_numbers": 0,
-        "available_numbers": 0,
-        # Orders / Rentals
-        "total_orders": 0,
-        "pending_orders": 0,
-        "completed_orders": 0,
-        # SMS
-        "total_sms": 0,
-        "sms_today": 0,
-        # Providers
-        "total_providers": 0,
-        "active_providers": 0,
-        # Balance / Revenue
-        "total_revenue": 0.0,
+        "id": 1,
+        "name": "أحمد محمد",
+        "email": "ahmed@example.com",
+        "initials": "أم",
         "balance": 0.0,
+        "currency": "USD",
     }
 
 
-async def get_orders_by_status() -> dict:
-    """Order breakdown for the doughnut chart."""
+# ══════════════════════════════════════════════════════════════
+# Customer-scoped data stubs
+# ══════════════════════════════════════════════════════════════
+async def get_my_stats(customer_id: int) -> dict:
+    """KPIs scoped to the current customer only."""
+    return {
+        # My numbers
+        "my_numbers": 0,
+        "active_numbers": 0,
+        "expiring_soon": 0,
+        # My orders
+        "my_orders": 0,
+        "pending_orders": 0,
+        "completed_orders": 0,
+        # My SMS
+        "my_sms": 0,
+        "sms_today": 0,
+        "unread_sms": 0,
+        # My spending
+        "total_spent": 0.0,
+        "spent_this_month": 0.0,
+    }
+
+
+async def get_my_orders_by_status(customer_id: int) -> dict:
     return {
         "pending": 0,
         "active": 0,
@@ -193,24 +204,24 @@ async def get_orders_by_status() -> dict:
     }
 
 
-async def get_top_countries() -> list[dict]:
-    """Top countries by number count."""
+async def get_my_top_services(customer_id: int) -> list[dict]:
+    """Services the customer uses most (WhatsApp, Telegram, etc)."""
     return [
-        {"code": "US", "name": "الولايات المتحدة", "count": 0},
-        {"code": "GB", "name": "المملكة المتحدة", "count": 0},
-        {"code": "DE", "name": "ألمانيا", "count": 0},
-        {"code": "FR", "name": "فرنسا", "count": 0},
-        {"code": "RU", "name": "روسيا", "count": 0},
+        {"name": "واتساب",   "icon": "💬", "count": 0},
+        {"name": "تليجرام",  "icon": "✈️", "count": 0},
+        {"name": "جوجل",     "icon": "🔍", "count": 0},
+        {"name": "فيسبوك",   "icon": "📘", "count": 0},
+        {"name": "تويتر",    "icon": "🐦", "count": 0},
     ]
 
 
-async def get_recent_orders() -> list[dict]:
-    """Recent orders list for the table."""
+async def get_my_numbers(customer_id: int) -> list[dict]:
+    """Customer's active numbers."""
     return []
 
 
-async def get_recent_sms() -> list[dict]:
-    """Recent incoming SMS messages."""
+async def get_my_recent_sms(customer_id: int) -> list[dict]:
+    """Recent SMS received on customer's numbers."""
     return []
 
 
@@ -228,20 +239,24 @@ async def health():
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
-    stats = await get_stats()
-    orders_by_status = await get_orders_by_status()
-    top_countries = await get_top_countries()
-    recent_orders = await get_recent_orders()
-    recent_sms = await get_recent_sms()
+    customer = await get_current_customer()
+    cid = customer["id"]
+
+    stats = await get_my_stats(cid)
+    orders_by_status = await get_my_orders_by_status(cid)
+    top_services = await get_my_top_services(cid)
+    my_numbers = await get_my_numbers(cid)
+    recent_sms = await get_my_recent_sms(cid)
 
     return templates.TemplateResponse(
         request=request,
         name="dashboard.html",
         context={
+            "customer": customer,
             "stats": stats,
             "orders_by_status": orders_by_status,
-            "top_countries": top_countries,
-            "recent_orders": recent_orders,
+            "top_services": top_services,
+            "my_numbers": my_numbers,
             "recent_sms": recent_sms,
         },
     )
@@ -262,21 +277,21 @@ async def status_page(request: Request):
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="utf-8">
-  <title>حالة السيرفر — جمال سولوشنز</title>
+  <title>حالة الخدمة — جمال سولوشنز</title>
   <style>
     body {{ font-family: system-ui, sans-serif; padding: 2rem; background:#f8fafc; color:#1e293b; }}
     .card {{ background:#fff; border-radius:12px; padding:1.5rem; box-shadow:0 1px 3px rgba(0,0,0,.08); max-width:640px; margin:auto; }}
     h1 {{ font-size:1.25rem; margin:0 0 1rem; }}
     table {{ width:100%; border-collapse:collapse; font-size:14px; }}
     td {{ padding:8px; border-bottom:1px solid #e2e8f0; }}
-    .meta {{ display:flex; gap:1rem; margin-bottom:1rem; font-size:14px; color:#475569; }}
+    .meta {{ display:flex; gap:1rem; margin-bottom:1rem; font-size:14px; color:#475569; flex-wrap:wrap; }}
     .ok  {{ color:#16a34a; font-weight:600; }}
     .bad {{ color:#dc2626; font-weight:600; }}
   </style>
 </head>
 <body>
   <div class="card">
-    <h1>🩺 حالة السيرفر</h1>
+    <h1>🩺 حالة الخدمة</h1>
     <div class="meta">
       <span>Uptime: <b>{uptime}</b></span>
       <span>Ping ✓: <b class="ok">{KA_STATE['ping_count']}</b></span>
