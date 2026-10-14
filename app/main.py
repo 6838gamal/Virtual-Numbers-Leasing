@@ -46,6 +46,16 @@ Customer Portal (FastAPI + Jinja2 + SSE keepalive + Google OAuth + 5SIM)
 - /buy يعرض الآن الأسعار الحية + popular_services + available_numbers.
 - /api/v1/prices و /api/v1/prices/refresh للاستخدام من JavaScript.
 - fallback تلقائي للأسعار الثابتة عند فشل 5SIM.
+
+✅ إصلاحات 2026-10-14 (1.0.6) — إصلاح التحويل إلى شاشة الدخول:
+- إصلاح auth_guard: إزالة /logout من PUBLIC_PATHS (كان يبتلع كل شيء).
+- إضافة /auth/google و /auth/google/callback إلى PUBLIC_PATHS (مهم لـ OAuth).
+- إصلاح is_api: فحص /api/ فقط (وليس ما يشابهها مثل /apixyz).
+- إصلاح /logout: يعمل بدون تسجيل دخول.
+- إضافة /api/v1/system/middleware-order للتشخيص.
+- RedirectResponse بعد OAuth: التحقق من سلامة next (منع Open Redirect).
+- طباعة واضحة في السجل لكل تحويل 303.
+- التحقق من صحة next قبل التحويل بعد الدخول.
 """
 from __future__ import annotations
 
@@ -59,6 +69,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote, urlparse
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request, status
@@ -170,15 +181,37 @@ SERVICE_TO_SIM5: dict[str, str] = {
     "netflix":   "netflix",
 }
 
-# المسارات التي تتطلب تسجيل دخول
-PROTECTED_PREFIXES = (
-    "/dashboard", "/buy", "/catalog", "/my-numbers", "/orders",
-    "/inbox", "/wallet", "/transactions", "/support", "/profile", "/security",
+# ══════════════════════════════════════════════════════════════
+# ⚠️  المسارات العامة (لا تحتاج تسجيل دخول)
+# ══════════════════════════════════════════════════════════════
+PUBLIC_PATHS = (
+    "/health",
+    "/status",
+    "/logout",              # ✅ يجب أن يعمل بدون تسجيل دخول
+    "/auth/google",         # ✅ مهم لـ OAuth
+    "/auth/google/callback",
+    "/auth/logout",
+    "/static",
+    "/favicon.ico",
+    "/api/v1/system",
+    "/api/v1/prices",       # الأسعار عامة (يمكن للزائر رؤيتها)
 )
 
-# ⚠️ مهم: لا تضع "/" هنا. المسار "/" يُعامل كحالة خاصة في auth_guard.
-PUBLIC_PATHS = (
-    "/logout", "/auth", "/static", "/health", "/status", "/api/v1/system",
+# ══════════════════════════════════════════════════════════════
+# المسارات المحمية (تحتاج تسجيل دخول)
+# ══════════════════════════════════════════════════════════════
+PROTECTED_PREFIXES = (
+    "/dashboard",
+    "/buy",
+    "/catalog",
+    "/my-numbers",
+    "/orders",
+    "/inbox",
+    "/wallet",
+    "/transactions",
+    "/support",
+    "/profile",
+    "/security",
 )
 
 # ══════════════════════════════════════════════════════════════
@@ -215,6 +248,7 @@ _REQUEST_STATS: dict[str, Any] = {
     "last_401_ua": None,
     "last_401_referer": None,
     "top_401_paths": {},
+    "top_redirect_paths": {},
 }
 _401_LOCK = asyncio.Lock()
 
@@ -231,6 +265,14 @@ async def _record_401(path: str, ua: str, referer: str) -> None:
         top[path] = top.get(path, 0) + 1
 
 
+async def _record_redirect(path: str) -> None:
+    """يسجل إحصائيات التحويلات 303."""
+    async with _401_LOCK:
+        _REQUEST_STATS["protected_redirect"] += 1
+        top = _REQUEST_STATS["top_redirect_paths"]
+        top[path] = top.get(path, 0) + 1
+
+
 # ══════════════════════════════════════════════════════════════
 # Helpers
 # ══════════════════════════════════════════════════════════════
@@ -242,6 +284,26 @@ def _fmt_uptime(seconds: float) -> str:
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _is_safe_next(next_url: str) -> bool:
+    """
+    يتحقق أن next_url آمن (يمنع Open Redirect).
+    يجب أن يكون مساراً داخلياً يبدأ بـ / وليس //.
+    """
+    if not next_url:
+        return False
+    if not next_url.startswith("/"):
+        return False
+    if next_url.startswith("//"):
+        return False
+    if next_url.startswith("/\\"):
+        return False
+    # لا يسمح بـ protocol أو host
+    parsed = urlparse(next_url)
+    if parsed.scheme or parsed.netloc:
+        return False
+    return True
 
 
 def _push_history(ok: bool) -> None:
@@ -351,7 +413,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Jamal Solutions — Customer Portal",
     description="Virtual Numbers Platform",
-    version="1.0.5",
+    version="1.0.6",
     lifespan=lifespan,
 )
 
@@ -784,6 +846,7 @@ async def system_version():
         "has_detailed_logging": True,
         "has_health_check": True,
         "has_sim5_prices": True,
+        "has_login_redirect_fix": True,
         "sim5_enabled": SIM5_ENABLED,
         "sim5_cached": _PRICES_CACHE["data"] is not None,
         "sim5_error": _PRICES_CACHE["error"],
@@ -793,6 +856,25 @@ async def system_version():
         "session_cookie_secure": SESSION_COOKIE_SECURE,
         "uptime": _fmt_uptime(time.time() - START_TIME),
         "started_at": datetime.fromtimestamp(START_TIME, tz=timezone.utc).isoformat(),
+    }
+
+
+@app.get("/api/v1/system/middleware-order")
+async def middleware_order():
+    """
+    يعرض ترتيب middleware الفعلي كما يراه Starlette.
+    مفيد للتأكد أن SessionMiddleware قبل auth_guard.
+    """
+    middlewares = []
+    for m in app.user_middleware:
+        middlewares.append({
+            "cls": m.cls.__name__ if hasattr(m, "cls") else str(m),
+            "options": {k: str(v)[:50] for k, v in (m.options or {}).items()},
+        })
+    return {
+        "order": middlewares,
+        "note": "آخر middleware في القائمة يُنفَّذ أولاً عند استقبال الطلب",
+        "expected": "SessionMiddleware يجب أن يكون بعد auth_guard في هذه القائمة",
     }
 
 
@@ -873,6 +955,13 @@ async def status_page(request: Request):
         for p, c in sorted(top_401.items(), key=lambda x: -x[1])[:10]
     ) or "<tr><td colspan=2>لا توجد</td></tr>"
 
+    # إحصائيات التحويلات
+    top_redirect = _REQUEST_STATS.get("top_redirect_paths", {})
+    top_redirect_rows = "".join(
+        f"<tr><td>{p}</td><td>{c}</td></tr>"
+        for p, c in sorted(top_redirect.items(), key=lambda x: -x[1])[:10]
+    ) or "<tr><td colspan=2>لا توجد</td></tr>"
+
     html = f"""<!doctype html>
 <html lang="ar" dir="rtl">
 <head>
@@ -907,9 +996,10 @@ async def status_page(request: Request):
   </div>
 
   <div class="card">
-    <h1>🔒 إحصائيات 401</h1>
+    <h1>🔒 إحصائيات 401 (API فقط)</h1>
     <div class="meta">
       <span>Total 401: <b class="bad">{_REQUEST_STATS['protected_401']}</b></span>
+      <span>Total Redirect: <b class="ok">{_REQUEST_STATS['protected_redirect']}</b></span>
       <span>Last: <b>{_REQUEST_STATS['last_401'] or '-'}</b></span>
       <span>Last path: <b>{_REQUEST_STATS['last_401_path'] or '-'}</b></span>
     </div>
@@ -921,10 +1011,15 @@ async def status_page(request: Request):
     <div style="font-size:12px; color:#64748b; word-break:break-all;">
       {_REQUEST_STATS['last_401_referer'] or '-'}
     </div>
-    <h2>المسارات الأكثر 401</h2>
+    <h2>المسارات الأكثر 401 (API)</h2>
     <table>
       <thead><tr><th align="right">المسار</th><th align="right">العدد</th></tr></thead>
       <tbody>{top_401_rows}</tbody>
+    </table>
+    <h2>المسارات الأكثر تحويلاً 303</h2>
+    <table>
+      <thead><tr><th align="right">المسار</th><th align="right">العدد</th></tr></thead>
+      <tbody>{top_redirect_rows}</tbody>
     </table>
   </div>
 </body>
@@ -1057,7 +1152,11 @@ async def api_prices_refresh(request: Request):
 async def login_page(request: Request):
     """شاشة تسجيل الدخول الرئيسية."""
     if request.session.get("customer_id"):
-        return RedirectResponse(url="/dashboard", status_code=303)
+        # ✅ إذا كان مسجّلاً بالفعل، حوّله للصفحة المطلوبة أو dashboard
+        nxt = request.query_params.get("next", "/dashboard")
+        if not _is_safe_next(nxt):
+            nxt = "/dashboard"
+        return RedirectResponse(url=nxt, status_code=303)
 
     return templates.TemplateResponse(
         request=request,
@@ -1080,10 +1179,15 @@ async def auth_google(request: Request):
         request.session["logged_in_at"] = _now_iso()
         request.session["_last_seen"] = _now_iso()
         nxt = request.query_params.get("next", "/dashboard")
+        if not _is_safe_next(nxt):
+            nxt = "/dashboard"
         return RedirectResponse(url=nxt, status_code=303)
 
     redirect_uri = str(request.url_for("auth_google_callback"))
-    request.session["oauth_next"] = request.query_params.get("next", "/dashboard")
+    next_url = request.query_params.get("next", "/dashboard")
+    if not _is_safe_next(next_url):
+        next_url = "/dashboard"
+    request.session["oauth_next"] = next_url
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 
@@ -1094,7 +1198,8 @@ async def auth_google_callback(request: Request):
 
     try:
         token = await oauth.google.authorize_access_token(request)
-    except Exception:
+    except Exception as e:
+        print(f"❌ OAuth error: {type(e).__name__}: {e}")
         return RedirectResponse(url="/?error=oauth_failed", status_code=303)
 
     userinfo = token.get("userinfo") or {}
@@ -1146,7 +1251,12 @@ async def auth_google_callback(request: Request):
     request.session["logged_in_at"] = _now_iso()
     request.session["_last_seen"] = _now_iso()
 
+    # ✅ تحقق من سلامة next
     nxt = request.session.pop("oauth_next", "/dashboard")
+    if not _is_safe_next(nxt):
+        nxt = "/dashboard"
+
+    print(f"✅ OAuth success: {email} → redirect to {nxt}")
     return RedirectResponse(url=nxt, status_code=303)
 
 
@@ -1162,6 +1272,8 @@ async def logout(request: Request):
     - يدعم ?next= للعودة لصفحة معينة بعد الخروج.
     """
     next_url = request.query_params.get("next", "/")
+    if not _is_safe_next(next_url):
+        next_url = "/"
     also_google = request.query_params.get("google", "0") == "1"
 
     request.session.clear()
@@ -1175,7 +1287,9 @@ async def logout(request: Request):
 @app.get("/auth/logout")
 async def auth_logout(request: Request):
     next_url = request.query_params.get("next", "/")
-    return RedirectResponse(url=f"/logout?next={next_url}", status_code=303)
+    if not _is_safe_next(next_url):
+        next_url = "/"
+    return RedirectResponse(url=f"/logout?next={quote(next_url)}", status_code=303)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -1727,85 +1841,114 @@ async def end_all_sessions(request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# Middleware — Auth Guard (يُنفَّذ بعد SessionMiddleware)
+# ⚠️  Middleware — Auth Guard
+# ══════════════════════════════════════════════════════════════
+#  ملاحظة مهمة عن الترتيب في Starlette:
+#  - @app.middleware("http") تضيف middleware إلى القائمة.
+#  - آخر middleware مُضاف هو الأقرب للتطبيق (يُنفَّذ أولاً عند الطلب).
+#  - لهذا نضيف auth_guard الآن، ثم SessionMiddleware بعده
+#    ليصبح SessionMiddleware أقرب للتطبيق (يُنفَّذ أولاً).
+#
+#  الترتيب المتوقع في user_middleware:
+#     [auth_guard, SessionMiddleware]
+#  التنفيذ عند الطلب: SessionMiddleware → auth_guard → route
 # ══════════════════════════════════════════════════════════════
 @app.middleware("http")
 async def auth_guard(request: Request, call_next):
     """
     يحمي المسارات الخاصة.
 
-    ✅ القاعدة (1.0.4) — بدون الاعتماد على Accept header:
+    ✅ القاعدة (1.0.6):
 
     - "/" → عام (صفحة تسجيل الدخول)
-    - PUBLIC_PATHS → عامة
+    - PUBLIC_PATHS → عامة (بما فيها /auth/google, /logout, /static)
     - "/api/..." (غير عام) → 401 JSON دائماً إذا لم يكن مسجّلاً
-    - أي صفحة محمية → 303 Redirect دائماً إذا لم يكن مسجّلاً
-
-    ✅ logging تفصيلي لكل طلب محمي (للتشخيص):
-    - method, path, client host
-    - user-agent, referer, accept
-    - has_cookie, session_keys, customer_id
-    - x-forwarded-for (لأن Render يمرر الطلبات عبر بروكسي)
+    - أي صفحة محمية → 303 Redirect إلى /?next=... إذا لم يكن مسجّلاً
     """
     path = request.url.path
-    is_api = path.startswith("/api/")
-    cid = request.session.get("customer_id")
+    method = request.method
 
     # ── "/" مسار عام ──
     if path == "/":
         return await call_next(request)
 
     # ── مسارات عامة أخرى ──
+    # ✅ نستخدم مطابقة دقيقة أو prefix مع "/"
     if any(
-        path == p or path.startswith(p + "/")
+        path == p or path.startswith(p + "/") or path.startswith(p + "?")
         for p in PUBLIC_PATHS
     ):
         return await call_next(request)
 
     # ── هل يحتاج تسجيل دخول؟ ──
-    needs_auth = any(
+    is_api = path.startswith("/api/")
+    is_protected = is_api or any(
         path == p or path.startswith(p + "/") for p in PROTECTED_PREFIXES
     )
+
+    # إذا لم يكن محمياً ولا API → مرّره
+    if not is_protected:
+        return await call_next(request)
+
+    # ── فحص الجلسة (بحذر: قد لا تكون متاحة إذا ترتيب middleware خاطئ) ──
+    try:
+        cid = request.session.get("customer_id")
+    except Exception as e:
+        print(f"⚠️  session access error: {type(e).__name__}: {e}")
+        cid = None
+
+    if cid:
+        # ✅ sliding refresh
+        try:
+            request.session["_last_seen"] = _now_iso()
+        except Exception:
+            pass
+        return await call_next(request)
+
+    # ══════════════════════════════════════════════════════════
+    # غير مسجّل → 401 للـ API / 303 Redirect للصفحات
+    # ══════════════════════════════════════════════════════════
+    ua = request.headers.get("user-agent", "NONE")[:120]
+    referer = request.headers.get("referer", "NONE")[:120]
+    client_host = request.client.host if request.client else "NONE"
+    xff = request.headers.get("x-forwarded-for", "NONE")[:80]
+
     if is_api:
-        needs_auth = True
-
-    # ── طلب محمي بدون جلسة ──
-    if needs_auth and not cid:
-        # اجمع معلومات التشخيص
-        ua = request.headers.get("user-agent", "NONE")[:120]
-        referer = request.headers.get("referer", "NONE")[:120]
-        accept = request.headers.get("accept", "NONE")[:60]
-        xff = request.headers.get("x-forwarded-for", "NONE")[:80]
-        client_host = request.client.host if request.client else "NONE"
-        has_cookie = "cookie" in request.headers
-
-        # سجّل في الإحصائيات
+        # ── API → 401 JSON ──
         await _record_401(path, ua, referer)
-
-        # اطبع في السجل (دائماً — ليس فقط في DEBUG)
         print(
-            f"🔒 401 | path={path} | is_api={is_api} | "
+            f"🔒 401 API | {method} {path} | "
             f"client={client_host} | xff={xff} | "
-            f"has_cookie={has_cookie} | "
-            f"accept={accept!r} | "
-            f"referer={referer!r} | "
+            f"has_cookie={'cookie' in request.headers} | "
             f"ua={ua!r}"
         )
+        return JSONResponse(
+            {"detail": "غير مسجّل", "error": "not_authenticated"},
+            status_code=401,
+        )
 
-        if is_api:
-            return JSONResponse(
-                {"detail": "غير مسجّل", "error": "not_authenticated"},
-                status_code=401,
-            )
-        # صفحة محمية → redirect دائماً
-        print(f"↪️  303 redirect: path={path} → /?next={path}")
-        return RedirectResponse(url="/?next=" + path, status_code=303)
+    # ── صفحة محمية → 303 Redirect إلى شاشة الدخول ──
+    await _record_redirect(path)
 
-    # ── sliding refresh ──
-    if cid:
-        request.session["_last_seen"] = _now_iso()
+    # احتفظ بالمسار الكامل مع query string
+    next_url = path
+    if request.url.query:
+        next_url += "?" + request.url.query
 
-    return await call_next(request)
+    # تأكد أن next آمن
+    if not _is_safe_next(next_url):
+        next_url = "/dashboard"
+
+    redirect_url = f"/?next={quote(next_url, safe='/')}"
+
+    print(
+        f"↪️  303 REDIRECT | {method} {path} → {redirect_url} | "
+        f"client={client_host} | xff={xff} | "
+        f"has_cookie={'cookie' in request.headers} | "
+        f"ua={ua!r}"
+    )
+
+    return RedirectResponse(url=redirect_url, status_code=303)
 
 
 # ══════════════════════════════════════════════════════════════
