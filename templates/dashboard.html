@@ -243,6 +243,37 @@
   </div>
 </div>
 
+<!-- ══ 5SIM STATUS ═══════════════════════════════════════════════ -->
+<div id="sim5-card" class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 mb-6">
+  <div class="flex items-center justify-between mb-4">
+    <h3 class="text-base font-bold text-slate-800 flex items-center gap-2">
+      <span class="text-lg">🔌</span>
+      حالة مزود الخدمة 5SIM
+    </h3>
+    <a href="/api/v1/system/sim5-profile" target="_blank"
+       class="text-xs text-slate-400 hover:text-blue-500">تفاصيل JSON ←</a>
+  </div>
+  <div id="sim5-body" class="grid grid-cols-2 md:grid-cols-4 gap-3">
+    <div class="bg-slate-50 rounded-xl p-3 text-center">
+      <div class="text-[10px] text-slate-500 mb-1 font-medium">الحالة</div>
+      <div id="sim5-status" class="text-sm font-bold text-slate-400">جارٍ الفحص...</div>
+    </div>
+    <div class="bg-blue-50 rounded-xl p-3 text-center">
+      <div class="text-[10px] text-slate-500 mb-1 font-medium">رصيد 5SIM</div>
+      <div id="sim5-balance" class="text-lg font-bold text-blue-700">—</div>
+    </div>
+    <div class="bg-emerald-50 rounded-xl p-3 text-center">
+      <div class="text-[10px] text-slate-500 mb-1 font-medium">التقييم</div>
+      <div id="sim5-rating" class="text-lg font-bold text-emerald-700">—</div>
+    </div>
+    <div class="bg-violet-50 rounded-xl p-3 text-center">
+      <div class="text-[10px] text-slate-500 mb-1 font-medium">الدول المتاحة</div>
+      <div id="sim5-countries" class="text-lg font-bold text-violet-700">—</div>
+    </div>
+  </div>
+  <div id="sim5-error" class="hidden mt-3 bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-700"></div>
+</div>
+
 <!-- ══ MY NUMBERS + TOP SERVICES ══════════════════════════════════ -->
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
 
@@ -261,7 +292,7 @@
           {{ n.flag or '🌐' }}
         </div>
         <div class="flex-1 min-w-0">
-          <div class="font-mono text-sm font-bold text-slate-800">{{ n.phone }}</div>
+          <div class="font-mono text-sm font-bold text-slate-800" dir="ltr">{{ n.phone }}</div>
           <div class="text-[11px] text-slate-500">{{ n.country }} · {{ n.service }}</div>
         </div>
         <div class="text-left">
@@ -271,7 +302,11 @@
             {% else %}bg-slate-100 text-slate-600{% endif %}">
             {{ n.status }}
           </span>
-          <div class="text-[10px] text-slate-400 mt-1">{{ n.expires_in }}</div>
+          {% if n.expires %}
+          <div class="text-[10px] text-slate-400 mt-1">
+            ينتهي {{ n.expires[:16] | replace('T', ' ') }}
+          </div>
+          {% endif %}
         </div>
       </div>
       {% endfor %}
@@ -298,23 +333,32 @@
   <!-- Top services -->
   <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
     <h3 class="text-base font-bold text-slate-800 mb-4">خدماتي الأكثر استخدامًا</h3>
+    {% if top_services and top_services|length > 0 %}
     <div class="space-y-3">
+      {% set max_count = top_services|map(attribute='count')|max or 1 %}
       {% for s in top_services %}
       <div class="flex items-center gap-3">
         <div class="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-base">
           {{ s.icon }}
         </div>
         <div class="flex-1 min-w-0">
-          <div class="text-sm font-medium text-slate-700 truncate">{{ s.name }}</div>
+          <div class="text-sm font-medium text-slate-700 truncate" dir="ltr">{{ s.name }}</div>
           <div class="h-1.5 bg-slate-100 rounded-full mt-1 overflow-hidden">
             <div class="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full"
-                 style="width:{{ (s.count / (top_services|map(attribute='count')|max or 1)) * 100 }}%"></div>
+                 style="width:{{ (s.count / max_count) * 100 }}%"></div>
           </div>
         </div>
         <div class="text-sm font-bold text-slate-700">{{ s.count }}</div>
       </div>
       {% endfor %}
     </div>
+    {% else %}
+    <div class="text-center py-8 text-slate-400">
+      <div class="text-3xl mb-2">📊</div>
+      <p class="text-xs">لا توجد بيانات بعد</p>
+      <p class="text-[10px] text-slate-300 mt-1">ستظهر خدماتك هنا بعد الشراء</p>
+    </div>
+    {% endif %}
   </div>
 </div>
 
@@ -324,7 +368,17 @@
   <!-- Order doughnut -->
   <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
     <h3 class="text-base font-bold text-slate-800 mb-4">حالة طلباتي</h3>
-    <canvas id="ordersChart" height="220"></canvas>
+    {% if orders_by_status and orders_by_status.values() | sum > 0 %}
+      <canvas id="ordersChart" height="220"></canvas>
+    {% else %}
+      <div class="text-center py-8 text-slate-400">
+        <div class="text-3xl mb-2">📋</div>
+        <p class="text-xs">لا توجد طلبات بعد</p>
+        <a href="/buy" class="inline-block mt-3 text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-lg transition-colors">
+          شراء أول رقم
+        </a>
+      </div>
+    {% endif %}
   </div>
 
   <!-- Recent SMS -->
@@ -346,11 +400,20 @@
         </div>
         <div class="flex-1 min-w-0">
           <div class="flex items-center justify-between mb-1">
-            <span class="text-xs font-bold text-slate-700">{{ s.service }}</span>
-            <span class="text-[10px] text-slate-400">{{ s.time }}</span>
+            <span class="text-xs font-bold text-slate-700">{{ s.sender or s.service or '—' }}</span>
+            <span class="text-[10px] text-slate-400">
+              {{ (s.created_at or '')[:16] | replace('T', ' ') }}
+            </span>
           </div>
-          <div class="font-mono text-[11px] text-slate-500 mb-1">{{ s.phone }}</div>
+          {% if s.phone %}
+          <div class="font-mono text-[11px] text-slate-500 mb-1" dir="ltr">{{ s.phone }}</div>
+          {% endif %}
           <div class="text-sm text-slate-700 line-clamp-2">{{ s.text }}</div>
+          {% if s.code %}
+          <div class="mt-1 inline-block bg-emerald-50 text-emerald-700 font-mono text-xs font-bold px-2 py-0.5 rounded">
+            {{ s.code }}
+          </div>
+          {% endif %}
         </div>
       </div>
       {% endfor %}
@@ -394,21 +457,84 @@
 
 <script>
 /* ═══════════════ CHART ═══════════════ */
-const orderLabels = {{ orders_by_status.keys() | list | tojson }};
-const orderData   = {{ orders_by_status.values() | list | tojson }};
-const labelMap = {pending:'معلق', active:'نشط', completed:'مكتمل', expired:'منتهي', cancelled:'ملغي'};
+(function initChart() {
+  const canvas = document.getElementById('ordersChart');
+  if (!canvas) return;
 
-new Chart(document.getElementById('ordersChart'), {
-  type:'doughnut',
-  data:{
-    labels:orderLabels.map(l=>labelMap[l]||l),
-    datasets:[{data:orderData,
-      backgroundColor:['#f59e0b','#10b981','#3b82f6','#ef4444','#94a3b8'],
-      borderWidth:0}]
-  },
-  options:{responsive:true,cutout:'65%',
-    plugins:{legend:{position:'bottom',labels:{font:{family:'Cairo',size:11},padding:12}}}}
-});
+  const orderLabels = {{ orders_by_status.keys() | list | tojson }};
+  const orderData   = {{ orders_by_status.values() | list | tojson }};
+  const labelMap = {pending:'معلق', active:'نشط', completed:'مكتمل', expired:'منتهي', cancelled:'ملغي'};
+
+  new Chart(canvas, {
+    type:'doughnut',
+    data:{
+      labels: orderLabels.map(l => labelMap[l] || l),
+      datasets:[{
+        data: orderData,
+        backgroundColor:['#f59e0b','#10b981','#3b82f6','#ef4444','#94a3b8'],
+        borderWidth: 0
+      }]
+    },
+    options:{
+      responsive: true,
+      cutout: '65%',
+      plugins:{
+        legend:{
+          position:'bottom',
+          labels:{font:{family:'Cairo',size:11},padding:12}
+        }
+      }
+    }
+  });
+})();
+
+/* ═══════════════ 5SIM STATUS ═══════════════ */
+async function loadSim5Status() {
+  const statusEl  = document.getElementById('sim5-status');
+  const balanceEl = document.getElementById('sim5-balance');
+  const ratingEl  = document.getElementById('sim5-rating');
+  const countryEl = document.getElementById('sim5-countries');
+  const errorEl   = document.getElementById('sim5-error');
+  if (!statusEl) return;
+
+  try {
+    // 1) الرصيد والتقييم
+    const r1 = await fetch('/api/v1/system/sim5-profile');
+    if (r1.ok) {
+      const d = await r1.json();
+      statusEl.textContent = '✅ متصل';
+      statusEl.className   = 'text-sm font-bold text-emerald-600';
+      balanceEl.textContent = '$' + Number(d.balance || 0).toFixed(2);
+      ratingEl.textContent  = d.rating ?? '—';
+    } else {
+      const e = await r1.json().catch(() => ({}));
+      statusEl.textContent = '⚠️ خطأ';
+      statusEl.className   = 'text-sm font-bold text-red-600';
+      errorEl.textContent  = '5SIM: ' + (e.detail || e.message || 'فشل الاتصال');
+      errorEl.classList.remove('hidden');
+    }
+
+    // 2) عدد الدول المتاحة
+    const r2 = await fetch('/api/v1/prices');
+    if (r2.ok) {
+      const d = await r2.json();
+      if (d.ok) {
+        countryEl.textContent = d.count || 0;
+      } else {
+        countryEl.textContent = '—';
+        if (!errorEl.textContent) {
+          errorEl.textContent = d.error || 'تعذّر جلب الكتالوج';
+          errorEl.classList.remove('hidden');
+        }
+      }
+    }
+  } catch (e) {
+    statusEl.textContent = '🔴 غير متاح';
+    statusEl.className   = 'text-sm font-bold text-red-600';
+    errorEl.textContent  = 'خطأ في الاتصال بالخادم';
+    errorEl.classList.remove('hidden');
+  }
+}
 
 /* ═══════════════ TOAST ═══════════════ */
 const TOAST_ICONS = {
@@ -534,6 +660,7 @@ async function manualPing() {
   btn.disabled = true;
   btn.innerHTML = `<svg class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> جارٍ...`;
   await browserPing();
+  await loadSim5Status();
   btn.disabled = false;
   btn.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> تحديث`;
 }
@@ -614,12 +741,13 @@ function initSSE() {
 /* ═══════════════ BOOTSTRAP ═══════════════ */
 (async () => {
   await syncStatus();
+  await loadSim5Status();
   initSSE();
   setInterval(tick, 1000);
   setInterval(syncStatus, 90_000);
+  setInterval(loadSim5Status, 5 * 60_000);  // فحص 5SIM كل 5 دقائق
   setInterval(browserPing, KA_INTERVAL * 1000);
   setTimeout(browserPing, 30_000);
-  setTimeout(() => showToast('مرحبًا بك 👋 — خدمة مراقبة الخدمة نشطة', 'info', 4000), 1500);
 })();
 </script>
 {% endblock %}
