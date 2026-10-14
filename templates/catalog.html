@@ -2,11 +2,57 @@
 {% set active_page = "catalog" %}
 {% block title %}كتالوج الدول — جمال سولوشنز{% endblock %}
 {% block page_title %}كتالوج الدول{% endblock %}
-{% block page_subtitle %}تصفح الأسعار والخدمات المتاحة في كل دولة{% endblock %}
+{% block page_subtitle %}تصفح الأسعار والخدمات المتاحة في كل دولة — مباشرة من 5SIM{% endblock %}
 
 {% block content %}
 
-<!-- Search -->
+{# ═══════════════════════════════════════════════════════════ #}
+{# حالة الفشل: 5SIM غير متاح                                       #}
+{# ═══════════════════════════════════════════════════════════ #}
+{% if not catalog_ok %}
+<div class="max-w-2xl mx-auto mt-8">
+  <div class="bg-red-50 border-2 border-red-200 rounded-2xl p-8 text-center">
+    <div class="text-5xl mb-4">⚠️</div>
+    <h2 class="text-xl font-bold text-red-800 mb-3">تعذّر تحميل الكتالوج من 5SIM</h2>
+    <p class="text-sm text-red-700 mb-2">{{ catalog_error or 'خطأ غير معروف' }}</p>
+    <p class="text-xs text-red-500 mb-4">
+      تأكد من ضبط <code class="bg-white px-1 rounded" dir="ltr">SIM5_API_KEY</code> في متغيرات البيئة.
+    </p>
+    <button onclick="location.reload()"
+            class="bg-red-600 hover:bg-red-700 text-white font-bold px-6 py-2.5 rounded-lg text-sm transition-colors">
+      🔄 إعادة المحاولة
+    </button>
+  </div>
+</div>
+{% else %}
+
+<!-- ══ إحصائيات سريعة ══ -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+  <div class="stat-card">
+    <div class="text-2xl font-bold text-slate-800">{{ countries|length }}</div>
+    <div class="text-slate-500 text-sm">دولة متاحة</div>
+  </div>
+  <div class="stat-card">
+    {% set total_services = countries | sum(attribute='services_count') %}
+    <div class="text-2xl font-bold text-slate-800">{{ total_services }}</div>
+    <div class="text-slate-500 text-sm">خدمة عبر كل الدول</div>
+  </div>
+  <div class="stat-card">
+    {% set with_prices = countries | selectattr('min_price') | list %}
+    <div class="text-2xl font-bold text-slate-800">{{ with_prices|length }}</div>
+    <div class="text-slate-500 text-sm">دولة بأسعار</div>
+  </div>
+  <div class="stat-card">
+    <div class="text-2xl font-bold text-slate-800">
+      {% if countries and with_prices %}
+        ${{ "%.2f"|format(with_prices | map(attribute='min_price') | min) }}
+      {% else %}—{% endif %}
+    </div>
+    <div class="text-slate-500 text-sm">أرخص سعر</div>
+  </div>
+</div>
+
+<!-- ══ شريط البحث + الفلترة ══ -->
 <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 mb-6">
   <div class="flex flex-col sm:flex-row gap-3">
     <div class="flex-1 relative">
@@ -14,36 +60,60 @@
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
       </svg>
       <input type="text" id="search-input" placeholder="ابحث عن دولة..."
-             oninput="filterCountries()"
+             oninput="applyFilters()"
              class="w-full pr-10 pl-4 py-2.5 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none text-sm">
     </div>
-    <select onchange="filterContinent(this.value)"
+    <select id="service-filter" onchange="applyFilters()"
             class="px-4 py-2.5 rounded-xl border border-slate-200 focus:border-blue-500 outline-none text-sm bg-white">
-      <option value="">كل القارات</option>
-      <option value="asia">آسيا</option>
-      <option value="europe">أوروبا</option>
-      <option value="africa">أفريقيا</option>
-      <option value="america">أمريكا</option>
-      <option value="oceania">أوقيانوسيا</option>
+      <option value="">كل الخدمات</option>
+      {% set all_services = [] %}
+      {% for c in countries %}
+        {% for s in c.services %}
+          {% if s.available and s.id not in all_services %}
+            {% set _ = all_services.append(s.id) %}
+          {% endif %}
+        {% endfor %}
+      {% endfor %}
+      {% for svc_id in all_services|sort %}
+      <option value="{{ svc_id }}">{{ svc_id }}</option>
+      {% endfor %}
     </select>
+    <button onclick="clearFilters()"
+            class="px-4 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 text-sm font-medium transition-colors">
+      مسح
+    </button>
   </div>
 </div>
 
-<!-- Countries grid -->
+<!-- ══ شبكة الدول ══ -->
 <div id="countries-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
 
   {% for c in countries %}
   <div class="country-card bg-white rounded-2xl shadow-sm border border-slate-100 p-5 hover:shadow-md hover:border-blue-200 transition-all"
-       data-name="{{ c.name|lower }}" data-code="{{ c.code|lower }}" data-continent="{{ c.continent }}">
+       data-name="{{ c.name|lower }}"
+       data-slug="{{ c.slug|lower }}"
+       data-code="{{ c.code|lower }}"
+       data-services="{{ c.services | selectattr('available') | map(attribute='id') | join(',') }}">
 
+    <!-- رأس البطاقة -->
     <div class="flex items-center gap-3 mb-4">
       <div class="text-3xl">{{ c.flag }}</div>
       <div class="flex-1 min-w-0">
         <div class="font-bold text-slate-800 text-sm truncate">{{ c.name }}</div>
-        <div class="text-[10px] text-slate-400">{{ c.code }} · {{ c.continent_label }}</div>
+        <div class="text-[10px] text-slate-400" dir="ltr">{{ c.prefix or c.code }}</div>
       </div>
+      {% if c.available > 0 %}
+      <span class="bg-emerald-50 text-emerald-700 text-[10px] font-bold px-2 py-1 rounded-full whitespace-nowrap">
+        {{ c.available }}
+      </span>
+      {% else %}
+      <span class="bg-slate-100 text-slate-500 text-[10px] font-bold px-2 py-1 rounded-full whitespace-nowrap">
+        0
+      </span>
+      {% endif %}
     </div>
 
+    <!-- البيانات -->
     <div class="space-y-1.5 mb-4">
       <div class="flex justify-between text-xs">
         <span class="text-slate-500">الأرقام المتاحة</span>
@@ -51,7 +121,11 @@
       </div>
       <div class="flex justify-between text-xs">
         <span class="text-slate-500">أقل سعر</span>
-        <span class="font-bold text-blue-600">${{ "%.2f"|format(c.min_price) }}</span>
+        {% if c.min_price %}
+          <span class="font-bold text-blue-600">${{ "%.2f"|format(c.min_price) }}</span>
+        {% else %}
+          <span class="font-bold text-slate-400">—</span>
+        {% endif %}
       </div>
       <div class="flex justify-between text-xs">
         <span class="text-slate-500">عدد الخدمات</span>
@@ -59,23 +133,48 @@
       </div>
     </div>
 
-    <!-- Top services badges -->
+    <!-- أفضل الخدمات (أول 3 متوفرة) -->
+    {% set available_services = c.services | selectattr('available') | list %}
+    {% if available_services %}
     <div class="flex flex-wrap gap-1 mb-4">
-      {% for s in c.top_services[:3] %}
-      <span class="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">{{ s }}</span>
+      {% for s in available_services[:3] %}
+      <span class="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full inline-flex items-center gap-1"
+            title="{{ s.name }} — ${{ '%.2f'|format(s.cost) }}">
+        <span>{{ s.icon }}</span>
+        <span class="truncate max-w-[70px]" dir="ltr">{{ s.name }}</span>
+      </span>
       {% endfor %}
+      {% if available_services|length > 3 %}
+      <span class="text-[10px] text-slate-400 self-center">+{{ available_services|length - 3 }}</span>
+      {% endif %}
     </div>
+    {% else %}
+    <div class="text-[10px] text-slate-400 text-center py-2 mb-4">لا توجد خدمات متاحة</div>
+    {% endif %}
 
-    <a href="/buy?country={{ c.code }}"
+    <!-- زر الشراء -->
+    {% if available_services %}
+    <a href="/buy?country={{ c.slug }}"
        class="block text-center bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs py-2.5 rounded-xl transition-colors">
       شراء رقم
     </a>
+    {% else %}
+    <button disabled
+            class="w-full text-center bg-slate-100 text-slate-400 font-bold text-xs py-2.5 rounded-xl cursor-not-allowed">
+      غير متاح
+    </button>
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="col-span-full text-center text-slate-400 py-12">
+    <div class="text-5xl mb-3">🌍</div>
+    <p>لا توجد دول متاحة حاليًا من 5SIM</p>
   </div>
   {% endfor %}
 
 </div>
 
-<!-- Empty state -->
+<!-- Empty state (بعد الفلترة) -->
 <div id="empty-state" class="hidden bg-white rounded-2xl shadow-sm border border-slate-100 p-12 text-center">
   <div class="w-14 h-14 mx-auto bg-slate-100 rounded-2xl flex items-center justify-center mb-3">
     <svg class="w-7 h-7 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -83,33 +182,45 @@
     </svg>
   </div>
   <p class="text-sm text-slate-500">لا توجد نتائج مطابقة</p>
+  <button onclick="clearFilters()"
+          class="mt-3 text-xs text-blue-600 hover:text-blue-700 font-medium underline">
+    مسح الفلاتر
+  </button>
 </div>
+
+{% endif %}
 
 {% endblock %}
 
 {% block scripts %}
 <script>
-function filterCountries() {
-  const q = document.getElementById('search-input').value.toLowerCase().trim();
+function applyFilters() {
+  const q = (document.getElementById('search-input').value || '').toLowerCase().trim();
+  const svc = document.getElementById('service-filter').value;
   const cards = document.querySelectorAll('.country-card');
   let visible = 0;
-  cards.forEach(c => {
-    const match = c.dataset.name.includes(q) || c.dataset.code.includes(q);
-    c.style.display = match ? '' : 'none';
+
+  cards.forEach(card => {
+    const name = (card.dataset.name || '').toLowerCase();
+    const slug = (card.dataset.slug || '').toLowerCase();
+    const code = (card.dataset.code || '').toLowerCase();
+    const services = (card.dataset.services || '').split(',').filter(Boolean);
+
+    const nameMatch = !q || name.includes(q) || slug.includes(q) || code.includes(q);
+    const svcMatch = !svc || services.includes(svc);
+    const match = nameMatch && svcMatch;
+
+    card.style.display = match ? '' : 'none';
     if (match) visible++;
   });
+
   document.getElementById('empty-state').classList.toggle('hidden', visible > 0);
 }
 
-function filterContinent(continent) {
-  const cards = document.querySelectorAll('.country-card');
-  let visible = 0;
-  cards.forEach(c => {
-    const match = !continent || c.dataset.continent === continent;
-    c.style.display = match ? '' : 'none';
-    if (match) visible++;
-  });
-  document.getElementById('empty-state').classList.toggle('hidden', visible > 0);
+function clearFilters() {
+  document.getElementById('search-input').value = '';
+  document.getElementById('service-filter').value = '';
+  applyFilters();
 }
 </script>
 {% endblock %}
