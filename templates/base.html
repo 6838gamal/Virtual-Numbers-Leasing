@@ -96,6 +96,29 @@
       شحن الرصيد
     </a>
 
+    <!-- ═══════════ قسم الشراء ═══════════ -->
+    <div class="px-3 pt-4 pb-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">الأرقام</div>
+
+    <!-- 5) شراء رقم -->
+    <a href="/buy" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
+                         {% if active_page == 'buy' %}bg-blue-50 text-blue-700{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>
+      </svg>
+      شراء رقم
+    </a>
+
+    <!-- 6) كتالوج الدول -->
+    <a href="/catalog" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
+                              {% if active_page == 'catalog' %}bg-blue-50 text-blue-700{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+      </svg>
+      كتالوج الدول
+    </a>
+
     <!-- Logout -->
     <a href="/logout" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-red-500 hover:bg-red-50 mt-4">
       <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
