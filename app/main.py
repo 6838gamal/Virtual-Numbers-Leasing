@@ -617,10 +617,39 @@ async def auth_google_callback(request: Request):
     return RedirectResponse(url=nxt, status_code=303)
 
 
+# ══════════════════════════════════════════════════════════════
+# Logout (مباشر + OAuth-aware)
+# ══════════════════════════════════════════════════════════════
+@app.api_route("/logout", methods=["GET", "POST"], name="logout")
+async def logout(request: Request):
+    """
+    تسجيل الخروج:
+    - يمسح الجلسة المحلية بالكامل.
+    - إن كان OAuth مُفعّلاً وتم تسجيل الدخول عبر Google، يعيد التوجيه
+      لإنهاء جلسة Google أيضًا.
+    - يدعم ?next= للعودة لصفحة معينة بعد الخروج.
+    """
+    next_url = request.query_params.get("next", "/")
+
+    # احتفظ بالإيميل قبل مسح الجلسة (لإنهاء جلسة Google إن أمكن)
+    email = request.session.get("email")
+
+    # امسح الجلسة المحلية
+    request.session.clear()
+
+    # إن كان OAuth مُفعّلًا وتم تسجيل الدخول عبر Google، أنهِ جلسته أيضًا
+    if OAUTH_ENABLED and email:
+        google_logout = "https://accounts.google.com/Logout"
+        return RedirectResponse(url=google_logout, status_code=303)
+
+    return RedirectResponse(url=next_url, status_code=303)
+
+
 @app.get("/auth/logout")
 async def auth_logout(request: Request):
-    request.session.clear()
-    return RedirectResponse(url="/", status_code=303)
+    """توحيد السلوك — يُعيد التوجيه إلى /logout."""
+    next_url = request.query_params.get("next", "/")
+    return RedirectResponse(url=f"/logout?next={next_url}", status_code=303)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -1104,6 +1133,7 @@ class AuthGuardMiddleware(BaseHTTPMiddleware):
         # مسارات عامة لا تُحمى
         if (
             path == "/"
+            or path == "/logout"
             or path.startswith("/auth/")
             or path.startswith("/static/")
             or path == "/health"
