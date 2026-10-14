@@ -4,8 +4,8 @@ Customer Portal (FastAPI + Jinja2 + SSE + Google OAuth + 5SIM)
 
 ✅ 1.1.1 — إصلاحات بعد النشر الأول:
 - إعادة get_my_orders_by_status و get_my_top_services.
-- تمريرهما في سياق /dashboard (كان سببه UndefinedError → 500).
-- تمريرهما في سياق كل الصفحات التي قد تحتاجهما.
+- تمريرهما في سياق /dashboard.
+- إصلاح خطأ مطبعي في TicketCreate / PasswordChange.
 
 ✅ 1.1.0 — قراءة خالصة من 5SIM (لا بيانات وهمية إطلاقًا):
 - كل الدول والخدمات والأسعار تُقرأ مباشرة من 5SIM عبر المفتاح.
@@ -305,7 +305,7 @@ async def build_live_catalog(force: bool = False) -> dict:
     يُرجع:
       {
         "ok": bool,
-        "countries": [ { slug, code, name, flag, prefix, services[], available, min_price, services_count } ],
+        "countries": [...],
         "error": str | None,
         "error_code": int | None,
         "fetched_at": ISO | None,
@@ -806,7 +806,10 @@ class DepositCreate(BaseModel):
 class TicketCreate(BaseModel):
     subject: str
     message: str
-    order_id: str | None = Noneclass PasswordChange(BaseModel):
+    order_id: str | None = None
+
+
+class PasswordChange(BaseModel):
     current: str
     new: str = Field(..., min_length=8)
 
