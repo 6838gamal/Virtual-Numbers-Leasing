@@ -10,6 +10,17 @@ Customer Portal (FastAPI + Jinja2 + SSE keepalive + Google OAuth)
 - same_site="lax" لدعم OAuth redirect.
 - /logout لا يخرج من Google إلا بطلب صريح.
 - حفظ الجلسة عند OAuth callback قبل الـ redirect.
+
+✅ إصلاحات 2026-10-14:
+- إصلاح UndefinedError: 'stats' is undefined في buy.html.
+- تمرير stats إلى كل القوالب التي قد تحتاجه (buy, catalog, wallet,
+  support, orders, inbox, transactions).
+- إضافة total_orders و active_orders إلى get_my_stats لتماثل المفاتيح
+  المستخدمة في القوالب.
+- إصلاح ثغرة أمنية في auth_guard: كان path.startswith(p) مع p="/"
+  يسمح لكل المسارات بالمرور دون حماية.
+- تفعيل StrictUndefined في البيئة التطويرية لالتقاط أخطاء القوالب مبكراً.
+- إضافة اختبار داخلي /_debug/template-check (يُفعّل عند DEBUG=true).
 """
 from __future__ import annotations
 
@@ -43,6 +54,12 @@ TEMPLATES_DIR = BASE_DIR / "templates"
 STATIC_DIR = BASE_DIR / "app" / "static"
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+# في التطوير: اجعل أي متغير غير معرّف في القالب يسبب خطأ واضحاً
+DEBUG = os.getenv("DEBUG", "false").lower() == "true"
+if DEBUG:
+    from jinja2 import StrictUndefined
+    templates.env.undefined = StrictUndefined
 
 # ══════════════════════════════════════════════════════════════
 # OAuth / Session config
@@ -86,8 +103,9 @@ PROTECTED_PREFIXES = (
     "/inbox", "/wallet", "/transactions", "/support", "/profile", "/security",
 )
 
+# ⚠️ مهم: لا تضع "/" هنا. المسار "/" يُعامل كحالة خاصة في auth_guard.
 PUBLIC_PATHS = (
-    "/", "/logout", "/auth", "/static", "/health", "/status", "/api/v1/system",
+    "/logout", "/auth", "/static", "/health", "/status", "/api/v1/system",
 )
 
 # ══════════════════════════════════════════════════════════════
@@ -210,7 +228,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Jamal Solutions — Customer Portal",
     description="Virtual Numbers Platform",
-    version="1.0.0",
+    version="1.0.1",
     lifespan=lifespan,
 )
 
@@ -364,17 +382,23 @@ async def get_my_stats(customer_id: int) -> dict:
     )
 
     return {
-        "my_numbers":       len(nums),
-        "active_numbers":   sum(1 for n in nums if n["status"] == "active"),
-        "expiring_soon":    sum(1 for n in nums if n["status"] == "expiring"),
-        "my_orders":        len(ords),
-        "pending_orders":   sum(1 for o in ords if o["status"] == "pending"),
-        "completed_orders": sum(1 for o in ords if o["status"] == "completed"),
-        "my_sms":           len(sms),
-        "sms_today":        sms_today,
-        "unread_sms":       sum(1 for s in sms if not s["read"]),
-        "total_spent":      total_spent,
-        "spent_this_month": spent_this_month,
+        # الأرقام
+        "my_numbers":        len(nums),
+        "active_numbers":    sum(1 for n in nums if n["status"] == "active"),
+        "expiring_soon":     sum(1 for n in nums if n["status"] == "expiring"),
+        # الطلبات — aliases للتماثل مع القوالب
+        "my_orders":         len(ords),
+        "total_orders":      len(ords),   # ✅ مضاف
+        "pending_orders":    sum(1 for o in ords if o["status"] == "pending"),
+        "active_orders":     sum(1 for o in ords if o["status"] == "active"),  # ✅ مضاف
+        "completed_orders":  sum(1 for o in ords if o["status"] == "completed"),
+        # الرسائل
+        "my_sms":            len(sms),
+        "sms_today":         sms_today,
+        "unread_sms":        sum(1 for s in sms if not s["read"]),
+        # المالية
+        "total_spent":       total_spent,
+        "spent_this_month":  spent_this_month,
     }
 
 
@@ -699,6 +723,7 @@ async def dashboard(request: Request):
 @app.get("/buy", response_class=HTMLResponse)
 async def buy_page(request: Request, country: str | None = None, service: str | None = None):
     customer = await get_current_customer(request)
+    cid = customer["id"]   # ✅ مضاف
     return templates.TemplateResponse(
         request=request,
         name="buy.html",
@@ -708,6 +733,7 @@ async def buy_page(request: Request, country: str | None = None, service: str | 
             "services": SERVICES,
             "preselected_country": country,
             "preselected_service": service,
+            "stats": await get_my_stats(cid),   # ✅ الإصلاح الأساسي
         },
     )
 
@@ -721,6 +747,7 @@ async def catalog_page(request: Request):
         context={
             "customer": customer,
             "countries": COUNTRIES,
+            "stats": await get_my_stats(customer["id"]),   # ✅ مضاف احتياطاً
         },
     )
 
@@ -752,6 +779,7 @@ async def orders_page(request: Request):
         context={
             "customer": customer,
             "orders": orders,
+            "stats": await get_my_stats(cid),   # ✅ مضاف احتياطاً
         },
     )
 
@@ -773,6 +801,7 @@ async def order_detail_page(request: Request, order_id: int):
         context={
             "customer": customer,
             "orders": [order],
+            "stats": await get_my_stats(customer["id"]),   # ✅ مضاف احتياطاً
         },
     )
 
@@ -792,6 +821,7 @@ async def inbox_page(request: Request, number: str | None = None):
             "customer": customer,
             "my_numbers": await get_my_numbers(cid),
             "recent_sms": sms_list,
+            "stats": await get_my_stats(cid),   # ✅ مضاف احتياطاً
         },
     )
 
@@ -809,6 +839,7 @@ async def wallet_page(request: Request):
             "customer": customer,
             "payment_methods": PAYMENT_METHODS,
             "recent_deposits": deposits[:5],
+            "stats": await get_my_stats(cid),   # ✅ مضاف احتياطاً
         },
     )
 
@@ -841,6 +872,7 @@ async def transactions_page(request: Request):
                 "count": len(txs),
                 "this_month": this_month,
             },
+            "stats": await get_my_stats(cid),   # ✅ مضاف احتياطاً
         },
     )
 
@@ -858,6 +890,7 @@ async def support_page(request: Request):
             "customer": customer,
             "tickets": tickets,
             "faqs": FAQS,
+            "stats": await get_my_stats(cid),   # ✅ مضاف احتياطاً
         },
     )
 
@@ -886,6 +919,7 @@ async def security_page(request: Request):
         context={
             "customer": customer,
             "sessions": STORE["sessions"],
+            "stats": await get_my_stats(customer["id"]),   # ✅ مضاف احتياطاً
         },
     )
 
@@ -1143,21 +1177,66 @@ async def end_all_sessions(request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
+# Debug — فحص القوالب (يُفعّل عند DEBUG=true فقط)
+# ══════════════════════════════════════════════════════════════
+if DEBUG:
+    @app.get("/_debug/template-check", response_class=JSONResponse)
+    async def template_check(request: Request):
+        """
+        يفتح كل صفحة محمية ويرجع حالة كل واحدة.
+        يتطلب تسجيل دخول. الغرض: كشف أخطاء القوالب مبكراً.
+        """
+        if not request.session.get("customer_id"):
+            raise HTTPException(status_code=401, detail="سجّل الدخول أولاً")
+
+        paths = [
+            "/dashboard", "/buy", "/catalog", "/my-numbers",
+            "/orders", "/inbox", "/wallet", "/transactions",
+            "/support", "/profile", "/security",
+        ]
+        results = {}
+        for p in paths:
+            try:
+                # نستدعي دالة العرض مباشرة عبر httpx إلى self
+                async with httpx.AsyncClient(
+                    base_url=str(request.base_url).rstrip("/"),
+                    timeout=10.0,
+                    cookies=request.cookies,
+                ) as client:
+                    r = await client.get(p)
+                results[p] = {"status": r.status_code, "ok": r.status_code == 200}
+            except Exception as exc:
+                results[p] = {"error": f"{type(exc).__name__}: {exc}"}
+
+        all_ok = all(v.get("ok") for v in results.values())
+        return JSONResponse(
+            {"all_ok": all_ok, "results": results},
+            status_code=200 if all_ok else 500,
+        )
+
+
+# ══════════════════════════════════════════════════════════════
 # Middleware — Auth Guard (يُنفَّذ بعد SessionMiddleware)
 # ══════════════════════════════════════════════════════════════
 @app.middleware("http")
 async def auth_guard(request: Request, call_next):
     """
     يحمي المسارات الخاصة.
-    - في Starlette، @app.middleware("http") تُنفَّذ بعد add_middleware،
-      لذلك SessionMiddleware (المضاف أدناه) سيكون الأقرب للتطبيق
-      ويُملأ request.session قبل هذه الدالة.
+
+    ✅ إصلاح 2026-10-14:
+    - إزالة path.startswith(p) الخطير الذي كان يجعل "/" يسمح لكل المسارات.
+    - معالجة "/" كحالة خاصة (صفحة تسجيل الدخول).
+    - فحص أكثر دقة للمسارات العامة.
     """
     path = request.url.path
 
-    # مسارات عامة
+    # "/" مسار عام (صفحة تسجيل الدخول)
+    if path == "/":
+        return await call_next(request)
+
+    # مسارات عامة أخرى (مع فحص دقيق للبادئة متبوعة بـ / أو نهاية)
     if any(
-        path == p or path.startswith(p + "/") or path.startswith(p)
+        path == p or path.startswith(p + "/")
         for p in PUBLIC_PATHS
     ):
         return await call_next(request)
