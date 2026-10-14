@@ -5,87 +5,230 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}جمال سولوشنز{% endblock %}</title>
 
-  <!-- Tailwind CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
-
-  <!-- Cairo font -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-
-  <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 
   <style>
-    html, body {
-      font-family: 'Cairo', system-ui, -apple-system, sans-serif;
-    }
+    html, body { font-family: 'Cairo', system-ui, -apple-system, sans-serif; }
     .stat-card {
-      background: #fff;
-      border-radius: 1rem;
-      padding: 1.25rem;
-      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
-      border: 1px solid #f1f5f9;
+      background:#fff; border-radius:1rem; padding:1.25rem;
+      box-shadow:0 1px 3px rgba(15,23,42,.06); border:1px solid #f1f5f9;
       transition: transform .15s ease, box-shadow .15s ease;
     }
-    .stat-card:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
-    }
-    /* Scrollbar */
-    ::-webkit-scrollbar { width: 8px; height: 8px; }
-    ::-webkit-scrollbar-track { background: #f1f5f9; }
-    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    .stat-card:hover { transform:translateY(-2px); box-shadow:0 4px 12px rgba(15,23,42,.08); }
+    ::-webkit-scrollbar { width:8px; height:8px; }
+    ::-webkit-scrollbar-track { background:#f1f5f9; }
+    ::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:4px; }
+    ::-webkit-scrollbar-thumb:hover { background:#94a3b8; }
   </style>
 
   {% block head_extra %}{% endblock %}
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen">
 
-  <!-- ══ Sidebar ═══════════════════════════════════════════════ -->
-  <aside class="fixed inset-y-0 right-0 w-64 bg-white border-l border-slate-100 hidden lg:flex flex-col z-40">
-    <div class="h-16 flex items-center px-6 border-b border-slate-100">
-      <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">ج</div>
-      <span class="mr-3 font-bold text-slate-800">جمال سولوشنز</span>
-    </div>
-    <nav class="flex-1 p-4 space-y-1 overflow-y-auto">
-      <a href="/" class="flex items-center gap-3 px-3 py-2 rounded-lg bg-blue-50 text-blue-700 font-medium">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
-        </svg>
-        لوحة التحكم
-      </a>
-      <a href="/status" class="flex items-center gap-3 px-3 py-2 rounded-lg text-slate-600 hover:bg-slate-50">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-        </svg>
-        حالة السيرفر
-      </a>
-    </nav>
-    <div class="p-4 border-t border-slate-100 text-xs text-slate-400 text-center">
-      © 2026 جمال سولوشنز
-    </div>
-  </aside>
+<!-- ══ Sidebar ═══════════════════════════════════════════════════ -->
+<aside id="sidebar"
+       class="fixed inset-y-0 right-0 w-64 bg-white border-l border-slate-100 z-40
+              transform translate-x-full lg:translate-x-0 transition-transform duration-300 flex flex-col">
 
-  <!-- ══ Main ══════════════════════════════════════════════════ -->
-  <div class="lg:mr-64">
-    <!-- Topbar -->
-    <header class="h-16 bg-white border-b border-slate-100 flex items-center px-6 sticky top-0 z-30">
-      <div>
-        <h1 class="text-lg font-bold text-slate-800">{% block page_title %}لوحة التحكم{% endblock %}</h1>
-        <p class="text-xs text-slate-500">{% block page_subtitle %}{% endblock %}</p>
-      </div>
-    </header>
-
-    <!-- Page content -->
-    <main class="p-6">
-      {% block content %}{% endblock %}
-    </main>
+  <!-- Logo -->
+  <div class="h-16 flex items-center gap-3 px-5 border-b border-slate-100 flex-shrink-0">
+    <div class="w-9 h-9 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center text-white font-bold shadow-sm">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/>
+      </svg>
+    </div>
+    <div class="leading-tight">
+      <div class="font-bold text-slate-800 text-sm">جمال سولوشنز</div>
+      <div class="text-[10px] text-slate-400">أرقام افتراضية</div>
+    </div>
   </div>
 
-  {% block scripts %}{% endblock %}
+  <!-- Navigation -->
+  <nav class="flex-1 p-3 space-y-1 overflow-y-auto">
+
+    <!-- Section: Main -->
+    <div class="px-3 pt-2 pb-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">الرئيسية</div>
+
+    <a href="/" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
+                       {% if active_page == 'dashboard' %}bg-blue-50 text-blue-700{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+      </svg>
+      لوحة التحكم
+    </a>
+
+    <!-- Section: Numbers -->
+    <div class="px-3 pt-4 pb-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">الأرقام</div>
+
+    <a href="/numbers" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
+                             {% if active_page == 'numbers' %}bg-blue-50 text-blue-700{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"/>
+      </svg>
+      الأرقام المتاحة
+    </a>
+
+    <a href="/orders" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
+                            {% if active_page == 'orders' %}bg-blue-50 text-blue-700{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+      </svg>
+      الطلبات
+      {% if stats and stats.pending_orders %}
+      <span class="mr-auto text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-bold">{{ stats.pending_orders }}</span>
+      {% endif %}
+    </a>
+
+    <a href="/sms" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
+                         {% if active_page == 'sms' %}bg-blue-50 text-blue-700{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
+      </svg>
+      الرسائل الواردة
+    </a>
+
+    <!-- Section: Providers -->
+    <div class="px-3 pt-4 pb-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">المزودون</div>
+
+    <a href="/providers" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
+                               {% if active_page == 'providers' %}bg-blue-50 text-blue-700{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+      </svg>
+      مزودو الخدمة
+    </a>
+
+    <a href="/countries" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
+                               {% if active_page == 'countries' %}bg-blue-50 text-blue-700{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+      </svg>
+      الدول
+    </a>
+
+    <!-- Section: Finance -->
+    <div class="px-3 pt-4 pb-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">المالية</div>
+
+    <a href="/balance" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
+                             {% if active_page == 'balance' %}bg-blue-50 text-blue-700{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
+      </svg>
+      الرصيد
+    </a>
+
+    <a href="/transactions" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
+                                  {% if active_page == 'transactions' %}bg-blue-50 text-blue-700{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
+      </svg>
+      المعاملات
+    </a>
+
+    <!-- Section: System -->
+    <div class="px-3 pt-4 pb-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">النظام</div>
+
+    <a href="/api-keys" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
+                              {% if active_page == 'api-keys' %}bg-blue-50 text-blue-700{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
+      </svg>
+      مفاتيح API
+    </a>
+
+    <a href="/status" target="_blank" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
+                                            {% if active_page == 'status' %}bg-blue-50 text-blue-700{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+      </svg>
+      حالة السيرفر
+    </a>
+
+    <a href="/settings" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
+                               {% if active_page == 'settings' %}bg-blue-50 text-blue-700{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+      </svg>
+      الإعدادات
+    </a>
+  </nav>
+
+  <!-- Footer: user card -->
+  <div class="p-3 border-t border-slate-100 flex-shrink-0">
+    <div class="flex items-center gap-3 px-2 py-2 rounded-xl bg-slate-50">
+      <div class="w-9 h-9 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-white text-xs font-bold">JS</div>
+      <div class="flex-1 min-w-0">
+        <div class="text-xs font-bold text-slate-700 truncate">مدير النظام</div>
+        <div class="text-[10px] text-slate-400 truncate">admin@jamal.io</div>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<!-- Mobile overlay -->
+<div id="sidebar-overlay"
+     class="fixed inset-0 bg-slate-900/40 z-30 hidden lg:hidden"
+     onclick="toggleSidebar()"></div>
+
+<!-- ══ Main wrapper ══════════════════════════════════════════════ -->
+<div class="lg:mr-64">
+
+  <!-- Topbar -->
+  <header class="h-16 bg-white/80 backdrop-blur border-b border-slate-100 flex items-center gap-3 px-4 lg:px-6 sticky top-0 z-20">
+    <button onclick="toggleSidebar()"
+            class="lg:hidden w-9 h-9 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-600">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+      </svg>
+    </button>
+
+    <div class="flex-1 min-w-0">
+      <h1 class="text-base lg:text-lg font-bold text-slate-800 truncate">{% block page_title %}لوحة التحكم{% endblock %}</h1>
+      <p class="text-[11px] text-slate-500 truncate">{% block page_subtitle %}{% endblock %}</p>
+    </div>
+
+    <!-- Quick actions -->
+    <a href="/orders/new"
+       class="hidden sm:flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-2 rounded-lg transition-colors shadow-sm">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+      </svg>
+      طلب رقم جديد
+    </a>
+  </header>
+
+  <!-- Page content -->
+  <main class="p-4 lg:p-6">
+    {% block content %}{% endblock %}
+  </main>
+</div>
+
+<script>
+function toggleSidebar() {
+  const sb = document.getElementById('sidebar');
+  const ov = document.getElementById('sidebar-overlay');
+  sb.classList.toggle('translate-x-full');
+  ov.classList.toggle('hidden');
+}
+</script>
+
+{% block scripts %}{% endblock %}
 </body>
 </html>
