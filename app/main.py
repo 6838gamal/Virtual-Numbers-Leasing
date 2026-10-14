@@ -1,11 +1,13 @@
 """
 Jamal Solutions — Virtual Numbers Platform
-Customer Portal (FastAPI + Jinja2 + SSE keepalive)
+Customer Portal (FastAPI + Jinja2 + SSE keepalive + Google OAuth)
 """
 from __future__ import annotations
 
 import asyncio
 import json
+import os
+import secrets
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -21,6 +23,10 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, EmailStr, Field
 from sse_starlette.sse import EventSourceResponse
 
+from authlib.integrations.starlette_client import OAuth
+from starlette.middleware.sessions import SessionMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+
 # ══════════════════════════════════════════════════════════════
 # Paths
 # ══════════════════════════════════════════════════════════════
@@ -29,6 +35,32 @@ TEMPLATES_DIR = BASE_DIR / "templates"
 STATIC_DIR = BASE_DIR / "app" / "static"
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+# ══════════════════════════════════════════════════════════════
+# OAuth / Session config
+# ══════════════════════════════════════════════════════════════
+SECRET_KEY = os.getenv("SECRET_KEY", secrets.token_urlsafe(32))
+SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true"
+
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
+OAUTH_ENABLED = bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
+
+oauth = OAuth()
+if OAUTH_ENABLED:
+    oauth.register(
+        name="google",
+        client_id=GOOGLE_CLIENT_ID,
+        client_secret=GOOGLE_CLIENT_SECRET,
+        server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+        client_kwargs={"scope": "openid email profile"},
+    )
+
+# المسارات التي تتطلب تسجيل دخول
+PROTECTED_PREFIXES = (
+    "/dashboard", "/buy", "/catalog", "/my-numbers", "/orders",
+    "/inbox", "/wallet", "/transactions", "/support", "/profile", "/security",
+)
 
 # ══════════════════════════════════════════════════════════════
 # Keepalive state
@@ -260,10 +292,23 @@ SERVICES_BY_ID = {s["id"]: s for s in SERVICES}
 
 
 # ══════════════════════════════════════════════════════════════
-# Current customer (stub — replace with session/auth)
+# Current customer helpers
 # ══════════════════════════════════════════════════════════════
-async def get_current_customer() -> dict:
-    return STORE["customers"][1]
+def _get_customer_from_session(request: Request) -> dict | None:
+    """يرجع بيانات العميل المسجّل من الجلسة، أو None."""
+    cid = request.session.get("customer_id")
+    if cid and cid in STORE["customers"]:
+        return STORE["customers"][cid]
+    return None
+
+
+async def get_current_customer(request: Request) -> dict:
+    """للصفحات المحمية — يفترض أن middleware قد تحقق من الجلسة."""
+    customer = _get_customer_from_session(request)
+    if customer is None:
+        # احتياطي (يجب ألا يحدث لأن middleware يحمي)
+        raise HTTPException(status_code=401, detail="غير مسجّل")
+    return customer
 
 
 # ══════════════════════════════════════════════════════════════
@@ -378,7 +423,7 @@ class PreferencesUpdate(BaseModel):
 
 
 # ══════════════════════════════════════════════════════════════
-# System routes
+# System routes (public)
 # ══════════════════════════════════════════════════════════════
 @app.get("/health")
 async def health():
@@ -474,11 +519,116 @@ async def sse_events(request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# Page routes
+# Auth routes
 # ══════════════════════════════════════════════════════════════
 @app.get("/", response_class=HTMLResponse)
+async def login_page(request: Request):
+    """شاشة تسجيل الدخول الرئيسية."""
+    # لو مسجّل بالفعل، حوّله للوحة البيانات
+    if request.session.get("customer_id"):
+        return RedirectResponse(url="/dashboard", status_code=303)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="login.html",
+        context={
+            "oauth_enabled": OAUTH_ENABLED,
+            "next": request.query_params.get("next", "/dashboard"),
+            "error": request.query_params.get("error"),
+        },
+    )
+
+
+@app.get("/auth/google")
+async def auth_google(request: Request):
+    if not OAUTH_ENABLED:
+        # وضع التطوير بدون Google: سجّل الدخول كمستخدم تجريبي
+        request.session["customer_id"] = 1
+        request.session["email"] = STORE["customers"][1]["email"]
+        request.session["name"] = STORE["customers"][1]["name"]
+        nxt = request.query_params.get("next", "/dashboard")
+        return RedirectResponse(url=nxt, status_code=303)
+
+    redirect_uri = str(request.url_for("auth_google_callback"))
+    request.session["oauth_next"] = request.query_params.get("next", "/dashboard")
+    return await oauth.google.authorize_redirect(request, redirect_uri)
+
+
+@app.get("/auth/google/callback", name="auth_google_callback")
+async def auth_google_callback(request: Request):
+    if not OAUTH_ENABLED:
+        raise HTTPException(status_code=503, detail="OAuth غير مُفعّل")
+
+    try:
+        token = await oauth.google.authorize_access_token(request)
+    except Exception:
+        return RedirectResponse(url="/?error=oauth_failed", status_code=303)
+
+    userinfo = token.get("userinfo") or {}
+    email = userinfo.get("email")
+    name = userinfo.get("name") or (email.split("@")[0] if email else "مستخدم")
+    picture = userinfo.get("picture")
+
+    if not email:
+        return RedirectResponse(url="/?error=no_email", status_code=303)
+
+    # ابحث عن العميل بنفس الإيميل أو أنشئ واحدًا جديدًا
+    customer = next(
+        (c for c in STORE["customers"].values() if c["email"] == email),
+        None,
+    )
+    if customer is None:
+        new_id = max(STORE["customers"].keys(), default=0) + 1
+        customer = {
+            "id": new_id,
+            "name": name,
+            "email": email,
+            "phone": "",
+            "country": "YE",
+            "initials": name[:2],
+            "picture": picture,
+            "balance": 0.0,
+            "currency": "USD",
+            "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            "email_verified": True,
+            "phone_verified": False,
+            "two_fa_enabled": False,
+            "has_strong_password": False,
+            "security_score": 40,
+            "prefs": {
+                "email_notifications": True,
+                "sms_notifications": False,
+                "marketing_emails": False,
+            },
+        }
+        STORE["customers"][new_id] = customer
+    else:
+        # حدّث الصورة إن وُجدت
+        if picture:
+            customer["picture"] = picture
+
+    # سجّل الدخول
+    request.session["customer_id"] = customer["id"]
+    request.session["email"] = email
+    request.session["name"] = name
+    request.session["picture"] = picture
+
+    nxt = request.session.pop("oauth_next", "/dashboard")
+    return RedirectResponse(url=nxt, status_code=303)
+
+
+@app.get("/auth/logout")
+async def auth_logout(request: Request):
+    request.session.clear()
+    return RedirectResponse(url="/", status_code=303)
+
+
+# ══════════════════════════════════════════════════════════════
+# Page routes (protected)
+# ══════════════════════════════════════════════════════════════
+@app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(request: Request):
-    customer = await get_current_customer()
+    customer = await get_current_customer(request)
     cid = customer["id"]
 
     return templates.TemplateResponse(
@@ -497,7 +647,7 @@ async def dashboard(request: Request):
 
 @app.get("/buy", response_class=HTMLResponse)
 async def buy_page(request: Request, country: str | None = None, service: str | None = None):
-    customer = await get_current_customer()
+    customer = await get_current_customer(request)
     return templates.TemplateResponse(
         request=request,
         name="buy.html",
@@ -513,7 +663,7 @@ async def buy_page(request: Request, country: str | None = None, service: str | 
 
 @app.get("/catalog", response_class=HTMLResponse)
 async def catalog_page(request: Request):
-    customer = await get_current_customer()
+    customer = await get_current_customer(request)
     return templates.TemplateResponse(
         request=request,
         name="catalog.html",
@@ -526,7 +676,7 @@ async def catalog_page(request: Request):
 
 @app.get("/my-numbers", response_class=HTMLResponse)
 async def my_numbers_page(request: Request):
-    customer = await get_current_customer()
+    customer = await get_current_customer(request)
     cid = customer["id"]
     return templates.TemplateResponse(
         request=request,
@@ -541,7 +691,7 @@ async def my_numbers_page(request: Request):
 
 @app.get("/orders", response_class=HTMLResponse)
 async def orders_page(request: Request):
-    customer = await get_current_customer()
+    customer = await get_current_customer(request)
     cid = customer["id"]
     orders = [o for o in STORE["orders"] if o["customer_id"] == cid]
     orders.sort(key=lambda o: o["created_at"], reverse=True)
@@ -557,7 +707,7 @@ async def orders_page(request: Request):
 
 @app.get("/orders/{order_id}", response_class=HTMLResponse)
 async def order_detail_page(request: Request, order_id: int):
-    customer = await get_current_customer()
+    customer = await get_current_customer(request)
     order = next(
         (o for o in STORE["orders"]
          if o["id"] == order_id and o["customer_id"] == customer["id"]),
@@ -566,7 +716,6 @@ async def order_detail_page(request: Request, order_id: int):
     if not order:
         raise HTTPException(status_code=404, detail="الطلب غير موجود")
 
-    # For simplicity, reuse orders.html with a single-order list
     return templates.TemplateResponse(
         request=request,
         name="orders.html",
@@ -579,7 +728,7 @@ async def order_detail_page(request: Request, order_id: int):
 
 @app.get("/inbox", response_class=HTMLResponse)
 async def inbox_page(request: Request, number: str | None = None):
-    customer = await get_current_customer()
+    customer = await get_current_customer(request)
     cid = customer["id"]
     sms_list = await get_my_recent_sms(cid, limit=100)
     if number:
@@ -598,7 +747,7 @@ async def inbox_page(request: Request, number: str | None = None):
 
 @app.get("/wallet", response_class=HTMLResponse)
 async def wallet_page(request: Request):
-    customer = await get_current_customer()
+    customer = await get_current_customer(request)
     cid = customer["id"]
     deposits = [d for d in STORE["deposits"] if d["customer_id"] == cid]
     deposits.sort(key=lambda d: d["created_at"], reverse=True)
@@ -615,7 +764,7 @@ async def wallet_page(request: Request):
 
 @app.get("/transactions", response_class=HTMLResponse)
 async def transactions_page(request: Request):
-    customer = await get_current_customer()
+    customer = await get_current_customer(request)
     cid = customer["id"]
     txs = [t for t in STORE["transactions"] if t["customer_id"] == cid]
     txs.sort(key=lambda t: t["created_at"], reverse=True)
@@ -647,7 +796,7 @@ async def transactions_page(request: Request):
 
 @app.get("/support", response_class=HTMLResponse)
 async def support_page(request: Request):
-    customer = await get_current_customer()
+    customer = await get_current_customer(request)
     cid = customer["id"]
     tickets = [t for t in STORE["tickets"] if t["customer_id"] == cid]
     tickets.sort(key=lambda t: t["created_at"], reverse=True)
@@ -664,7 +813,7 @@ async def support_page(request: Request):
 
 @app.get("/profile", response_class=HTMLResponse)
 async def profile_page(request: Request):
-    customer = await get_current_customer()
+    customer = await get_current_customer(request)
     cid = customer["id"]
     return templates.TemplateResponse(
         request=request,
@@ -679,7 +828,7 @@ async def profile_page(request: Request):
 
 @app.get("/security", response_class=HTMLResponse)
 async def security_page(request: Request):
-    customer = await get_current_customer()
+    customer = await get_current_customer(request)
     return templates.TemplateResponse(
         request=request,
         name="security.html",
@@ -690,17 +839,12 @@ async def security_page(request: Request):
     )
 
 
-@app.get("/logout")
-async def logout():
-    return RedirectResponse(url="/", status_code=303)
-
-
 # ══════════════════════════════════════════════════════════════
 # API — Orders / Numbers
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/orders")
-async def create_order(payload: OrderCreate):
-    customer = await get_current_customer()
+async def create_order(payload: OrderCreate, request: Request):
+    customer = await get_current_customer(request)
     cid = customer["id"]
 
     country = COUNTRIES_BY_CODE.get(payload.country)
@@ -716,10 +860,8 @@ async def create_order(payload: OrderCreate):
     order_id = len(STORE["orders"]) + 1
     number_id = len(STORE["numbers"]) + 1
 
-    # Fake phone number
     fake_phone = f"+{country['code']}{1000000000 + number_id}"
 
-    # Order
     order = {
         "id": order_id,
         "customer_id": cid,
@@ -735,7 +877,6 @@ async def create_order(payload: OrderCreate):
     }
     STORE["orders"].append(order)
 
-    # Number
     number = {
         "id": number_id,
         "customer_id": cid,
@@ -753,7 +894,6 @@ async def create_order(payload: OrderCreate):
     }
     STORE["numbers"].append(number)
 
-    # Ledger — debit
     customer["balance"] -= price
     STORE["transactions"].append({
         "id": len(STORE["transactions"]) + 1,
@@ -770,8 +910,8 @@ async def create_order(payload: OrderCreate):
 
 
 @app.post("/api/v1/numbers/{number_id}/renew")
-async def renew_number(number_id: int):
-    customer = await get_current_customer()
+async def renew_number(number_id: int, request: Request):
+    customer = await get_current_customer(request)
     number = next(
         (n for n in STORE["numbers"]
          if n["id"] == number_id and n["customer_id"] == customer["id"]),
@@ -804,8 +944,8 @@ async def renew_number(number_id: int):
 # API — SMS
 # ══════════════════════════════════════════════════════════════
 @app.delete("/api/v1/sms/{sms_id}")
-async def delete_sms(sms_id: int):
-    customer = await get_current_customer()
+async def delete_sms(sms_id: int, request: Request):
+    customer = await get_current_customer(request)
     for i, s in enumerate(STORE["sms"]):
         if s["id"] == sms_id and s["customer_id"] == customer["id"]:
             STORE["sms"].pop(i)
@@ -817,8 +957,8 @@ async def delete_sms(sms_id: int):
 # API — Wallet
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/wallet/deposit")
-async def deposit(payload: DepositCreate):
-    customer = await get_current_customer()
+async def deposit(payload: DepositCreate, request: Request):
+    customer = await get_current_customer(request)
     cid = customer["id"]
     now = datetime.now(timezone.utc)
 
@@ -828,7 +968,7 @@ async def deposit(payload: DepositCreate):
         "customer_id": cid,
         "amount": payload.amount,
         "method": payload.method,
-        "status": "completed",  # in real life: pending → webhook → completed
+        "status": "completed",
         "created_at": now.isoformat(),
         "date": now.strftime("%Y-%m-%d %H:%M"),
     })
@@ -845,8 +985,6 @@ async def deposit(payload: DepositCreate):
         "date": now.strftime("%Y-%m-%d %H:%M"),
     })
 
-    # Real implementation would redirect to checkout.
-    # For now, return to wallet immediately.
     return {"status": "completed", "checkout_url": "/wallet"}
 
 
@@ -854,8 +992,8 @@ async def deposit(payload: DepositCreate):
 # API — Support
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/support/tickets")
-async def create_ticket(payload: TicketCreate):
-    customer = await get_current_customer()
+async def create_ticket(payload: TicketCreate, request: Request):
+    customer = await get_current_customer(request)
     cid = customer["id"]
     now = datetime.now(timezone.utc)
 
@@ -878,8 +1016,8 @@ async def create_ticket(payload: TicketCreate):
 # API — Profile
 # ══════════════════════════════════════════════════════════════
 @app.patch("/api/v1/profile")
-async def update_profile(payload: ProfileUpdate):
-    customer = await get_current_customer()
+async def update_profile(payload: ProfileUpdate, request: Request):
+    customer = await get_current_customer(request)
     if payload.name is not None:
         customer["name"] = payload.name
         customer["initials"] = payload.name[:2]
@@ -891,8 +1029,8 @@ async def update_profile(payload: ProfileUpdate):
 
 
 @app.patch("/api/v1/profile/preferences")
-async def update_preferences(payload: PreferencesUpdate):
-    customer = await get_current_customer()
+async def update_preferences(payload: PreferencesUpdate, request: Request):
+    customer = await get_current_customer(request)
     prefs = customer.setdefault("prefs", {})
     if payload.email_notifications is not None:
         prefs["email_notifications"] = payload.email_notifications
@@ -904,8 +1042,9 @@ async def update_preferences(payload: PreferencesUpdate):
 
 
 @app.delete("/api/v1/profile")
-async def delete_profile():
-    # In real life: soft-delete + revoke sessions
+async def delete_profile(request: Request):
+    customer = await get_current_customer(request)
+    # soft-delete placeholder
     return {"status": "deleted"}
 
 
@@ -913,16 +1052,16 @@ async def delete_profile():
 # API — Security
 # ══════════════════════════════════════════════════════════════
 @app.put("/api/v1/security/password")
-async def change_password(payload: PasswordChange):
-    # In real life: verify current password, hash new password
+async def change_password(payload: PasswordChange, request: Request):
+    customer = await get_current_customer(request)
     if len(payload.new) < 8:
         raise HTTPException(status_code=400, detail="كلمة المرور قصيرة")
     return {"status": "updated"}
 
 
 @app.post("/api/v1/security/2fa/enable")
-async def enable_2fa():
-    customer = await get_current_customer()
+async def enable_2fa(request: Request):
+    customer = await get_current_customer(request)
     secret = uuid.uuid4().hex[:16].upper()
     customer["two_fa_enabled"] = True
     customer["security_score"] = min(100, customer["security_score"] + 20)
@@ -930,15 +1069,16 @@ async def enable_2fa():
 
 
 @app.post("/api/v1/security/2fa/disable")
-async def disable_2fa():
-    customer = await get_current_customer()
+async def disable_2fa(request: Request):
+    customer = await get_current_customer(request)
     customer["two_fa_enabled"] = False
     customer["security_score"] = max(0, customer["security_score"] - 20)
     return {"status": "disabled"}
 
 
 @app.delete("/api/v1/security/sessions/{session_id}")
-async def end_session(session_id: str):
+async def end_session(session_id: str, request: Request):
+    await get_current_customer(request)
     STORE["sessions"] = [
         s for s in STORE["sessions"] if s["id"] != session_id
     ]
@@ -946,6 +1086,55 @@ async def end_session(session_id: str):
 
 
 @app.delete("/api/v1/security/sessions")
-async def end_all_sessions():
+async def end_all_sessions(request: Request):
+    await get_current_customer(request)
     STORE["sessions"] = []
     return {"status": "all_ended"}
+
+
+# ══════════════════════════════════════════════════════════════
+# Middleware
+# ══════════════════════════════════════════════════════════════
+class AuthGuardMiddleware(BaseHTTPMiddleware):
+    """يحوّل غير المسجّلين إلى شاشة الدخول."""
+
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+
+        # مسارات عامة لا تُحمى
+        if (
+            path == "/"
+            or path.startswith("/auth/")
+            or path.startswith("/static/")
+            or path == "/health"
+            or path == "/status"
+            or path.startswith("/api/v1/system/")
+        ):
+            return await call_next(request)
+
+        needs_auth = any(
+            path == p or path.startswith(p + "/") for p in PROTECTED_PREFIXES
+        )
+        # حماية كل الـ API (باستثناء system)
+        if path.startswith("/api/"):
+            needs_auth = True
+
+        if needs_auth and not request.session.get("customer_id"):
+            if path.startswith("/api/"):
+                return JSONResponse({"detail": "غير مسجّل"}, status_code=401)
+            return RedirectResponse(url="/?next=" + path, status_code=303)
+
+        return await call_next(request)
+
+
+# ⚠️ الترتيب مهم: SessionMiddleware أولاً، ثم AuthGuard
+# (Starlette يعكس ترتيب التنفيذ — Session يجب أن يُنفّذ قبل AuthGuard)
+app.add_middleware(AuthGuardMiddleware)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=SECRET_KEY,
+    session_cookie="jamal_session",
+    max_age=14 * 24 * 3600,
+    same_site="lax",
+    https_only=SESSION_COOKIE_SECURE,
+)
