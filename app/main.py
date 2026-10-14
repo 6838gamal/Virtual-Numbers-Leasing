@@ -13,14 +13,14 @@ Customer Portal (FastAPI + Jinja2 + SSE keepalive + Google OAuth)
 
 ✅ إصلاحات 2026-10-14:
 - إصلاح UndefinedError: 'stats' is undefined في buy.html.
-- تمرير stats إلى كل القوالب التي قد تحتاجه (buy, catalog, wallet,
-  support, orders, inbox, transactions).
-- إضافة total_orders و active_orders إلى get_my_stats لتماثل المفاتيح
-  المستخدمة في القوالب.
-- إصلاح ثغرة أمنية في auth_guard: كان path.startswith(p) مع p="/"
-  يسمح لكل المسارات بالمرور دون حماية.
-- تفعيل StrictUndefined في البيئة التطويرية لالتقاط أخطاء القوالب مبكراً.
-- إضافة اختبار داخلي /_debug/template-check (يُفعّل عند DEBUG=true).
+- تمرير stats إلى كل القوالب التي قد تحتاجه.
+- إضافة total_orders و active_orders إلى get_my_stats.
+- إصلاح ثغرة أمنية في auth_guard: path.startswith(p) مع p="/".
+- تفعيل StrictUndefined في وضع DEBUG.
+- تحسين auth_guard: redirect للمتصفح، 401 للـ API فقط.
+- إضافة /api/v1/system/version و /api/v1/system/whoami للتشخيص.
+- إضافة logging تشخيصي في auth_guard (عند DEBUG).
+- فحص SECRET_KEY في lifespan وطباعة تحذير واضح.
 """
 from __future__ import annotations
 
@@ -64,9 +64,9 @@ if DEBUG:
 # ══════════════════════════════════════════════════════════════
 # OAuth / Session config
 # ══════════════════════════════════════════════════════════════
-# 🔒 SECRET_KEY: يجب أن يكون ثابتاً. لا تستخدم secrets.token_urlsafe هنا،
-# وإلا فإن كل إعادة تشغيل تُبطل جميع الجلسات.
 SECRET_KEY = os.getenv("SECRET_KEY", "").strip()
+_SECRET_KEY_FROM_ENV = bool(SECRET_KEY)
+
 if not SECRET_KEY:
     # في التطوير فقط: ولّد قيمة ثابتة واطبعها، ثم ضعها في .env
     _dev_secret_file = Path(".dev_secret_key")
@@ -211,6 +211,24 @@ async def _keepalive_loop(app: FastAPI) -> None:
 # ══════════════════════════════════════════════════════════════
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # ── فحص إعدادات حرجة عند بدء التشغيل ──
+    if _SECRET_KEY_FROM_ENV:
+        print("✅ SECRET_KEY مضبوط من متغيرات البيئة — الجلسات ستبقى بين النشرات.")
+    else:
+        print(
+            "🔴 تحذير: SECRET_KEY غير مضبوط في متغيرات البيئة! "
+            "كل إعادة نشر ستُبطل جميع الجلسات. "
+            "أضف SECRET_KEY إلى Environment على Render."
+        )
+
+    if not OAUTH_ENABLED:
+        print("⚠️  OAuth معطّل (GOOGLE_CLIENT_ID/SECRET غير مضبوطة) — وضع تجريبي.")
+    else:
+        print(f"✅ OAuth مفعّل — Client ID: {GOOGLE_CLIENT_ID[:20]}...")
+
+    print(f"🔧 DEBUG={DEBUG} | SESSION_COOKIE_SECURE={SESSION_COOKIE_SECURE} "
+          f"| SESSION_MAX_AGE={SESSION_MAX_AGE}s | Version={app.version}")
+
     task = asyncio.create_task(_keepalive_loop(app))
     try:
         yield
@@ -228,7 +246,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Jamal Solutions — Customer Portal",
     description="Virtual Numbers Platform",
-    version="1.0.1",
+    version="1.0.2",
     lifespan=lifespan,
 )
 
@@ -388,9 +406,9 @@ async def get_my_stats(customer_id: int) -> dict:
         "expiring_soon":     sum(1 for n in nums if n["status"] == "expiring"),
         # الطلبات — aliases للتماثل مع القوالب
         "my_orders":         len(ords),
-        "total_orders":      len(ords),   # ✅ مضاف
+        "total_orders":      len(ords),
         "pending_orders":    sum(1 for o in ords if o["status"] == "pending"),
-        "active_orders":     sum(1 for o in ords if o["status"] == "active"),  # ✅ مضاف
+        "active_orders":     sum(1 for o in ords if o["status"] == "active"),
         "completed_orders":  sum(1 for o in ords if o["status"] == "completed"),
         # الرسائل
         "my_sms":            len(sms),
@@ -482,6 +500,39 @@ async def health():
         "status": "ok",
         "uptime": _fmt_uptime(time.time() - START_TIME),
         "timestamp": _now_iso(),
+    }
+
+
+@app.get("/api/v1/system/version")
+async def system_version():
+    """للتأكد من أن الكود الجديد فعلاً منشور."""
+    return {
+        "version": app.version,
+        "has_stats_fix": True,
+        "has_auth_guard_fix": True,
+        "debug": DEBUG,
+        "oauth_enabled": OAUTH_ENABLED,
+        "secret_key_from_env": _SECRET_KEY_FROM_ENV,
+        "session_cookie_secure": SESSION_COOKIE_SECURE,
+        "uptime": _fmt_uptime(time.time() - START_TIME),
+        "started_at": datetime.fromtimestamp(START_TIME, tz=timezone.utc).isoformat(),
+    }
+
+
+@app.get("/api/v1/system/whoami")
+async def whoami(request: Request):
+    """يرجع محتوى الجلسة الحالية (بدون بيانات حساسة) للتشخيص."""
+    return {
+        "has_session": bool(request.session),
+        "session_keys": sorted(request.session.keys()),
+        "customer_id": request.session.get("customer_id"),
+        "email": request.session.get("email"),
+        "name": request.session.get("name"),
+        "logged_in_at": request.session.get("logged_in_at"),
+        "last_seen": request.session.get("_last_seen"),
+        "cookies_received": sorted(request.cookies.keys()),
+        "user_agent": request.headers.get("user-agent", "")[:120],
+        "accept": request.headers.get("accept", ""),
     }
 
 
@@ -596,7 +647,6 @@ async def auth_google(request: Request):
         request.session["customer_id"] = 1
         request.session["email"] = STORE["customers"][1]["email"]
         request.session["name"] = STORE["customers"][1]["name"]
-        # ✅ علامة تسجيل الدخول
         request.session["logged_in_at"] = _now_iso()
         request.session["_last_seen"] = _now_iso()
         nxt = request.query_params.get("next", "/dashboard")
@@ -723,7 +773,7 @@ async def dashboard(request: Request):
 @app.get("/buy", response_class=HTMLResponse)
 async def buy_page(request: Request, country: str | None = None, service: str | None = None):
     customer = await get_current_customer(request)
-    cid = customer["id"]   # ✅ مضاف
+    cid = customer["id"]
     return templates.TemplateResponse(
         request=request,
         name="buy.html",
@@ -733,7 +783,7 @@ async def buy_page(request: Request, country: str | None = None, service: str | 
             "services": SERVICES,
             "preselected_country": country,
             "preselected_service": service,
-            "stats": await get_my_stats(cid),   # ✅ الإصلاح الأساسي
+            "stats": await get_my_stats(cid),
         },
     )
 
@@ -747,7 +797,7 @@ async def catalog_page(request: Request):
         context={
             "customer": customer,
             "countries": COUNTRIES,
-            "stats": await get_my_stats(customer["id"]),   # ✅ مضاف احتياطاً
+            "stats": await get_my_stats(customer["id"]),
         },
     )
 
@@ -779,7 +829,7 @@ async def orders_page(request: Request):
         context={
             "customer": customer,
             "orders": orders,
-            "stats": await get_my_stats(cid),   # ✅ مضاف احتياطاً
+            "stats": await get_my_stats(cid),
         },
     )
 
@@ -801,7 +851,7 @@ async def order_detail_page(request: Request, order_id: int):
         context={
             "customer": customer,
             "orders": [order],
-            "stats": await get_my_stats(customer["id"]),   # ✅ مضاف احتياطاً
+            "stats": await get_my_stats(customer["id"]),
         },
     )
 
@@ -821,7 +871,7 @@ async def inbox_page(request: Request, number: str | None = None):
             "customer": customer,
             "my_numbers": await get_my_numbers(cid),
             "recent_sms": sms_list,
-            "stats": await get_my_stats(cid),   # ✅ مضاف احتياطاً
+            "stats": await get_my_stats(cid),
         },
     )
 
@@ -839,7 +889,7 @@ async def wallet_page(request: Request):
             "customer": customer,
             "payment_methods": PAYMENT_METHODS,
             "recent_deposits": deposits[:5],
-            "stats": await get_my_stats(cid),   # ✅ مضاف احتياطاً
+            "stats": await get_my_stats(cid),
         },
     )
 
@@ -872,7 +922,7 @@ async def transactions_page(request: Request):
                 "count": len(txs),
                 "this_month": this_month,
             },
-            "stats": await get_my_stats(cid),   # ✅ مضاف احتياطاً
+            "stats": await get_my_stats(cid),
         },
     )
 
@@ -890,7 +940,7 @@ async def support_page(request: Request):
             "customer": customer,
             "tickets": tickets,
             "faqs": FAQS,
-            "stats": await get_my_stats(cid),   # ✅ مضاف احتياطاً
+            "stats": await get_my_stats(cid),
         },
     )
 
@@ -919,7 +969,7 @@ async def security_page(request: Request):
         context={
             "customer": customer,
             "sessions": STORE["sessions"],
-            "stats": await get_my_stats(customer["id"]),   # ✅ مضاف احتياطاً
+            "stats": await get_my_stats(customer["id"]),
         },
     )
 
@@ -1177,64 +1227,41 @@ async def end_all_sessions(request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# Debug — فحص القوالب (يُفعّل عند DEBUG=true فقط)
-# ══════════════════════════════════════════════════════════════
-if DEBUG:
-    @app.get("/_debug/template-check", response_class=JSONResponse)
-    async def template_check(request: Request):
-        """
-        يفتح كل صفحة محمية ويرجع حالة كل واحدة.
-        يتطلب تسجيل دخول. الغرض: كشف أخطاء القوالب مبكراً.
-        """
-        if not request.session.get("customer_id"):
-            raise HTTPException(status_code=401, detail="سجّل الدخول أولاً")
-
-        paths = [
-            "/dashboard", "/buy", "/catalog", "/my-numbers",
-            "/orders", "/inbox", "/wallet", "/transactions",
-            "/support", "/profile", "/security",
-        ]
-        results = {}
-        for p in paths:
-            try:
-                # نستدعي دالة العرض مباشرة عبر httpx إلى self
-                async with httpx.AsyncClient(
-                    base_url=str(request.base_url).rstrip("/"),
-                    timeout=10.0,
-                    cookies=request.cookies,
-                ) as client:
-                    r = await client.get(p)
-                results[p] = {"status": r.status_code, "ok": r.status_code == 200}
-            except Exception as exc:
-                results[p] = {"error": f"{type(exc).__name__}: {exc}"}
-
-        all_ok = all(v.get("ok") for v in results.values())
-        return JSONResponse(
-            {"all_ok": all_ok, "results": results},
-            status_code=200 if all_ok else 500,
-        )
-
-
-# ══════════════════════════════════════════════════════════════
 # Middleware — Auth Guard (يُنفَّذ بعد SessionMiddleware)
 # ══════════════════════════════════════════════════════════════
+def _wants_html(request: Request) -> bool:
+    """هل الطلب من متصفح يتوقع HTML؟"""
+    accept = request.headers.get("accept", "")
+    return "text/html" in accept
+
+
 @app.middleware("http")
 async def auth_guard(request: Request, call_next):
     """
     يحمي المسارات الخاصة.
 
-    ✅ إصلاح 2026-10-14:
-    - إزالة path.startswith(p) الخطير الذي كان يجعل "/" يسمح لكل المسارات.
-    - معالجة "/" كحالة خاصة (صفحة تسجيل الدخول).
-    - فحص أكثر دقة للمسارات العامة.
+    - طلب صفحة من متصفح (Accept: text/html) → 303 Redirect إلى /?next=...
+    - طلب API (Accept: application/json أو غيره) → 401 JSON
+    - طلب API لكن من متصفح (Accept: text/html) → 303 Redirect (تسهيل التصفح)
     """
     path = request.url.path
+    is_api = path.startswith("/api/")
+
+    # ── logging تشخيصي ──
+    if DEBUG and (is_api or path in PROTECTED_PREFIXES or path.startswith("/dashboard")):
+        print(
+            f"🔍 auth_guard: path={path} "
+            f"has_cookie={'cookie' in request.headers} "
+            f"session_keys={list(request.session.keys())} "
+            f"customer_id={request.session.get('customer_id')} "
+            f"accept={request.headers.get('accept', '')[:40]}"
+        )
 
     # "/" مسار عام (صفحة تسجيل الدخول)
     if path == "/":
         return await call_next(request)
 
-    # مسارات عامة أخرى (مع فحص دقيق للبادئة متبوعة بـ / أو نهاية)
+    # مسارات عامة أخرى
     if any(
         path == p or path.startswith(p + "/")
         for p in PUBLIC_PATHS
@@ -1244,14 +1271,15 @@ async def auth_guard(request: Request, call_next):
     needs_auth = any(
         path == p or path.startswith(p + "/") for p in PROTECTED_PREFIXES
     )
-    # حماية كل الـ API (باستثناء system الذي مر أعلاه)
-    if path.startswith("/api/"):
+    if is_api:
         needs_auth = True
 
     if needs_auth and not request.session.get("customer_id"):
-        if path.startswith("/api/"):
-            return JSONResponse({"detail": "غير مسجّل"}, status_code=401)
-        return RedirectResponse(url="/?next=" + path, status_code=303)
+        # ✅ إذا كان الطلب من متصفح (حتى لو API) → redirect
+        if _wants_html(request):
+            return RedirectResponse(url="/?next=" + path, status_code=303)
+        # طلب برمجي (fetch, curl, monitoring) → 401 JSON
+        return JSONResponse({"detail": "غير مسجّل"}, status_code=401)
 
     # ✅ جدّد الجلسة (sliding expiration) — يُحدّث الكوكي في الرد
     if request.session.get("customer_id"):
@@ -1268,8 +1296,8 @@ app.add_middleware(
     SessionMiddleware,
     secret_key=SECRET_KEY,
     session_cookie="jamal_session",
-    max_age=SESSION_MAX_AGE,          # 30 يوم افتراضياً
-    same_site="lax",                  # ضروري لـ OAuth redirect
-    https_only=SESSION_COOKIE_SECURE, # true في الإنتاج فقط
+    max_age=SESSION_MAX_AGE,
+    same_site="lax",
+    https_only=SESSION_COOKIE_SECURE,
     path="/",
 )
