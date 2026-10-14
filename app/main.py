@@ -2,15 +2,18 @@
 Jamal Solutions — Virtual Numbers Platform
 Customer Portal (FastAPI + Jinja2 + SSE + Google OAuth + 5SIM)
 
+✅ 1.1.2 — إصلاح الجلسة بعد إعادة تشغيل السيرفر:
+- _get_customer_from_session يُعيد إنشاء الحساب من الجلسة عند فقده في STORE.
+- auth_guard يتحقق أن العميل موجود فعلاً (أو أُعيد إنشاؤه).
+- لا مزيد من {"detail":"غير مسجّل"} في الصفحات بعد redeploy.
+
 ✅ 1.1.1 — إصلاحات بعد النشر الأول:
 - إعادة get_my_orders_by_status و get_my_top_services.
 - تمريرهما في سياق /dashboard.
 - إصلاح خطأ مطبعي في TicketCreate / PasswordChange.
 
 ✅ 1.1.0 — قراءة خالصة من 5SIM (لا بيانات وهمية إطلاقًا):
-- كل الدول والخدمات والأسعار تُقرأ مباشرة من 5SIM عبر المفتاح.
-- لا قوائم يدوية، لا أرقام وهمية، لا أسعار ثابتة، لا fallback.
-- عند أي فشل (شبكة/صلاحيات/لا بيانات) → رسالة واضحة في الواجهة.
+- كل الدول والخدمات والأسعار تُقرأ مباشرة من 5SIM.
 - الشراء الفعلي عبر /user/buy/activation.
 - فحص الطلب عبر /user/check واستيراد SMS.
 - إنهاء/إلغاء الطلب عبر /user/finish و /user/cancel.
@@ -462,12 +465,14 @@ _REQUEST_STATS: dict[str, Any] = {
     "protected_401": 0,
     "protected_redirect": 0,
     "session_expired": 0,
+    "session_recovered": 0,
     "last_401": None,
     "last_401_path": None,
     "last_401_ua": None,
     "last_401_referer": None,
     "last_expired": None,
     "last_expired_path": None,
+    "last_recovered": None,
     "top_401_paths": {},
     "top_redirect_paths": {},
 }
@@ -497,6 +502,12 @@ async def _record_expired(path: str) -> None:
         _REQUEST_STATS["session_expired"] += 1
         _REQUEST_STATS["last_expired"] = _now_iso()
         _REQUEST_STATS["last_expired_path"] = path
+
+
+async def _record_recovered(customer_id: int, email: str) -> None:
+    async with _401_LOCK:
+        _REQUEST_STATS["session_recovered"] += 1
+        _REQUEST_STATS["last_recovered"] = _now_iso()
 
 
 # ══════════════════════════════════════════════════════════════
@@ -652,7 +663,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Jamal Solutions — Customer Portal",
     description="Virtual Numbers Platform",
-    version="1.1.1",
+    version="1.1.2",
     lifespan=lifespan,
 )
 
@@ -679,10 +690,58 @@ STORE: dict[str, Any] = {
 # Customer helpers
 # ══════════════════════════════════════════════════════════════
 def _get_customer_from_session(request: Request) -> dict | None:
-    cid = request.session.get("customer_id")
-    if cid and cid in STORE["customers"]:
+    """
+    يرجع بيانات العميل من الجلسة.
+    ✅ إذا كان customer_id موجودًا في الجلسة لكن غير موجود في STORE
+    (بعد إعادة تشغيل السيرفر) → أعد إنشاء الحساب من بيانات الجلسة.
+    """
+    try:
+        cid = request.session.get("customer_id")
+    except Exception:
+        return None
+
+    if not cid:
+        return None
+
+    # موجود في STORE → أرجعه مباشرة
+    if cid in STORE["customers"]:
         return STORE["customers"][cid]
-    return None
+
+    # غير موجود → أعد إنشاءه من بيانات الجلسة
+    email = request.session.get("email")
+    name = request.session.get("name")
+    picture = request.session.get("picture")
+
+    if not email:
+        # لا توجد بيانات كافية في الجلسة → أعد None
+        return None
+
+    # أعد إنشاء الحساب
+    customer = {
+        "id": cid,
+        "name": name or email.split("@")[0],
+        "email": email,
+        "phone": "",
+        "country": "",
+        "initials": (name or email)[:2],
+        "picture": picture,
+        "balance": 0.0,
+        "currency": "USD",
+        "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "email_verified": True,
+        "phone_verified": False,
+        "two_fa_enabled": False,
+        "has_strong_password": False,
+        "security_score": 40,
+        "prefs": {
+            "email_notifications": True,
+            "sms_notifications": False,
+            "marketing_emails": False,
+        },
+    }
+    STORE["customers"][cid] = customer
+    print(f"♻️  أُعيد إنشاء العميل #{cid} ({email}) من الجلسة بعد إعادة التشغيل.")
+    return customer
 
 
 async def get_current_customer(request: Request) -> dict:
@@ -732,7 +791,7 @@ async def get_my_stats(customer_id: int) -> dict:
 async def get_my_orders_by_status(customer_id: int) -> dict:
     """
     يعيد قاموسًا: {"pending": N, "active": N, "completed": N, "expired": N, "cancelled": N}
-    متوافق مع statuses 5SIM الحقيقية (PENDING, RECEIVED, CANCELED, TIMEOUT, FINISHED, BANNED).
+    متوافق مع statuses 5SIM الحقيقية.
     """
     buckets = {
         "pending": 0,
@@ -761,7 +820,6 @@ async def get_my_orders_by_status(customer_id: int) -> dict:
 async def get_my_top_services(customer_id: int) -> list[dict]:
     """
     يعيد أكثر 5 خدمات استخدامًا للعميل (من STORE["numbers"]).
-    متوافق مع القالب الذي يتوقع: {"name": ..., "icon": ..., "count": ...}
     """
     counts: dict[str, int] = {}
     for n in STORE["numbers"]:
@@ -876,11 +934,13 @@ async def system_version():
         "has_cancel_finish": True,
         "has_orders_by_status": True,
         "has_top_services": True,
+        "has_session_recovery": True,
         "sim5": sim5_info,
         "debug": DEBUG,
         "oauth_enabled": OAUTH_ENABLED,
         "secret_key_from_env": _SECRET_KEY_FROM_ENV,
         "session_idle_timeout_seconds": SESSION_IDLE_TIMEOUT,
+        "customers_in_store": len(STORE["customers"]),
         "uptime": _fmt_uptime(time.time() - START_TIME),
     }
 
@@ -919,10 +979,14 @@ async def whoami(request: Request):
     except Exception:
         pass
 
+    cid = request.session.get("customer_id")
+    customer_exists = cid in STORE["customers"] if cid else False
+
     return {
         "has_session": bool(request.session),
         "session_keys": sorted(request.session.keys()),
-        "customer_id": request.session.get("customer_id"),
+        "customer_id": cid,
+        "customer_in_store": customer_exists,
         "email": request.session.get("email"),
         "name": request.session.get("name"),
         "last_seen": request.session.get("_last_seen"),
@@ -933,6 +997,7 @@ async def whoami(request: Request):
         "user_agent": request.headers.get("user-agent", "")[:120],
         "host": request.headers.get("host", ""),
         "client_host": request.client.host if request.client else None,
+        "customers_in_store_count": len(STORE["customers"]),
     }
 
 
@@ -987,6 +1052,10 @@ async def status_page(request: Request):
       <span>Uptime: <b>{uptime}</b></span>
       <span>Ping ✓: <b class="ok">{KA_STATE['ping_count']}</b></span>
       <span>Fail ✗: <b class="bad">{KA_STATE['fail_count']}</b></span>
+    </div>
+    <div class="meta">
+      <span>عملاء في الذاكرة: <b>{len(STORE['customers'])}</b></span>
+      <span>جلسات مُستعادة: <b class="ok">{_REQUEST_STATS['session_recovered']}</b></span>
     </div>
     <h1>🔌 5SIM</h1>
     <div class="meta"><span>{sim5_status}</span></div>
@@ -1069,6 +1138,7 @@ async def me_session(request: Request):
     return {
         "authenticated": bool(cid) and not expired,
         "customer_id": cid,
+        "customer_in_store": cid in STORE["customers"] if cid else False,
         "expired": expired,
         "idle_timeout_seconds": SESSION_IDLE_TIMEOUT,
     }
@@ -1123,7 +1193,12 @@ async def login_page(request: Request):
         if _session_is_expired(request):
             request.session.clear()
         else:
-            return RedirectResponse(url="/dashboard", status_code=303)
+            # تحقق من وجود العميل (أو أعد إنشاءه)
+            customer = _get_customer_from_session(request)
+            if customer is not None:
+                return RedirectResponse(url="/dashboard", status_code=303)
+            else:
+                request.session.clear()
 
     return templates.TemplateResponse(
         request=request,
@@ -1263,10 +1338,6 @@ async def buy_page(
     country: str | None = None,
     service: str | None = None,
 ):
-    """
-    صفحة الشراء — كل البيانات من 5SIM.
-    عند الفشل: لا بيانات وهمية، فقط رسالة خطأ.
-    """
     customer = await get_current_customer(request)
     cid = customer["id"]
 
@@ -1552,11 +1623,6 @@ async def security_page(request: Request):
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/orders")
 async def create_order(payload: OrderCreate, request: Request):
-    """
-    يشتري رقمًا فعليًا من 5SIM.
-    - لا رقم وهمي.
-    - عند الفشل: خطأ 5SIM الأصلي مترجمًا للعربية.
-    """
     customer = await get_current_customer(request)
     cid = customer["id"]
 
@@ -1662,7 +1728,6 @@ async def create_order(payload: OrderCreate, request: Request):
 
 @app.get("/api/v1/orders/sync")
 async def sync_orders_from_sim5(request: Request, category: str = "activation"):
-    """يجلب سجل الطلبات من 5SIM ويحدّث STORE."""
     customer = await get_current_customer(request)
     if not SIM5_ENABLED:
         raise HTTPException(503, "5SIM غير مفعّل")
@@ -1706,7 +1771,6 @@ async def sync_orders_from_sim5(request: Request, category: str = "activation"):
 
 @app.get("/api/v1/orders/{order_id}/check")
 async def check_order(order_id: int, request: Request):
-    """GET /v1/user/check/$id — يستورد SMS الجديدة ويحدّث الحالة."""
     customer = await get_current_customer(request)
     order = next(
         (o for o in STORE["orders"]
@@ -1974,7 +2038,7 @@ async def end_session(session_id: str, request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# Middleware — Auth Guard (Sliding Session)
+# Middleware — Auth Guard (Sliding Session + Recovery)
 # ══════════════════════════════════════════════════════════════
 @app.middleware("http")
 async def auth_guard(request: Request, call_next):
@@ -2011,11 +2075,22 @@ async def auth_guard(request: Request, call_next):
         cid = None
 
     if cid:
-        try:
-            request.session["_last_seen"] = _now_iso()
-        except Exception:
-            pass
-        return await call_next(request)
+        # ✅ تحقق أن العميل موجود فعلاً (أو أُعيد إنشاؤه من الجلسة)
+        customer = _get_customer_from_session(request)
+        if customer is None:
+            # لا توجد بيانات كافية في الجلسة → امسحها واعتبره غير مسجّل
+            try:
+                request.session.clear()
+            except Exception:
+                pass
+            cid = None
+            expired = True
+        else:
+            try:
+                request.session["_last_seen"] = _now_iso()
+            except Exception:
+                pass
+            return await call_next(request)
 
     ua = request.headers.get("user-agent", "NONE")[:120]
     referer = request.headers.get("referer", "NONE")[:120]
