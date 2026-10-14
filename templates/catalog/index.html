@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% set active_page = "catalog" %}
+{% block title %}كتالوج الدول — جمال سولوشنز{% endblock %}
+{% block page_title %}كتالوج الدول{% endblock %}
+{% block page_subtitle %}تصفح الأسعار والخدمات المتاحة في كل دولة{% endblock %}
+
+{% block content %}
+
+<!-- Search -->
+<div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 mb-6">
+  <div class="flex flex-col sm:flex-row gap-3">
+    <div class="flex-1 relative">
+      <svg class="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+      </svg>
+      <input type="text" id="search-input" placeholder="ابحث عن دولة..."
+             oninput="filterCountries()"
+             class="w-full pr-10 pl-4 py-2.5 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none text-sm">
+    </div>
+    <select onchange="filterContinent(this.value)"
+            class="px-4 py-2.5 rounded-xl border border-slate-200 focus:border-blue-500 outline-none text-sm bg-white">
+      <option value="">كل القارات</option>
+      <option value="asia">آسيا</option>
+      <option value="europe">أوروبا</option>
+      <option value="africa">أفريقيا</option>
+      <option value="america">أمريكا</option>
+      <option value="oceania">أوقيانوسيا</option>
+    </select>
+  </div>
+</div>
+
+<!-- Countries grid -->
+<div id="countries-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+
+  {% for c in countries %}
+  <div class="country-card bg-white rounded-2xl shadow-sm border border-slate-100 p-5 hover:shadow-md hover:border-blue-200 transition-all"
+       data-name="{{ c.name|lower }}" data-code="{{ c.code|lower }}" data-continent="{{ c.continent }}">
+
+    <div class="flex items-center gap-3 mb-4">
+      <div class="text-3xl">{{ c.flag }}</div>
+      <div class="flex-1 min-w-0">
+        <div class="font-bold text-slate-800 text-sm truncate">{{ c.name }}</div>
+        <div class="text-[10px] text-slate-400">{{ c.code }} · {{ c.continent_label }}</div>
+      </div>
+    </div>
+
+    <div class="space-y-1.5 mb-4">
+      <div class="flex justify-between text-xs">
+        <span class="text-slate-500">الأرقام المتاحة</span>
+        <span class="font-bold text-slate-700">{{ c.available }}</span>
+      </div>
+      <div class="flex justify-between text-xs">
+        <span class="text-slate-500">أقل سعر</span>
+        <span class="font-bold text-blue-600">${{ "%.2f"|format(c.min_price) }}</span>
+      </div>
+      <div class="flex justify-between text-xs">
+        <span class="text-slate-500">عدد الخدمات</span>
+        <span class="font-bold text-slate-700">{{ c.services_count }}</span>
+      </div>
+    </div>
+
+    <!-- Top services badges -->
+    <div class="flex flex-wrap gap-1 mb-4">
+      {% for s in c.top_services[:3] %}
+      <span class="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">{{ s }}</span>
+      {% endfor %}
+    </div>
+
+    <a href="/buy?country={{ c.code }}"
+       class="block text-center bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs py-2.5 rounded-xl transition-colors">
+      شراء رقم
+    </a>
+  </div>
+  {% endfor %}
+
+</div>
+
+<!-- Empty state -->
+<div id="empty-state" class="hidden bg-white rounded-2xl shadow-sm border border-slate-100 p-12 text-center">
+  <div class="w-14 h-14 mx-auto bg-slate-100 rounded-2xl flex items-center justify-center mb-3">
+    <svg class="w-7 h-7 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+    </svg>
+  </div>
+  <p class="text-sm text-slate-500">لا توجد نتائج مطابقة</p>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filterCountries() {
+  const q = document.getElementById('search-input').value.toLowerCase().trim();
+  const cards = document.querySelectorAll('.country-card');
+  let visible = 0;
+  cards.forEach(c => {
+    const match = c.dataset.name.includes(q) || c.dataset.code.includes(q);
+    c.style.display = match ? '' : 'none';
+    if (match) visible++;
+  });
+  document.getElementById('empty-state').classList.toggle('hidden', visible > 0);
+}
+
+function filterContinent(continent) {
+  const cards = document.querySelectorAll('.country-card');
+  let visible = 0;
+  cards.forEach(c => {
+    const match = !continent || c.dataset.continent === continent;
+    c.style.display = match ? '' : 'none';
+    if (match) visible++;
+  });
+  document.getElementById('empty-state').classList.toggle('hidden', visible > 0);
+}
+</script>
+{% endblock %}
