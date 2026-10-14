@@ -1,69 +1,16 @@
 """
 Jamal Solutions — Virtual Numbers Platform
-Customer Portal (FastAPI + Jinja2 + SSE keepalive + Google OAuth + 5SIM)
+Customer Portal (FastAPI + Jinja2 + SSE + Google OAuth + 5SIM)
 
-✅ إصلاحات الجلسة:
-- SECRET_KEY ثابت من متغير البيئة (إلزامي في الإنتاج).
-- استخدام @app.middleware("http") بدل BaseHTTPMiddleware لضمان وصول session.
-- ترتيب middleware صحيح: SessionMiddleware أولاً في التنفيذ.
-- max_age موسّع (30 يوم) + sliding refresh عبر _last_seen.
-- same_site="lax" لدعم OAuth redirect.
-- /logout لا يخرج من Google إلا بطلب صريح.
-- حفظ الجلسة عند OAuth callback قبل الـ redirect.
-
-✅ إصلاحات 2026-10-14 (1.0.1):
-- إصلاح UndefinedError: 'stats' is undefined في buy.html.
-- تمرير stats إلى كل القوالب التي قد تحتاجه.
-- إضافة total_orders و active_orders إلى get_my_stats.
-- إصلاح ثغرة أمنية في auth_guard: path.startswith(p) مع p="/".
-- تفعيل StrictUndefined في وضع DEBUG.
-
-✅ إصلاحات 2026-10-14 (1.0.2):
-- تحسين auth_guard: redirect للمتصفح، 401 للـ API فقط.
-- إضافة /api/v1/system/version و /api/v1/system/whoami.
-- logging تشخيصي في auth_guard (عند DEBUG).
-- فحص SECRET_KEY في lifespan وطباعة تحذير واضح.
-
-✅ إصلاحات 2026-10-14 (1.0.3):
-- إزالة الاعتماد على Accept header في auth_guard (غير موثوق).
-- الصفحات المحمية → 303 Redirect دائماً.
-- API المحمي → 401 JSON دائماً.
-- إضافة /api/v1/me/stats لـ JavaScript (بدل fetch على /dashboard).
-- logging تشخيصي دائم لطلبات 401.
-
-✅ إصلاحات 2026-10-14 (1.0.4):
-- logging تشخيصي مفصّل لكل طلبات 401 (referer, host, x-forwarded-for).
-- إضافة /api/v1/system/health-check لاستخدامه كـ Health Check Path على Render.
-- إضافة /api/v1/system/whoami-detailed لمزيد من التشخيص.
-- إضافة middleware لتسجيل كل الطلبات المحمية (عند DEBUG).
-- تحسين رسائل الـ logging لتحديد مصدر طلبات 401.
-
-✅ إضافات 2026-10-14 (1.0.5) — 5SIM Integration:
-- إضافة SIM5_API_KEY / SIM5_BASE من البيئة.
-- fetch_sim5_prices() مع كاش 60 ثانية.
-- _best_offer_for() لاختيار أرخص عرض متوفر.
-- build_country_prices() لدمج الأسعار الحية مع بيانات الدول.
-- /buy يعرض الآن الأسعار الحية + popular_services + available_numbers.
-- /api/v1/prices و /api/v1/prices/refresh للاستخدام من JavaScript.
-- fallback تلقائي للأسعار الثابتة عند فشل 5SIM.
-
-✅ إصلاحات 2026-10-14 (1.0.6) — إصلاح التحويل إلى شاشة الدخول:
-- إصلاح auth_guard: إزالة /logout من PUBLIC_PATHS (كان يبتلع كل شيء).
-- إضافة /auth/google و /auth/google/callback إلى PUBLIC_PATHS (مهم لـ OAuth).
-- إصلاح is_api: فحص /api/ فقط (وليس ما يشابهها مثل /apixyz).
-- إصلاح /logout: يعمل بدون تسجيل دخول.
-- إضافة /api/v1/system/middleware-order للتشخيص.
-- RedirectResponse بعد OAuth: التحقق من سلامة next (منع Open Redirect).
-- طباعة واضحة في السجل لكل تحويل 303.
-- التحقق من صحة next قبل التحويل بعد الدخول.
-
-✅ إصلاحات 2026-10-14 (1.0.7) — الجلسة المنزلقة (Sliding Session):
-- إضافة SESSION_IDLE_TIMEOUT من البيئة (افتراضي: 7 أيام).
-- دالة _session_is_expired() لفحص خمول الجلسة.
-- auth_guard يمسح الجلسة إذا تجاوز الخمول المدة المحددة.
-- auth_guard يجدّد _last_seen عند كل طلب محمي (sliding فعلي).
-- التحويل البسيط إلى "/" (بدون ?next=...) — شاشة الدخول الافتراضية.
-- تحديث /api/v1/system/version ليعكس الميزات الجديدة.
+✅ 1.1.0 — قراءة خالصة من 5SIM (لا بيانات وهمية إطلاقًا):
+- كل الدول والخدمات والأسعار تُقرأ مباشرة من 5SIM عبر المفتاح.
+- لا قوائم يدوية، لا أرقام وهمية، لا أسعار ثابتة، لا fallback.
+- عند أي فشل (شبكة/صلاحيات/لا بيانات) → رسالة واضحة في الواجهة.
+- الشراء الفعلي عبر /user/buy/activation.
+- فحص الطلب عبر /user/check واستيراد SMS.
+- إنهاء/إلغاء الطلب عبر /user/finish و /user/cancel.
+- الرصيد والتقييم من /user/profile.
+- مزامنة سجل الطلبات من /user/orders.
 """
 from __future__ import annotations
 
@@ -84,11 +31,12 @@ from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
 from authlib.integrations.starlette_client import OAuth
 from starlette.middleware.sessions import SessionMiddleware
+
 
 # ══════════════════════════════════════════════════════════════
 # Paths
@@ -99,11 +47,11 @@ STATIC_DIR = BASE_DIR / "app" / "static"
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
-# في التطوير: اجعل أي متغير غير معرّف في القالب يسبب خطأ واضحاً
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 if DEBUG:
     from jinja2 import StrictUndefined
     templates.env.undefined = StrictUndefined
+
 
 # ══════════════════════════════════════════════════════════════
 # OAuth / Session config
@@ -112,7 +60,6 @@ SECRET_KEY = os.getenv("SECRET_KEY", "").strip()
 _SECRET_KEY_FROM_ENV = bool(SECRET_KEY)
 
 if not SECRET_KEY:
-    # في التطوير فقط: ولّد قيمة ثابتة واطبعها، ثم ضعها في .env
     _dev_secret_file = Path(".dev_secret_key")
     if _dev_secret_file.exists():
         SECRET_KEY = _dev_secret_file.read_text().strip()
@@ -125,16 +72,8 @@ if not SECRET_KEY:
         )
 
 SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true"
-SESSION_MAX_AGE = int(os.getenv("SESSION_MAX_AGE", str(30 * 24 * 3600)))  # 30 يوم
-
-# ══════════════════════════════════════════════════════════════
-# Sliding session — يبقى المستخدم مسجّلاً طالما يزور الموقع
-# خلال هذه المدة، حتى لو تجاوز max_age الأصلي.
-# ══════════════════════════════════════════════════════════════
-SESSION_IDLE_TIMEOUT = int(os.getenv(
-    "SESSION_IDLE_TIMEOUT",
-    str(7 * 24 * 3600),  # 7 أيام — لا يخرج المستخدم إلا إذا غاب أسبوعاً كاملاً
-))
+SESSION_MAX_AGE = int(os.getenv("SESSION_MAX_AGE", str(30 * 24 * 3600)))
+SESSION_IDLE_TIMEOUT = int(os.getenv("SESSION_IDLE_TIMEOUT", str(7 * 24 * 3600)))
 
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
@@ -150,73 +89,329 @@ if OAUTH_ENABLED:
         client_kwargs={"scope": "openid email profile"},
     )
 
+
 # ══════════════════════════════════════════════════════════════
-# 5SIM API config
+# 5SIM — إعدادات
 # ══════════════════════════════════════════════════════════════
 SIM5_BASE = os.getenv("SIM5_BASE", "https://5sim.net/v1").rstrip("/")
 SIM5_API_KEY = os.getenv("SIM5_API_KEY", "").strip()
 SIM5_ENABLED = bool(SIM5_API_KEY)
 
-# كاش للأسعار (تحديث كل 60 ثانية)
-_PRICES_CACHE: dict[str, Any] = {
-    "data": None,
-    "fetched_at": 0.0,
-    "error": None,
+# كاش مشترك (60 ثانية للأسعار، 5 دقائق للدول)
+_SIM5_CACHE: dict[str, dict] = {
+    "prices": {"data": None, "at": 0.0},
+    "countries": {"data": None, "at": 0.0},
 }
-_PRICES_TTL = 60  # ثانية
-_PRICES_LOCK = asyncio.Lock()
+_SIM5_LOCK = asyncio.Lock()
 
-# ربط اسم الدولة عندنا → اسم 5SIM
-COUNTRY_TO_SIM5: dict[str, str] = {
-    "YE": "yemen",
-    "SA": "saudiarabia",
-    "EG": "egypt",
-    "US": "usa",
-    "GB": "england",
-    "DE": "germany",
-    "FR": "france",
-    "TR": "turkey",
-    "AE": "uae",
-    "IN": "india",
-    "BR": "brazil",
-    "ID": "indonesia",
+
+class Sim5Error(Exception):
+    """خطأ من 5SIM مع رمز الحالة ورسالة عربية واضحة."""
+    def __init__(self, status_code: int, message: str, endpoint: str = ""):
+        self.status = status_code
+        self.message = message
+        self.endpoint = endpoint
+        super().__init__(f"[{status_code}] {message} ({endpoint})")
+
+
+def _sim5_explain_400(text: str) -> str:
+    """ترجمة رسائل 400 الشائعة من 5SIM إلى العربية."""
+    t = text.lower()
+    if "no free phones" in t:
+        return "لا توجد أرقام متاحة حاليًا لهذه الدولة/الخدمة"
+    if "not enough user balance" in t:
+        return "رصيد 5SIM غير كافٍ"
+    if "not enough rating" in t:
+        return "تقييمك في 5SIM منخفض جدًا"
+    if "bad country" in t:
+        return "الدولة غير مدعومة في 5SIM"
+    if "bad operator" in t:
+        return "المشغل غير مدعوم في 5SIM"
+    if "no product" in t:
+        return "الخدمة غير مدعومة في 5SIM"
+    if "server offline" in t:
+        return "خادم 5SIM غير متصل"
+    if "select country" in t:
+        return "يجب تحديد الدولة"
+    if "select operator" in t:
+        return "يجب تحديد المشغل"
+    if "reuse not possible" in t or "reuse false" in t:
+        return "إعادة استخدام الرقم غير ممكنة"
+    if "reuse expired" in t:
+        return "انتهت صلاحية إعادة استخدام الرقم"
+    return f"خطأ من 5SIM: {text[:200]}"
+
+
+async def _sim5_get(path: str, auth: bool = False, timeout: float = 25.0) -> Any:
+    """استدعاء GET واحد إلى 5SIM مع ترجمة كاملة للأخطاء."""
+    if not SIM5_ENABLED and auth:
+        raise Sim5Error(503, "5SIM غير مفعّل — SIM5_API_KEY غير مضبوط", path)
+
+    url = f"{SIM5_BASE}{path}"
+    headers = {"Accept": "application/json"}
+    if auth and SIM5_API_KEY:
+        headers["Authorization"] = f"Bearer {SIM5_API_KEY}"
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            r = await client.get(url, headers=headers)
+    except httpx.TimeoutException:
+        raise Sim5Error(0, "انتهت مهلة الاتصال بـ 5SIM", path)
+    except httpx.RequestError as e:
+        raise Sim5Error(0, f"فشل الاتصال بـ 5SIM: {type(e).__name__}", path)
+
+    if r.status_code == 200:
+        try:
+            return r.json()
+        except Exception:
+            raise Sim5Error(200, "استجابة 5SIM ليست JSON صالحًا", path)
+
+    if r.status_code == 400:
+        raise Sim5Error(400, _sim5_explain_400(r.text), path)
+    if r.status_code == 401:
+        raise Sim5Error(401, "مفتاح 5SIM غير صالح أو منتهي", path)
+    if r.status_code == 403:
+        raise Sim5Error(403, "لا تملك صلاحية لهذا الإجراء في 5SIM", path)
+    if r.status_code == 404:
+        raise Sim5Error(404, "العنصر غير موجود في 5SIM", path)
+    if r.status_code == 429:
+        raise Sim5Error(429, "تجاوزت حد الطلبات (100/ثانية) — حاول بعد قليل", path)
+    if r.status_code == 503:
+        raise Sim5Error(503, "5SIM مشغول حاليًا أو تجاوزت حد الطلبات", path)
+    raise Sim5Error(r.status_code, f"استجابة غير متوقعة من 5SIM: {r.text[:200]}", path)
+
+
+async def _sim5_post(path: str, body: dict, timeout: float = 25.0) -> Any:
+    """استدعاء POST إلى 5SIM."""
+    if not SIM5_ENABLED:
+        raise Sim5Error(503, "5SIM غير مفعّل", path)
+    url = f"{SIM5_BASE}{path}"
+    headers = {
+        "Accept": "application/json",
+        "Authorization": f"Bearer {SIM5_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            r = await client.post(url, headers=headers, json=body)
+    except httpx.TimeoutException:
+        raise Sim5Error(0, "انتهت مهلة الاتصال بـ 5SIM", path)
+    except httpx.RequestError as e:
+        raise Sim5Error(0, f"فشل الاتصال بـ 5SIM: {type(e).__name__}", path)
+
+    if r.status_code == 200:
+        try:
+            return r.json()
+        except Exception:
+            return {}
+    if r.status_code == 400:
+        raise Sim5Error(400, _sim5_explain_400(r.text), path)
+    if r.status_code == 401:
+        raise Sim5Error(401, "مفتاح 5SIM غير صالح", path)
+    raise Sim5Error(r.status_code, r.text[:200], path)
+
+
+async def _sim5_delete(path: str, body: dict, timeout: float = 25.0) -> Any:
+    """استدعاء DELETE إلى 5SIM."""
+    if not SIM5_ENABLED:
+        raise Sim5Error(503, "5SIM غير مفعّل", path)
+    url = f"{SIM5_BASE}{path}"
+    headers = {
+        "Accept": "application/json",
+        "Authorization": f"Bearer {SIM5_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            r = await client.request("DELETE", url, headers=headers, json=body)
+    except httpx.RequestError as e:
+        raise Sim5Error(0, f"فشل الاتصال بـ 5SIM: {type(e).__name__}", path)
+
+    if r.status_code == 200:
+        try:
+            return r.json()
+        except Exception:
+            return {}
+    if r.status_code == 400:
+        raise Sim5Error(400, _sim5_explain_400(r.text), path)
+    raise Sim5Error(r.status_code, r.text[:200], path)
+
+
+# ── دوال مساعدة للعرض فقط (ليست بيانات) ──
+def _iso_to_flag(iso: str) -> str:
+    if not iso or len(iso) != 2:
+        return "🏳️"
+    return "".join(chr(0x1F1E6 + ord(c) - ord("A")) for c in iso.upper())
+
+
+_SERVICE_ICONS = {
+    "whatsapp": "💬", "telegram": "✈️", "google": "🔍", "facebook": "📘",
+    "twitter": "🐦", "instagram": "📷", "tiktok": "🎵", "amazon": "📦",
+    "snapchat": "👻", "discord": "🎮", "uber": "🚕", "netflix": "🎬",
+    "apple": "🍎", "microsoft": "🪟", "yahoo": "🟣", "steam": "🎮",
+    "binance": "🟡", "coinbase": "🔵", "paypal": "🅿️", "alipay": "🅰️",
+    "wechat": "💚", "line": "💚", "viber": "📞", "signal": "🔒",
+    "tinder": "❤️", "bumble": "🐝", "clubhouse": "🎙️", "twitch": "🎮",
+    "spotify": "🎵", "yandex": "🔴", "vk": "🔵", "ok": "🟠",
+    "airbnb": "🏠", "aliexpress": "🛒", "alibaba": "🏭", "ebay": "🛍️",
+    "walmart": "🛒", "target": "🎯", "bestbuy": "🛒", "costco": "🛒",
+    "openai": "🤖", "chatgpt": "🤖", "claudeai": "🤖", "gemini": "✨",
+    "deepseek": "🐋", "perplexity": "🔎", "poeai": "💬",
 }
 
-# ربط اسم الخدمة عندنا → اسم المنتج في 5SIM
-SERVICE_TO_SIM5: dict[str, str] = {
-    "whatsapp":  "whatsapp",
-    "telegram":  "telegram",
-    "google":    "google",
-    "facebook":  "facebook",
-    "twitter":   "twitter",
-    "instagram": "instagram",
-    "tiktok":    "tiktok",
-    "amazon":    "amazon",
-    "snapchat":  "snapchat",
-    "discord":   "discord",
-    "uber":      "uber",
-    "netflix":   "netflix",
-}
+def _service_icon(slug: str) -> str:
+    return _SERVICE_ICONS.get(slug.lower(), "📱")
+
+
+async def fetch_sim5_countries(force: bool = False) -> dict:
+    """GET /v1/guest/countries — قائمة الدول مع المشغلين."""
+    now = time.time()
+    cached = _SIM5_CACHE["countries"]
+    if not force and cached["data"] and (now - cached["at"]) < 300:
+        return cached["data"]
+
+    async with _SIM5_LOCK:
+        now = time.time()
+        if not force and cached["data"] and (now - cached["at"]) < 300:
+            return cached["data"]
+        data = await _sim5_get("/guest/countries", auth=False)
+        _SIM5_CACHE["countries"] = {"data": data, "at": time.time()}
+        return data
+
+
+async def fetch_sim5_prices(force: bool = False) -> dict:
+    """GET /v1/guest/prices — كل الأسعار الحية (بدون توثيق)."""
+    now = time.time()
+    cached = _SIM5_CACHE["prices"]
+    if not force and cached["data"] and (now - cached["at"]) < 60:
+        return cached["data"]
+
+    async with _SIM5_LOCK:
+        now = time.time()
+        if not force and cached["data"] and (now - cached["at"]) < 60:
+            return cached["data"]
+        data = await _sim5_get("/guest/prices", auth=False)
+        _SIM5_CACHE["prices"] = {"data": data, "at": time.time()}
+        return data
+
+
+async def build_live_catalog(force: bool = False) -> dict:
+    """
+    يبني كتالوج الدول والخدمات من 5SIM فقط.
+    يُرجع:
+      {
+        "ok": bool,
+        "countries": [ { slug, code, name, flag, prefix, services[], available, min_price, services_count } ],
+        "error": str | None,
+        "error_code": int | None,
+        "fetched_at": ISO | None,
+      }
+    """
+    if not SIM5_ENABLED:
+        return {
+            "ok": False,
+            "countries": [],
+            "error": "SIM5_API_KEY غير مضبوط في متغيرات البيئة",
+            "error_code": None,
+            "fetched_at": None,
+        }
+
+    try:
+        raw_countries = await fetch_sim5_countries(force=force)
+        raw_prices = await fetch_sim5_prices(force=force)
+    except Sim5Error as e:
+        return {
+            "ok": False,
+            "countries": [],
+            "error": e.message,
+            "error_code": e.status,
+            "fetched_at": None,
+        }
+
+    countries_out: list[dict] = []
+
+    for country_slug, cmeta in raw_countries.items():
+        iso_raw = cmeta.get("iso") or {}
+        iso = next(iter(iso_raw.keys()), "").upper() if isinstance(iso_raw, dict) else ""
+        prefix_raw = cmeta.get("prefix") or {}
+        prefix = next(iter(prefix_raw.keys()), "") if isinstance(prefix_raw, dict) else ""
+        name_en = cmeta.get("text_en") or country_slug
+
+        country_prices = raw_prices.get(country_slug) or {}
+        services: list[dict] = []
+
+        for product_slug, operators in country_prices.items():
+            best = None
+            for op_name, info in (operators or {}).items():
+                try:
+                    cost = float(info.get("cost", 0))
+                    count = int(info.get("count", 0))
+                    rate = float(info["rate"]) if info.get("rate") else None
+                except (TypeError, ValueError):
+                    continue
+                if count <= 0 or cost <= 0:
+                    continue
+                if best is None or cost < best["cost"]:
+                    best = {
+                        "cost": cost,
+                        "count": count,
+                        "rate": rate,
+                        "operator": op_name,
+                    }
+
+            services.append({
+                "id": product_slug,
+                "name": product_slug,
+                "icon": _service_icon(product_slug),
+                "cost": best["cost"] if best else None,
+                "count": best["count"] if best else 0,
+                "rate": best["rate"] if best else None,
+                "operator": best["operator"] if best else None,
+                "available": best is not None,
+            })
+
+        services.sort(key=lambda s: (not s["available"], s["cost"] or 999))
+        available_services = [s for s in services if s["available"]]
+
+        countries_out.append({
+            "code": iso or country_slug,
+            "slug": country_slug,
+            "name": name_en,
+            "flag": _iso_to_flag(iso),
+            "prefix": prefix,
+            "services": services,
+            "available": sum(s["count"] for s in available_services),
+            "min_price": min((s["cost"] for s in available_services), default=None),
+            "services_count": len(available_services),
+        })
+
+    countries_out.sort(key=lambda c: (-c["services_count"], c["name"]))
+
+    return {
+        "ok": True,
+        "countries": countries_out,
+        "error": None,
+        "error_code": None,
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+    }
+
 
 # ══════════════════════════════════════════════════════════════
-# ⚠️  المسارات العامة (لا تحتاج تسجيل دخول)
+# Public / Protected paths
 # ══════════════════════════════════════════════════════════════
 PUBLIC_PATHS = (
     "/health",
     "/status",
-    "/logout",              # ✅ يجب أن يعمل بدون تسجيل دخول
-    "/auth/google",         # ✅ مهم لـ OAuth
+    "/logout",
+    "/auth/google",
     "/auth/google/callback",
     "/auth/logout",
     "/static",
     "/favicon.ico",
     "/api/v1/system",
-    "/api/v1/prices",       # الأسعار عامة (يمكن للزائر رؤيتها)
+    "/api/v1/prices",
 )
 
-# ══════════════════════════════════════════════════════════════
-# المسارات المحمية (تحتاج تسجيل دخول)
-# ══════════════════════════════════════════════════════════════
 PROTECTED_PREFIXES = (
     "/dashboard",
     "/buy",
@@ -231,8 +426,9 @@ PROTECTED_PREFIXES = (
     "/security",
 )
 
+
 # ══════════════════════════════════════════════════════════════
-# Keepalive state
+# Keepalive
 # ══════════════════════════════════════════════════════════════
 KA_INTERVAL = 420
 START_TIME = time.time()
@@ -253,8 +449,9 @@ HISTORY_MAX = 20
 _alert_flag = {"down": False}
 _subscribers: set[asyncio.Queue] = set()
 
+
 # ══════════════════════════════════════════════════════════════
-# إحصائيات الطلبات (للتشخيص)
+# Request stats (diagnostics)
 # ══════════════════════════════════════════════════════════════
 _REQUEST_STATS: dict[str, Any] = {
     "total": 0,
@@ -274,7 +471,6 @@ _401_LOCK = asyncio.Lock()
 
 
 async def _record_401(path: str, ua: str, referer: str) -> None:
-    """يسجل إحصائيات طلبات 401 للتشخيص."""
     async with _401_LOCK:
         _REQUEST_STATS["protected_401"] += 1
         _REQUEST_STATS["last_401"] = _now_iso()
@@ -286,7 +482,6 @@ async def _record_401(path: str, ua: str, referer: str) -> None:
 
 
 async def _record_redirect(path: str) -> None:
-    """يسجل إحصائيات التحويلات 303."""
     async with _401_LOCK:
         _REQUEST_STATS["protected_redirect"] += 1
         top = _REQUEST_STATS["top_redirect_paths"]
@@ -294,7 +489,6 @@ async def _record_redirect(path: str) -> None:
 
 
 async def _record_expired(path: str) -> None:
-    """يسجل إحصائيات الجلسات المنتهية بسبب الخمول."""
     async with _401_LOCK:
         _REQUEST_STATS["session_expired"] += 1
         _REQUEST_STATS["last_expired"] = _now_iso()
@@ -315,19 +509,12 @@ def _now_iso() -> str:
 
 
 def _is_safe_next(next_url: str) -> bool:
-    """
-    يتحقق أن next_url آمن (يمنع Open Redirect).
-    يجب أن يكون مساراً داخلياً يبدأ بـ / وليس //.
-    """
     if not next_url:
         return False
     if not next_url.startswith("/"):
         return False
-    if next_url.startswith("//"):
+    if next_url.startswith("//") or next_url.startswith("/\\"):
         return False
-    if next_url.startswith("/\\"):
-        return False
-    # لا يسمح بـ protocol أو host
     parsed = urlparse(next_url)
     if parsed.scheme or parsed.netloc:
         return False
@@ -335,19 +522,12 @@ def _is_safe_next(next_url: str) -> bool:
 
 
 def _session_is_expired(request: Request) -> bool:
-    """
-    يفحص إذا كانت الجلسة منتهية بسبب الخمول.
-
-    - إذا تجاوز آخر نشاط (_last_seen) مدة SESSION_IDLE_TIMEOUT → True.
-    - إذا لم يوجد _last_seen (جلسة قديمة قبل التحديث) → False (لأننا سنضيفه الآن).
-    """
     try:
         last_seen_iso = request.session.get("_last_seen")
     except Exception:
         return True
 
     if not last_seen_iso:
-        # جلسة قديمة بدون _last_seen → اعتبرها صالحة، وسيُضاف الآن
         return False
 
     try:
@@ -358,9 +538,7 @@ def _session_is_expired(request: Request) -> bool:
         return True
 
     now = datetime.now(timezone.utc)
-    idle_seconds = (now - last_seen).total_seconds()
-
-    return idle_seconds > SESSION_IDLE_TIMEOUT
+    return (now - last_seen).total_seconds() > SESSION_IDLE_TIMEOUT
 
 
 def _push_history(ok: bool) -> None:
@@ -430,31 +608,29 @@ async def _keepalive_loop(app: FastAPI) -> None:
 # ══════════════════════════════════════════════════════════════
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # ── فحص إعدادات حرجة عند بدء التشغيل ──
     if _SECRET_KEY_FROM_ENV:
-        print("✅ SECRET_KEY مضبوط من متغيرات البيئة — الجلسات ستبقى بين النشرات.")
+        print("✅ SECRET_KEY مضبوط من متغيرات البيئة.")
     else:
-        print(
-            "🔴 تحذير: SECRET_KEY غير مضبوط في متغيرات البيئة! "
-            "كل إعادة نشر ستُبطل جميع الجلسات. "
-            "أضف SECRET_KEY إلى Environment على Render."
-        )
+        print("🔴 تحذير: SECRET_KEY غير مضبوط في متغيرات البيئة!")
 
     if not OAUTH_ENABLED:
-        print("⚠️  OAuth معطّل (GOOGLE_CLIENT_ID/SECRET غير مضبوطة) — وضع تجريبي.")
+        print("⚠️  OAuth معطّل (GOOGLE_CLIENT_ID/SECRET غير مضبوطة).")
     else:
         print(f"✅ OAuth مفعّل — Client ID: {GOOGLE_CLIENT_ID[:20]}...")
 
     if SIM5_ENABLED:
         print(f"✅ 5SIM مفعّل — Base: {SIM5_BASE}")
+        # فحص المفتاح عند البدء
+        try:
+            profile = await _sim5_get("/user/profile", auth=True)
+            print(f"✅ 5SIM profile: balance={profile.get('balance')} rating={profile.get('rating')}")
+        except Sim5Error as e:
+            print(f"⚠️  5SIM profile check failed: [{e.status}] {e.message}")
     else:
-        print("⚠️  5SIM معطّل (SIM5_API_KEY غير مضبوط) — سيتم استخدام الأسعار الثابتة.")
+        print("🔴 5SIM معطّل — SIM5_API_KEY غير مضبوط. لن تُعرض أي بيانات.")
 
     idle_days = SESSION_IDLE_TIMEOUT / 86400
-    print(f"🔧 DEBUG={DEBUG} | SESSION_COOKIE_SECURE={SESSION_COOKIE_SECURE} "
-          f"| SESSION_MAX_AGE={SESSION_MAX_AGE}s "
-          f"| SESSION_IDLE_TIMEOUT={SESSION_IDLE_TIMEOUT}s ({idle_days:.1f} يوم) "
-          f"| Version={app.version}")
+    print(f"🔧 DEBUG={DEBUG} | Version={app.version} | Idle={idle_days:.1f}d")
 
     task = asyncio.create_task(_keepalive_loop(app))
     try:
@@ -473,7 +649,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Jamal Solutions — Customer Portal",
     description="Virtual Numbers Platform",
-    version="1.0.7",
+    version="1.1.0",
     lifespan=lifespan,
 )
 
@@ -482,261 +658,24 @@ if STATIC_DIR.exists():
 
 
 # ══════════════════════════════════════════════════════════════
-# In-memory store (replace with DB later)
+# In-memory store — لا بيانات تجريبية، تُملأ من OAuth ومن 5SIM فقط
 # ══════════════════════════════════════════════════════════════
 STORE: dict[str, Any] = {
-    "customers": {
-        1: {
-            "id": 1,
-            "name": "أحمد محمد",
-            "email": "ahmed@example.com",
-            "phone": "+967 777 000 000",
-            "country": "YE",
-            "initials": "أم",
-            "balance": 0.0,
-            "currency": "USD",
-            "created_at": "2025-01-15",
-            "email_verified": True,
-            "phone_verified": False,
-            "two_fa_enabled": False,
-            "has_strong_password": True,
-            "security_score": 60,
-            "prefs": {
-                "email_notifications": True,
-                "sms_notifications": False,
-                "marketing_emails": False,
-            },
-        },
-    },
+    "customers": {},
     "numbers": [],
     "orders": [],
     "sms": [],
     "transactions": [],
     "deposits": [],
     "tickets": [],
-    "sessions": [
-        {
-            "id": "s1",
-            "device": "desktop",
-            "device_name": "Chrome · Windows",
-            "location": "اليمن، صنعاء",
-            "last_active": "الآن",
-            "current": True,
-        },
-    ],
+    "sessions": [],
 }
 
 
 # ══════════════════════════════════════════════════════════════
-# Catalogs
-# ══════════════════════════════════════════════════════════════
-COUNTRIES: list[dict] = [
-    {"code": "YE", "name": "اليمن",          "flag": "🇾🇪", "continent": "asia",    "continent_label": "آسيا",    "price": "$0.50", "available": 42, "min_price": 0.50, "services_count": 8,  "top_services": ["واتساب", "تليجرام", "جوجل"]},
-    {"code": "SA", "name": "السعودية",       "flag": "🇸🇦", "continent": "asia",    "continent_label": "آسيا",    "price": "$0.70", "available": 85, "min_price": 0.70, "services_count": 12, "top_services": ["واتساب", "سناب شات", "جوجل"]},
-    {"code": "EG", "name": "مصر",            "flag": "🇪🇬", "continent": "africa",  "continent_label": "أفريقيا", "price": "$0.60", "available": 63, "min_price": 0.60, "services_count": 10, "top_services": ["واتساب", "تليجرام", "فيسبوك"]},
-    {"code": "US", "name": "الولايات المتحدة","flag": "🇺🇸", "continent": "america", "continent_label": "أمريكا",  "price": "$1.20", "available": 210,"min_price": 1.20, "services_count": 25, "top_services": ["واتساب", "جوجل", "أمازون"]},
-    {"code": "GB", "name": "المملكة المتحدة","flag": "🇬🇧", "continent": "europe",  "continent_label": "أوروبا",  "price": "$1.10", "available": 156,"min_price": 1.10, "services_count": 22, "top_services": ["واتساب", "جوجل", "تويتر"]},
-    {"code": "DE", "name": "ألمانيا",         "flag": "🇩🇪", "continent": "europe",  "continent_label": "أوروبا",  "price": "$1.00", "available": 130,"min_price": 1.00, "services_count": 18, "top_services": ["واتساب", "تليجرام", "أمازون"]},
-    {"code": "FR", "name": "فرنسا",           "flag": "🇫🇷", "continent": "europe",  "continent_label": "أوروبا",  "price": "$1.05", "available": 118,"min_price": 1.05, "services_count": 17, "top_services": ["واتساب", "جوجل", "فيسبوك"]},
-    {"code": "TR", "name": "تركيا",           "flag": "🇹🇷", "continent": "asia",    "continent_label": "آسيا",    "price": "$0.80", "available": 92, "min_price": 0.80, "services_count": 14, "top_services": ["واتساب", "تليجرام", "إنستغرام"]},
-    {"code": "AE", "name": "الإمارات",        "flag": "🇦🇪", "continent": "asia",    "continent_label": "آسيا",    "price": "$0.95", "available": 74, "min_price": 0.95, "services_count": 13, "top_services": ["واتساب", "تليجرام", "جوجل"]},
-    {"code": "IN", "name": "الهند",           "flag": "🇮🇳", "continent": "asia",    "continent_label": "آسيا",    "price": "$0.40", "available": 320,"min_price": 0.40, "services_count": 20, "top_services": ["واتساب", "تليجرام", "فيسبوك"]},
-    {"code": "BR", "name": "البرازيل",        "flag": "🇧🇷", "continent": "america", "continent_label": "أمريكا",  "price": "$0.85", "available": 145,"min_price": 0.85, "services_count": 16, "top_services": ["واتساب", "تليجرام", "إنستغرام"]},
-    {"code": "ID", "name": "إندونيسيا",       "flag": "🇮🇩", "continent": "asia",    "continent_label": "آسيا",    "price": "$0.45", "available": 260,"min_price": 0.45, "services_count": 19, "top_services": ["واتساب", "تليجرام", "تيك توك"]},
-]
-
-SERVICES: list[dict] = [
-    {"id": "whatsapp",  "name": "واتساب",   "icon": "💬"},
-    {"id": "telegram",  "name": "تليجرام",  "icon": "✈️"},
-    {"id": "google",    "name": "جوجل",     "icon": "🔍"},
-    {"id": "facebook",  "name": "فيسبوك",   "icon": "📘"},
-    {"id": "twitter",   "name": "تويتر",    "icon": "🐦"},
-    {"id": "instagram", "name": "إنستغرام", "icon": "📷"},
-    {"id": "tiktok",    "name": "تيك توك",  "icon": "🎵"},
-    {"id": "amazon",    "name": "أمازون",   "icon": "📦"},
-    {"id": "snapchat",  "name": "سناب شات", "icon": "👻"},
-    {"id": "discord",   "name": "ديسكورد",  "icon": "🎮"},
-    {"id": "uber",      "name": "أوبر",     "icon": "🚕"},
-    {"id": "netflix",   "name": "نتفليكس",  "icon": "🎬"},
-]
-
-PAYMENT_METHODS: list[dict] = [
-    {"id": "card",   "name": "بطاقة بنكية", "icon": "💳", "description": "Visa · Mastercard"},
-    {"id": "paypal", "name": "PayPal",      "icon": "🅿️", "description": "دفع آمن"},
-    {"id": "crypto", "name": "عملة رقمية",  "icon": "₿",  "description": "BTC · USDT · ETH"},
-    {"id": "local",  "name": "محفظة محلية", "icon": "📱", "description": "جوالي · كاش · وغيرها"},
-]
-
-FAQS: list[dict] = [
-    {"question": "كيف أستلم الرقم بعد الشراء؟",
-     "answer": "يظهر الرقم مباشرة في صفحة (أرقامي) ويمكنك استخدامه فورًا."},
-    {"question": "كم يستغرق وصول الرسالة؟",
-     "answer": "عادة خلال 30 ثانية إلى دقيقتين، وقد يتأخر بعض المزودين حتى 10 دقائق."},
-    {"question": "هل يمكنني استرداد المبلغ؟",
-     "answer": "نعم، إذا لم تصل أي رسالة خلال ساعة من الشراء، يتم استرداد كامل المبلغ تلقائيًا."},
-    {"question": "ما مدة صلاحية الرقم؟",
-     "answer": "20 دقيقة افتراضيًا من لحظة الشراء، ويمكن تجديده."},
-]
-
-COUNTRIES_BY_CODE = {c["code"]: c for c in COUNTRIES}
-SERVICES_BY_ID = {s["id"]: s for s in SERVICES}
-
-
-# ══════════════════════════════════════════════════════════════
-# 5SIM Prices fetcher (with cache)
-# ══════════════════════════════════════════════════════════════
-async def fetch_sim5_prices(force: bool = False) -> dict:
-    """
-    يجلب الأسعار من 5SIM (guest/prices) مع كاش 60 ثانية.
-    يُرجع الشكل الخام: {country: {product: {operator: {cost,count,rate}}}}
-    """
-    now = time.time()
-    if (
-        not force
-        and _PRICES_CACHE["data"] is not None
-        and (now - _PRICES_CACHE["fetched_at"]) < _PRICES_TTL
-    ):
-        return _PRICES_CACHE["data"]
-
-    async with _PRICES_LOCK:
-        # double-check بعد الحصول على القفل
-        now = time.time()
-        if (
-            not force
-            and _PRICES_CACHE["data"] is not None
-            and (now - _PRICES_CACHE["fetched_at"]) < _PRICES_TTL
-        ):
-            return _PRICES_CACHE["data"]
-
-        if not SIM5_ENABLED:
-            _PRICES_CACHE["error"] = "SIM5_API_KEY غير مضبوط"
-            return {}
-
-        try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                r = await client.get(
-                    f"{SIM5_BASE}/guest/prices",
-                    headers={
-                        "Accept": "application/json",
-                        "Authorization": f"Bearer {SIM5_API_KEY}",
-                    },
-                )
-                r.raise_for_status()
-                data = r.json()
-                _PRICES_CACHE["data"] = data
-                _PRICES_CACHE["fetched_at"] = time.time()
-                _PRICES_CACHE["error"] = None
-                return data
-        except Exception as exc:
-            _PRICES_CACHE["error"] = f"{type(exc).__name__}: {exc}"
-            print(f"⚠️  فشل جلب أسعار 5SIM: {_PRICES_CACHE['error']}")
-            return _PRICES_CACHE["data"] or {}
-
-
-def _best_offer_for(
-    raw: dict, country_name: str, product_name: str
-) -> dict | None:
-    """
-    من الشكل الخام لـ 5SIM، استخرج أفضل عرض (أرخص سعر مع توفّر > 0).
-    يُرجع: {cost, count, rate, operator} أو None.
-    """
-    country = raw.get(country_name) or {}
-    product = country.get(product_name) or {}
-    if not product:
-        return None
-
-    best = None
-    for operator, info in product.items():
-        try:
-            cost = float(info.get("cost", 0))
-            count = int(info.get("count", 0))
-            rate = float(info.get("rate", 0))
-        except (TypeError, ValueError):
-            continue
-        if count <= 0 or cost <= 0:
-            continue
-        if best is None or cost < best["cost"]:
-            best = {
-                "cost": cost,
-                "count": count,
-                "rate": rate,
-                "operator": operator,
-            }
-    return best
-
-
-async def build_country_prices() -> list[dict]:
-    """
-    يبني قائمة الدول مع أفضل سعر لكل خدمة من الخدمات المدعومة.
-    كل عنصر: {"code","name","flag","continent","continent_label",
-              "min_price","available","services":[{"id","name","icon",
-              "cost","count","rate","operator","available"}]}
-    """
-    raw = await fetch_sim5_prices()
-    sim5_ok = bool(raw)
-
-    out: list[dict] = []
-    for c in COUNTRIES:
-        sim5_country = COUNTRY_TO_SIM5.get(c["code"])
-        services_out: list[dict] = []
-
-        for s in SERVICES:
-            sim5_product = SERVICE_TO_SIM5.get(s["id"])
-            offer = None
-            if sim5_ok and sim5_country and sim5_product:
-                offer = _best_offer_for(raw, sim5_country, sim5_product)
-
-            if offer:
-                services_out.append({
-                    "id": s["id"],
-                    "name": s["name"],
-                    "icon": s["icon"],
-                    "cost": offer["cost"],
-                    "count": offer["count"],
-                    "rate": offer["rate"],
-                    "operator": offer["operator"],
-                    "available": True,
-                })
-            else:
-                # fallback للبيانات الثابتة
-                services_out.append({
-                    "id": s["id"],
-                    "name": s["name"],
-                    "icon": s["icon"],
-                    "cost": c["min_price"],
-                    "count": c["available"],
-                    "rate": None,
-                    "operator": None,
-                    "available": False,
-                })
-
-        # أفضل سعر للدولة = أرخص خدمة متوفرة
-        avail = [s for s in services_out if s["available"]]
-        if avail:
-            best = min(avail, key=lambda x: x["cost"])
-            min_price = best["cost"]
-            available = sum(s["count"] for s in avail)
-        else:
-            min_price = c["min_price"]
-            available = c["available"]
-
-        out.append({
-            **c,
-            "min_price": min_price,
-            "price": f"${min_price:.2f}",
-            "available": available,
-            "services": services_out,
-            "sim5_country": sim5_country,
-        })
-
-    return out
-
-
-# ══════════════════════════════════════════════════════════════
-# Current customer helpers
+# Customer helpers
 # ══════════════════════════════════════════════════════════════
 def _get_customer_from_session(request: Request) -> dict | None:
-    """يرجع بيانات العميل المسجّل من الجلسة، أو None."""
     cid = request.session.get("customer_id")
     if cid and cid in STORE["customers"]:
         return STORE["customers"][cid]
@@ -744,21 +683,17 @@ def _get_customer_from_session(request: Request) -> dict | None:
 
 
 async def get_current_customer(request: Request) -> dict:
-    """للصفحات المحمية — يفترض أن middleware قد تحقق من الجلسة."""
     customer = _get_customer_from_session(request)
     if customer is None:
         raise HTTPException(status_code=401, detail="غير مسجّل")
     return customer
 
 
-# ══════════════════════════════════════════════════════════════
-# Data aggregators
-# ══════════════════════════════════════════════════════════════
 async def get_my_stats(customer_id: int) -> dict:
     nums = [n for n in STORE["numbers"] if n["customer_id"] == customer_id]
     ords = [o for o in STORE["orders"] if o["customer_id"] == customer_id]
-    sms  = [s for s in STORE["sms"] if s["customer_id"] == customer_id]
-    txs  = [t for t in STORE["transactions"] if t["customer_id"] == customer_id]
+    sms = [s for s in STORE["sms"] if s["customer_id"] == customer_id]
+    txs = [t for t in STORE["transactions"] if t["customer_id"] == customer_id]
 
     today = datetime.now(timezone.utc).date()
     sms_today = sum(
@@ -766,9 +701,7 @@ async def get_my_stats(customer_id: int) -> dict:
         if datetime.fromisoformat(s["created_at"]).date() == today
     )
 
-    total_spent = sum(
-        -t["amount"] for t in txs if t["type"] == "purchase"
-    )
+    total_spent = sum(-t["amount"] for t in txs if t["type"] == "purchase")
     month_start = today.replace(day=1)
     spent_this_month = sum(
         -t["amount"] for t in txs
@@ -777,49 +710,20 @@ async def get_my_stats(customer_id: int) -> dict:
     )
 
     return {
-        # الأرقام
-        "my_numbers":        len(nums),
-        "active_numbers":    sum(1 for n in nums if n["status"] == "active"),
-        "expiring_soon":     sum(1 for n in nums if n["status"] == "expiring"),
-        # الطلبات — aliases للتماثل مع القوالب
-        "my_orders":         len(ords),
-        "total_orders":      len(ords),
-        "pending_orders":    sum(1 for o in ords if o["status"] == "pending"),
-        "active_orders":     sum(1 for o in ords if o["status"] == "active"),
-        "completed_orders":  sum(1 for o in ords if o["status"] == "completed"),
-        # الرسائل
-        "my_sms":            len(sms),
-        "sms_today":         sms_today,
-        "unread_sms":        sum(1 for s in sms if not s["read"]),
-        # المالية
-        "total_spent":       total_spent,
-        "spent_this_month":  spent_this_month,
+        "my_numbers": len(nums),
+        "active_numbers": sum(1 for n in nums if n["status"] == "active"),
+        "expiring_soon": sum(1 for n in nums if n["status"] == "expiring"),
+        "my_orders": len(ords),
+        "total_orders": len(ords),
+        "pending_orders": sum(1 for o in ords if o["status"] in ("PENDING", "pending")),
+        "active_orders": sum(1 for o in ords if o["status"] in ("RECEIVED", "active")),
+        "completed_orders": sum(1 for o in ords if o["status"] in ("FINISHED", "completed")),
+        "my_sms": len(sms),
+        "sms_today": sms_today,
+        "unread_sms": sum(1 for s in sms if not s["read"]),
+        "total_spent": total_spent,
+        "spent_this_month": spent_this_month,
     }
-
-
-async def get_my_orders_by_status(customer_id: int) -> dict:
-    buckets = {"pending": 0, "active": 0, "completed": 0, "expired": 0, "cancelled": 0}
-    for o in STORE["orders"]:
-        if o["customer_id"] == customer_id and o["status"] in buckets:
-            buckets[o["status"]] += 1
-    return buckets
-
-
-async def get_my_top_services(customer_id: int) -> list[dict]:
-    counts: dict[str, int] = {}
-    for n in STORE["numbers"]:
-        if n["customer_id"] == customer_id:
-            counts[n["service_id"]] = counts.get(n["service_id"], 0) + 1
-
-    rows = []
-    for s in SERVICES:
-        rows.append({
-            "name":  s["name"],
-            "icon":  s["icon"],
-            "count": counts.get(s["id"], 0),
-        })
-    rows.sort(key=lambda r: r["count"], reverse=True)
-    return rows[:5]
 
 
 async def get_my_numbers(customer_id: int) -> list[dict]:
@@ -836,8 +740,8 @@ async def get_my_recent_sms(customer_id: int, limit: int = 20) -> list[dict]:
 # Pydantic models
 # ══════════════════════════════════════════════════════════════
 class OrderCreate(BaseModel):
-    country: str
-    service: str
+    country: str      # slug من 5SIM
+    service: str      # product slug من 5SIM
 
 
 class DepositCreate(BaseModel):
@@ -869,7 +773,7 @@ class PreferencesUpdate(BaseModel):
 
 
 # ══════════════════════════════════════════════════════════════
-# System routes (public)
+# System routes
 # ══════════════════════════════════════════════════════════════
 @app.get("/health")
 async def health():
@@ -882,10 +786,6 @@ async def health():
 
 @app.get("/api/v1/system/health-check")
 async def health_check():
-    """
-    نقطة نهاية مخصصة لـ Render Health Check.
-    استخدمها كـ Health Check Path في Render Dashboard.
-    """
     return {
         "status": "healthy",
         "version": app.version,
@@ -896,54 +796,62 @@ async def health_check():
 
 @app.get("/api/v1/system/version")
 async def system_version():
-    """للتأكد من أن الكود الجديد فعلاً منشور."""
+    sim5_info: dict[str, Any] = {"enabled": SIM5_ENABLED}
+    if SIM5_ENABLED:
+        try:
+            p = await _sim5_get("/user/profile", auth=True)
+            sim5_info.update({
+                "balance": p.get("balance"),
+                "rating": p.get("rating"),
+                "email": p.get("email"),
+                "vendor": p.get("vendor"),
+                "ok": True,
+            })
+        except Sim5Error as e:
+            sim5_info.update({
+                "ok": False,
+                "error": e.message,
+                "error_code": e.status,
+            })
     return {
         "version": app.version,
-        "has_stats_fix": True,
-        "has_auth_guard_fix": True,
-        "has_me_stats": True,
-        "has_detailed_logging": True,
-        "has_health_check": True,
-        "has_sim5_prices": True,
-        "has_login_redirect_fix": True,
-        "has_sliding_session": True,          # ✅ جديد
-        "session_idle_timeout_seconds": SESSION_IDLE_TIMEOUT,
-        "session_idle_timeout_days": round(SESSION_IDLE_TIMEOUT / 86400, 2),
-        "sim5_enabled": SIM5_ENABLED,
-        "sim5_cached": _PRICES_CACHE["data"] is not None,
-        "sim5_error": _PRICES_CACHE["error"],
+        "pure_sim5_read": True,
+        "has_live_catalog": True,
+        "has_real_purchase": True,
+        "has_check_order": True,
+        "has_cancel_finish": True,
+        "sim5": sim5_info,
         "debug": DEBUG,
         "oauth_enabled": OAUTH_ENABLED,
         "secret_key_from_env": _SECRET_KEY_FROM_ENV,
-        "session_cookie_secure": SESSION_COOKIE_SECURE,
+        "session_idle_timeout_seconds": SESSION_IDLE_TIMEOUT,
         "uptime": _fmt_uptime(time.time() - START_TIME),
-        "started_at": datetime.fromtimestamp(START_TIME, tz=timezone.utc).isoformat(),
     }
 
 
-@app.get("/api/v1/system/middleware-order")
-async def middleware_order():
-    """
-    يعرض ترتيب middleware الفعلي كما يراه Starlette.
-    مفيد للتأكد أن SessionMiddleware قبل auth_guard.
-    """
-    middlewares = []
-    for m in app.user_middleware:
-        middlewares.append({
-            "cls": m.cls.__name__ if hasattr(m, "cls") else str(m),
-            "options": {k: str(v)[:50] for k, v in (m.options or {}).items()},
-        })
+@app.get("/api/v1/system/sim5-profile")
+async def sim5_profile():
+    """الرصيد والتقييم الحقيقيان من 5SIM."""
+    if not SIM5_ENABLED:
+        raise HTTPException(503, "5SIM غير مفعّل — SIM5_API_KEY غير مضبوط")
+    try:
+        p = await _sim5_get("/user/profile", auth=True)
+    except Sim5Error as e:
+        raise HTTPException(e.status or 503, e.message)
     return {
-        "order": middlewares,
-        "note": "آخر middleware في القائمة يُنفَّذ أولاً عند استقبال الطلب",
-        "expected": "SessionMiddleware يجب أن يكون بعد auth_guard في هذه القائمة",
+        "ok": True,
+        "balance": p.get("balance"),
+        "frozen_balance": p.get("frozen_balance"),
+        "rating": p.get("rating"),
+        "email": p.get("email"),
+        "vendor": p.get("vendor"),
+        "default_country": p.get("default_country"),
+        "default_operator": p.get("default_operator"),
     }
 
 
 @app.get("/api/v1/system/whoami")
 async def whoami(request: Request):
-    """يرجع محتوى الجلسة الحالية (بدون بيانات حساسة) للتشخيص."""
-    # فحص الخمول
     idle_seconds = None
     try:
         ls = request.session.get("_last_seen")
@@ -961,53 +869,19 @@ async def whoami(request: Request):
         "customer_id": request.session.get("customer_id"),
         "email": request.session.get("email"),
         "name": request.session.get("name"),
-        "logged_in_at": request.session.get("logged_in_at"),
         "last_seen": request.session.get("_last_seen"),
         "idle_seconds": idle_seconds,
         "idle_timeout_seconds": SESSION_IDLE_TIMEOUT,
         "is_expired": _session_is_expired(request) if request.session else None,
         "cookies_received": sorted(request.cookies.keys()),
         "user_agent": request.headers.get("user-agent", "")[:120],
-        "accept": request.headers.get("accept", ""),
-        "referer": request.headers.get("referer", ""),
         "host": request.headers.get("host", ""),
-        "x_forwarded_for": request.headers.get("x-forwarded-for", ""),
-        "x_forwarded_proto": request.headers.get("x-forwarded-proto", ""),
         "client_host": request.client.host if request.client else None,
-    }
-
-
-@app.get("/api/v1/system/whoami-detailed")
-async def whoami_detailed(request: Request):
-    """تشخيص مفصّل: يعرض كل الترويسات + حالة الطلب + إحصائيات 401."""
-    return {
-        "request": {
-            "method": request.method,
-            "url": str(request.url),
-            "path": request.url.path,
-            "query": dict(request.query_params),
-            "client_host": request.client.host if request.client else None,
-        },
-        "headers": {
-            k: (v[:200] if isinstance(v, str) else v)
-            for k, v in request.headers.items()
-        },
-        "cookies": {
-            k: f"<{len(v)} chars>" for k, v in request.cookies.items()
-        },
-        "session": {
-            "has_session": bool(request.session),
-            "keys": sorted(request.session.keys()),
-            "customer_id": request.session.get("customer_id"),
-        },
-        "request_stats": _REQUEST_STATS,
-        "uptime": _fmt_uptime(time.time() - START_TIME),
     }
 
 
 @app.get("/api/v1/system/request-stats")
 async def request_stats():
-    """إحصائيات طلبات 401 — لمعرفة المصدر."""
     return _REQUEST_STATS
 
 
@@ -1022,21 +896,16 @@ async def status_page(request: Request):
         for h in reversed(history)
     ) or "<tr><td colspan=2>لا توجد بيانات بعد</td></tr>"
 
-    # إحصائيات 401
-    top_401 = _REQUEST_STATS.get("top_401_paths", {})
-    top_401_rows = "".join(
-        f"<tr><td>{p}</td><td>{c}</td></tr>"
-        for p, c in sorted(top_401.items(), key=lambda x: -x[1])[:10]
-    ) or "<tr><td colspan=2>لا توجد</td></tr>"
-
-    # إحصائيات التحويلات
-    top_redirect = _REQUEST_STATS.get("top_redirect_paths", {})
-    top_redirect_rows = "".join(
-        f"<tr><td>{p}</td><td>{c}</td></tr>"
-        for p, c in sorted(top_redirect.items(), key=lambda x: -x[1])[:10]
-    ) or "<tr><td colspan=2>لا توجد</td></tr>"
-
-    idle_days = SESSION_IDLE_TIMEOUT / 86400
+    sim5_status = "🔴 معطّل"
+    sim5_detail = "SIM5_API_KEY غير مضبوط"
+    if SIM5_ENABLED:
+        try:
+            p = await _sim5_get("/user/profile", auth=True)
+            sim5_status = f"✅ متصل — رصيد: {p.get('balance')} — تقييم: {p.get('rating')}"
+            sim5_detail = f"vendor: {p.get('vendor')}"
+        except Sim5Error as e:
+            sim5_status = f"⚠️ خطأ [{e.status}]"
+            sim5_detail = e.message
 
     html = f"""<!doctype html>
 <html lang="ar" dir="rtl">
@@ -1047,7 +916,6 @@ async def status_page(request: Request):
     body {{ font-family: system-ui, sans-serif; padding: 2rem; background:#f8fafc; color:#1e293b; }}
     .card {{ background:#fff; border-radius:12px; padding:1.5rem; box-shadow:0 1px 3px rgba(0,0,0,.08); max-width:720px; margin:auto 0 1rem; }}
     h1 {{ font-size:1.25rem; margin:0 0 1rem; }}
-    h2 {{ font-size:1rem; margin:1rem 0 .5rem; color:#475569; }}
     table {{ width:100%; border-collapse:collapse; font-size:14px; }}
     td {{ padding:8px; border-bottom:1px solid #e2e8f0; }}
     .meta {{ display:flex; gap:1rem; margin-bottom:1rem; font-size:14px; color:#475569; flex-wrap:wrap; }}
@@ -1063,47 +931,14 @@ async def status_page(request: Request):
       <span>Uptime: <b>{uptime}</b></span>
       <span>Ping ✓: <b class="ok">{KA_STATE['ping_count']}</b></span>
       <span>Fail ✗: <b class="bad">{KA_STATE['fail_count']}</b></span>
-      <span>Next ping: <b>{KA_STATE['next_ping_in']}s</b></span>
     </div>
-    <div class="meta">
-      <span>Sliding Session: <b class="ok">مفعّل</b></span>
-      <span>مدة الخمول: <b>{idle_days:.1f} يوم</b></span>
-    </div>
-    <h2>آخر عمليات الفحص</h2>
+    <h1>🔌 5SIM</h1>
+    <div class="meta"><span>{sim5_status}</span></div>
+    <div style="font-size:12px; color:#64748b;">{sim5_detail}</div>
+    <h2 style="font-size:1rem;margin:1rem 0 .5rem;color:#475569;">آخر عمليات الفحص</h2>
     <table>
       <thead><tr><th align="right">الوقت</th><th align="right">الحالة</th></tr></thead>
       <tbody>{rows}</tbody>
-    </table>
-  </div>
-
-  <div class="card">
-    <h1>🔒 إحصائيات الجلسات</h1>
-    <div class="meta">
-      <span>Total 401: <b class="bad">{_REQUEST_STATS['protected_401']}</b></span>
-      <span>Total Redirect: <b class="ok">{_REQUEST_STATS['protected_redirect']}</b></span>
-      <span>Session Expired: <b class="bad">{_REQUEST_STATS['session_expired']}</b></span>
-    </div>
-    <div class="meta">
-      <span>Last 401: <b>{_REQUEST_STATS['last_401'] or '-'}</b></span>
-      <span>Last expired: <b>{_REQUEST_STATS['last_expired'] or '-'}</b></span>
-    </div>
-    <h2>آخر User-Agent</h2>
-    <div style="font-size:12px; color:#64748b; word-break:break-all;">
-      {_REQUEST_STATS['last_401_ua'] or '-'}
-    </div>
-    <h2>آخر Referer</h2>
-    <div style="font-size:12px; color:#64748b; word-break:break-all;">
-      {_REQUEST_STATS['last_401_referer'] or '-'}
-    </div>
-    <h2>المسارات الأكثر 401 (API)</h2>
-    <table>
-      <thead><tr><th align="right">المسار</th><th align="right">العدد</th></tr></thead>
-      <tbody>{top_401_rows}</tbody>
-    </table>
-    <h2>المسارات الأكثر تحويلاً 303</h2>
-    <table>
-      <thead><tr><th align="right">المسار</th><th align="right">العدد</th></tr></thead>
-      <tbody>{top_redirect_rows}</tbody>
     </table>
   </div>
 </body>
@@ -1150,14 +985,10 @@ async def sse_events(request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# API — Me (للـ JavaScript: يعيد JSON فقط)
+# API — Me
 # ══════════════════════════════════════════════════════════════
 @app.get("/api/v1/me/stats")
 async def me_stats(request: Request):
-    """
-    نقطة نهاية JSON لـ JavaScript — بديل لـ fetch('/dashboard').
-    إذا انتهت الجلسة، يعيد 401 JSON واضح.
-    """
     customer = _get_customer_from_session(request)
     if not customer:
         return JSONResponse(
@@ -1177,7 +1008,6 @@ async def me_stats(request: Request):
 
 @app.get("/api/v1/me/session")
 async def me_session(request: Request):
-    """فحص سريع لحالة الجلسة من JavaScript."""
     cid = request.session.get("customer_id")
     expired = _session_is_expired(request) if cid else False
     return {
@@ -1185,33 +1015,28 @@ async def me_session(request: Request):
         "customer_id": cid,
         "expired": expired,
         "idle_timeout_seconds": SESSION_IDLE_TIMEOUT,
-        "last_seen": request.session.get("_last_seen"),
-        "session_keys": sorted(request.session.keys()),
     }
 
 
 # ══════════════════════════════════════════════════════════════
-# API — Prices (5SIM)
+# API — Prices (5SIM فقط)
 # ══════════════════════════════════════════════════════════════
 @app.get("/api/v1/prices")
 async def api_prices(country: str | None = None):
-    """
-    أسعار حية من 5SIM — للاستخدام من JavaScript في صفحة /buy.
-    """
-    countries = await build_country_prices()
-    if country:
-        countries = [c for c in countries if c["code"] == country.upper()]
-
+    result = await build_live_catalog()
+    countries = result["countries"]
+    if country and result["ok"]:
+        c_lower = country.lower()
+        countries = [
+            c for c in countries
+            if c["slug"] == c_lower or c["code"].lower() == c_lower
+        ]
     return {
-        "source": "5sim" if _PRICES_CACHE["data"] else "static",
-        "fetched_at": (
-            datetime.fromtimestamp(
-                _PRICES_CACHE["fetched_at"], tz=timezone.utc
-            ).isoformat()
-            if _PRICES_CACHE["fetched_at"]
-            else None
-        ),
-        "error": _PRICES_CACHE["error"],
+        "ok": result["ok"],
+        "source": "5sim",
+        "fetched_at": result["fetched_at"],
+        "error": result["error"],
+        "error_code": result["error_code"],
         "count": len(countries),
         "countries": countries,
     }
@@ -1219,15 +1044,17 @@ async def api_prices(country: str | None = None):
 
 @app.post("/api/v1/prices/refresh")
 async def api_prices_refresh(request: Request):
-    """يجبر تحديث الكاش (يتطلب تسجيل دخول)."""
     await get_current_customer(request)
-    await fetch_sim5_prices(force=True)
+    if not SIM5_ENABLED:
+        raise HTTPException(503, "5SIM غير مفعّل")
+    try:
+        await fetch_sim5_countries(force=True)
+        await fetch_sim5_prices(force=True)
+    except Sim5Error as e:
+        raise HTTPException(e.status or 503, e.message)
     return {
         "status": "refreshed",
-        "fetched_at": datetime.fromtimestamp(
-            _PRICES_CACHE["fetched_at"], tz=timezone.utc
-        ).isoformat() if _PRICES_CACHE["fetched_at"] else None,
-        "error": _PRICES_CACHE["error"],
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -1236,11 +1063,8 @@ async def api_prices_refresh(request: Request):
 # ══════════════════════════════════════════════════════════════
 @app.get("/", response_class=HTMLResponse)
 async def login_page(request: Request):
-    """شاشة تسجيل الدخول الرئيسية."""
-    # إذا كان مسجّلاً، تحقق من عدم انتهاء الجلسة بالخمول
     if request.session.get("customer_id"):
         if _session_is_expired(request):
-            print("⏰ SESSION EXPIRED on / | clearing session")
             request.session.clear()
         else:
             return RedirectResponse(url="/dashboard", status_code=303)
@@ -1259,16 +1083,9 @@ async def login_page(request: Request):
 @app.get("/auth/google")
 async def auth_google(request: Request):
     if not OAUTH_ENABLED:
-        # وضع التطوير بدون Google: سجّل الدخول كمستخدم تجريبي
-        request.session["customer_id"] = 1
-        request.session["email"] = STORE["customers"][1]["email"]
-        request.session["name"] = STORE["customers"][1]["name"]
-        request.session["logged_in_at"] = _now_iso()
-        request.session["_last_seen"] = _now_iso()
-        return RedirectResponse(url="/dashboard", status_code=303)
+        return RedirectResponse(url="/?error=oauth_disabled", status_code=303)
 
     redirect_uri = str(request.url_for("auth_google_callback"))
-    # نحفظ next فقط إن وُجد وكان آمناً
     next_url = request.query_params.get("next", "")
     if next_url and _is_safe_next(next_url):
         request.session["oauth_next"] = next_url
@@ -1307,7 +1124,7 @@ async def auth_google_callback(request: Request):
             "name": name,
             "email": email,
             "phone": "",
-            "country": "YE",
+            "country": "",
             "initials": name[:2],
             "picture": picture,
             "balance": 0.0,
@@ -1329,7 +1146,6 @@ async def auth_google_callback(request: Request):
         if picture:
             customer["picture"] = picture
 
-    # ✅ سجّل الدخول — تأكد من كتابة القيم قبل الـ redirect
     request.session["customer_id"] = customer["id"]
     request.session["email"] = email
     request.session["name"] = name
@@ -1337,36 +1153,22 @@ async def auth_google_callback(request: Request):
     request.session["logged_in_at"] = _now_iso()
     request.session["_last_seen"] = _now_iso()
 
-    # ✅ إن وُجد next آمن، استخدمه، وإلا /dashboard
     nxt = request.session.pop("oauth_next", None)
     if not nxt or not _is_safe_next(nxt):
         nxt = "/dashboard"
 
-    print(f"✅ OAuth success: {email} → redirect to {nxt}")
     return RedirectResponse(url=nxt, status_code=303)
 
 
-# ══════════════════════════════════════════════════════════════
-# Logout
-# ══════════════════════════════════════════════════════════════
 @app.api_route("/logout", methods=["GET", "POST"], name="logout")
 async def logout(request: Request):
-    """
-    تسجيل الخروج:
-    - يمسح الجلسة المحلية بالكامل.
-    - اختياريًا: ?google=1 لإنهاء جلسة Google أيضاً.
-    - يدعم ?next= للعودة لصفحة معينة بعد الخروج.
-    """
     next_url = request.query_params.get("next", "/")
     if not _is_safe_next(next_url):
         next_url = "/"
     also_google = request.query_params.get("google", "0") == "1"
-
     request.session.clear()
-
     if OAUTH_ENABLED and also_google:
         return RedirectResponse(url="https://accounts.google.com/Logout", status_code=303)
-
     return RedirectResponse(url=next_url, status_code=303)
 
 
@@ -1385,15 +1187,12 @@ async def auth_logout(request: Request):
 async def dashboard(request: Request):
     customer = await get_current_customer(request)
     cid = customer["id"]
-
     return templates.TemplateResponse(
         request=request,
         name="dashboard.html",
         context={
             "customer": customer,
             "stats": await get_my_stats(cid),
-            "orders_by_status": await get_my_orders_by_status(cid),
-            "top_services": await get_my_top_services(cid),
             "my_numbers": await get_my_numbers(cid),
             "recent_sms": await get_my_recent_sms(cid, limit=5),
         },
@@ -1406,84 +1205,102 @@ async def buy_page(
     country: str | None = None,
     service: str | None = None,
 ):
+    """
+    صفحة الشراء — كل البيانات من 5SIM.
+    عند الفشل: لا بيانات وهمية، فقط رسالة خطأ.
+    """
     customer = await get_current_customer(request)
     cid = customer["id"]
 
-    # ── اجلب الأسعار الحية (مع كاش) ──
-    countries_priced = await build_country_prices()
-
-    # ── الأكثر طلباً: أرخص 6 عروض متوفرة ──
-    popular_services: list[dict] = []
-    for c in countries_priced:
-        for s in c["services"]:
-            if s["available"]:
-                popular_services.append({
-                    "country": c["code"],
-                    "country_code": c["code"],
-                    "country_name": c["name"],
-                    "country_flag": c["flag"],
-                    "service": s["id"],
-                    "service_id": s["id"],
-                    "service_name": s["name"],
-                    "service_icon": s["icon"],
-                    "price": s["cost"],
-                    "orders_count": max(10, s["count"] // 10),
-                })
-    popular_services.sort(key=lambda x: x["price"])
-    popular_services = popular_services[:6]
-
-    # ── الأرقام المتاحة الآن ──
-    available_numbers: list[dict] = []
-    for c in countries_priced:
-        for s in c["services"]:
-            if s["available"]:
-                available_numbers.append({
-                    "country_code": c["code"],
-                    "country_name": c["name"],
-                    "country_flag": c["flag"],
-                    "service_id": s["id"],
-                    "service_name": s["name"],
-                    "service_icon": s["icon"],
-                    "masked_number": f"+{c['code']} *** *** {s['count'] % 900 + 100}",
-                    "duration": 20,
-                    "price": s["cost"],
-                    "rate": s.get("rate"),
-                })
-    available_numbers.sort(key=lambda x: x["price"])
-    available_numbers = available_numbers[:12]
-
-    # ── معلومات مصدر الأسعار ──
-    prices_meta = {
-        "source": "5sim" if SIM5_ENABLED and _PRICES_CACHE["data"] else "static",
-        "fetched_at": (
-            datetime.fromtimestamp(
-                _PRICES_CACHE["fetched_at"], tz=timezone.utc
-            ).isoformat()
-            if _PRICES_CACHE["fetched_at"]
-            else None
-        ),
-        "error": _PRICES_CACHE["error"],
-        "enabled": SIM5_ENABLED,
-    }
-
-    # ── إثراء stats بعدد الدول/الخدمات ──
+    result = await build_live_catalog()
     stats = await get_my_stats(cid)
-    stats["countries_count"] = len(countries_priced)
-    stats["services_count"] = len(SERVICES)
+
+    # ── حالة الفشل: نمرّر رسالة واضحة فقط ──
+    if not result["ok"]:
+        return templates.TemplateResponse(
+            request=request,
+            name="buy.html",
+            context={
+                "customer": customer,
+                "countries": [],
+                "preselected_country": country,
+                "preselected_service": service,
+                "stats": stats,
+                "prices_meta": {
+                    "ok": False,
+                    "source": "5sim",
+                    "error": result["error"],
+                    "error_code": result["error_code"],
+                    "fetched_at": None,
+                },
+                "popular_services": [],
+                "available_numbers": [],
+            },
+            status_code=200,
+        )
+
+    countries = result["countries"]
+
+    # الأكثر طلباً: أرخص 6 عروض متوفرة
+    popular: list[dict] = []
+    for c in countries:
+        for s in c["services"]:
+            if s["available"]:
+                popular.append({
+                    "country_slug": c["slug"],
+                    "country_code": c["code"],
+                    "country_name": c["name"],
+                    "country_flag": c["flag"],
+                    "service_id": s["id"],
+                    "service_name": s["name"],
+                    "service_icon": s["icon"],
+                    "price": s["cost"],
+                    "count": s["count"],
+                })
+    popular.sort(key=lambda x: x["price"])
+    popular = popular[:6]
+
+    # الأرقام المتاحة — نعرض العدّاد الحقيقي فقط
+    available: list[dict] = []
+    for c in countries:
+        for s in c["services"]:
+            if s["available"]:
+                available.append({
+                    "country_slug": c["slug"],
+                    "country_code": c["code"],
+                    "country_name": c["name"],
+                    "country_flag": c["flag"],
+                    "service_id": s["id"],
+                    "service_name": s["name"],
+                    "service_icon": s["icon"],
+                    "count": s["count"],
+                    "rate": s["rate"],
+                    "price": s["cost"],
+                })
+    available.sort(key=lambda x: x["price"])
+    available = available[:12]
+
+    stats["countries_count"] = len(countries)
+    stats["services_count"] = sum(c["services_count"] for c in countries)
 
     return templates.TemplateResponse(
         request=request,
         name="buy.html",
         context={
             "customer": customer,
-            "countries": countries_priced,
-            "services": SERVICES,
+            "countries": countries,
             "preselected_country": country,
             "preselected_service": service,
             "stats": stats,
-            "prices_meta": prices_meta,
-            "popular_services": popular_services,
-            "available_numbers": available_numbers,
+            "prices_meta": {
+                "ok": True,
+                "source": "5sim",
+                "error": None,
+                "error_code": None,
+                "fetched_at": result["fetched_at"],
+            },
+            "popular_services": popular,
+            "available_numbers": available,
         },
     )
 
@@ -1491,12 +1308,15 @@ async def buy_page(
 @app.get("/catalog", response_class=HTMLResponse)
 async def catalog_page(request: Request):
     customer = await get_current_customer(request)
+    result = await build_live_catalog()
     return templates.TemplateResponse(
         request=request,
         name="catalog.html",
         context={
             "customer": customer,
-            "countries": COUNTRIES,
+            "countries": result["countries"],
+            "catalog_ok": result["ok"],
+            "catalog_error": result["error"],
             "stats": await get_my_stats(customer["id"]),
         },
     )
@@ -1544,7 +1364,6 @@ async def order_detail_page(request: Request, order_id: int):
     )
     if not order:
         raise HTTPException(status_code=404, detail="الطلب غير موجود")
-
     return templates.TemplateResponse(
         request=request,
         name="orders.html",
@@ -1563,7 +1382,6 @@ async def inbox_page(request: Request, number: str | None = None):
     sms_list = await get_my_recent_sms(cid, limit=100)
     if number:
         sms_list = [s for s in sms_list if s["phone"] == number]
-
     return templates.TemplateResponse(
         request=request,
         name="inbox.html",
@@ -1582,12 +1400,13 @@ async def wallet_page(request: Request):
     cid = customer["id"]
     deposits = [d for d in STORE["deposits"] if d["customer_id"] == cid]
     deposits.sort(key=lambda d: d["created_at"], reverse=True)
+    # لا payment_methods محلية — تُبنى من 5SIM /user/payments عند الحاجة
     return templates.TemplateResponse(
         request=request,
         name="wallet.html",
         context={
             "customer": customer,
-            "payment_methods": PAYMENT_METHODS,
+            "payment_methods": [],
             "recent_deposits": deposits[:5],
             "stats": await get_my_stats(cid),
         },
@@ -1602,7 +1421,7 @@ async def transactions_page(request: Request):
     txs.sort(key=lambda t: t["created_at"], reverse=True)
 
     total_deposits = sum(t["amount"] for t in txs if t["type"] == "deposit")
-    total_spent    = sum(-t["amount"] for t in txs if t["type"] == "purchase")
+    total_spent = sum(-t["amount"] for t in txs if t["type"] == "purchase")
     month_start = datetime.now(timezone.utc).date().replace(day=1)
     this_month = sum(
         -t["amount"] for t in txs
@@ -1639,7 +1458,7 @@ async def support_page(request: Request):
         context={
             "customer": customer,
             "tickets": tickets,
-            "faqs": FAQS,
+            "faqs": [],
             "stats": await get_my_stats(cid),
         },
     )
@@ -1648,14 +1467,14 @@ async def support_page(request: Request):
 @app.get("/profile", response_class=HTMLResponse)
 async def profile_page(request: Request):
     customer = await get_current_customer(request)
-    cid = customer["id"]
+    result = await build_live_catalog()
     return templates.TemplateResponse(
         request=request,
         name="profile.html",
         context={
             "customer": customer,
-            "stats": await get_my_stats(cid),
-            "countries": COUNTRIES,
+            "stats": await get_my_stats(customer["id"]),
+            "countries": result["countries"],
         },
     )
 
@@ -1675,104 +1494,303 @@ async def security_page(request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# API — Orders / Numbers
+# API — Orders (شراء حقيقي من 5SIM)
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/orders")
 async def create_order(payload: OrderCreate, request: Request):
+    """
+    يشتري رقمًا فعليًا من 5SIM.
+    - لا رقم وهمي.
+    - عند الفشل: خطأ 5SIM الأصلي مترجمًا للعربية.
+    """
     customer = await get_current_customer(request)
     cid = customer["id"]
 
-    country = COUNTRIES_BY_CODE.get(payload.country)
-    service = SERVICES_BY_ID.get(payload.service)
-    if not country or not service:
-        raise HTTPException(status_code=400, detail="دولة أو خدمة غير صالحة")
+    if not SIM5_ENABLED:
+        raise HTTPException(503, "5SIM غير مفعّل — لا يمكن الشراء")
 
-    price = country["min_price"]
-    if customer["balance"] < price:
-        raise HTTPException(status_code=400, detail="الرصيد غير كافٍ")
+    # ابحث عن الدولة والخدمة في الكتالوج الحي
+    result = await build_live_catalog()
+    if not result["ok"]:
+        raise HTTPException(503, f"تعذّر الاتصال بـ 5SIM: {result['error']}")
 
+    c_slug = payload.country.lower()
+    country = next(
+        (c for c in result["countries"]
+         if c["slug"] == c_slug or c["code"].lower() == c_slug),
+        None,
+    )
+    if not country:
+        raise HTTPException(400, "دولة غير مدعومة في 5SIM")
+
+    service = next(
+        (s for s in country["services"]
+         if s["id"] == payload.service and s["available"]),
+        None,
+    )
+    if not service:
+        raise HTTPException(400, "خدمة غير متوفرة في هذه الدولة")
+
+    if not service.get("operator"):
+        raise HTTPException(400, "لم يُحدد مشغل متاح لهذه الخدمة")
+
+    # ── الشراء الفعلي من 5SIM ──
+    try:
+        sim5_order = await _sim5_get(
+            f"/user/buy/activation/{country['slug']}/{service['operator']}/{service['id']}",
+            auth=True,
+            timeout=30.0,
+        )
+    except Sim5Error as e:
+        raise HTTPException(
+            status_code=400 if 400 <= e.status < 500 else 503,
+            detail=f"فشل الشراء من 5SIM: {e.message}",
+        )
+
+    # ── خزّن الطلب الحقيقي ──
     now = datetime.now(timezone.utc)
     order_id = len(STORE["orders"]) + 1
-    number_id = len(STORE["numbers"]) + 1
-
-    fake_phone = f"+{country['code']}{1000000000 + number_id}"
 
     order = {
         "id": order_id,
         "customer_id": cid,
+        "sim5_id": sim5_order.get("id"),
+        "phone": sim5_order.get("phone", ""),
         "country": country["name"],
+        "country_slug": country["slug"],
         "country_code": country["code"],
         "flag": country["flag"],
         "service": service["name"],
         "service_id": service["id"],
-        "phone": fake_phone,
-        "price": price,
-        "status": "active",
-        "created_at": now.isoformat(),
+        "operator": sim5_order.get("operator", service["operator"]),
+        "price": float(sim5_order.get("price", service["cost"] or 0)),
+        "status": sim5_order.get("status", "PENDING"),
+        "expires": sim5_order.get("expires"),
+        "created_at": sim5_order.get("created_at", now.isoformat()),
+        "sms": sim5_order.get("sms") or [],
     }
     STORE["orders"].append(order)
 
-    number = {
-        "id": number_id,
+    # سجّل الرقم أيضًا
+    STORE["numbers"].append({
+        "id": len(STORE["numbers"]) + 1,
         "customer_id": cid,
-        "phone": fake_phone,
+        "sim5_id": sim5_order.get("id"),
+        "phone": order["phone"],
         "country": country["name"],
         "country_code": country["code"],
         "flag": country["flag"],
         "service": service["name"],
         "service_id": service["id"],
-        "status": "active",
-        "price": price,
+        "status": "active" if order["status"] in ("PENDING", "RECEIVED") else order["status"],
+        "price": order["price"],
         "sms_count": 0,
-        "expires_in": "20:00",
-        "created_at": now.isoformat(),
-    }
-    STORE["numbers"].append(number)
+        "expires": order["expires"],
+        "created_at": order["created_at"],
+    })
 
-    customer["balance"] -= price
+    # خصم من الرصيد المحلي (المحاسبة الداخلية)
+    customer["balance"] -= order["price"]
     STORE["transactions"].append({
         "id": len(STORE["transactions"]) + 1,
         "customer_id": cid,
         "type": "purchase",
         "description": f"شراء رقم {service['name']} — {country['name']}",
-        "amount": -price,
+        "amount": -order["price"],
         "balance_after": customer["balance"],
         "created_at": now.isoformat(),
         "date": now.strftime("%Y-%m-%d %H:%M"),
     })
 
-    return {"id": order_id, "phone": fake_phone, "status": "active"}
+    return {
+        "id": order_id,
+        "sim5_id": order["sim5_id"],
+        "phone": order["phone"],
+        "status": order["status"],
+        "expires": order["expires"],
+    }
 
 
-@app.post("/api/v1/numbers/{number_id}/renew")
-async def renew_number(number_id: int, request: Request):
+@app.get("/api/v1/orders/sync")
+async def sync_orders_from_sim5(request: Request, category: str = "activation"):
+    """يجلب سجل الطلبات من 5SIM ويحدّث STORE."""
     customer = await get_current_customer(request)
-    number = next(
-        (n for n in STORE["numbers"]
-         if n["id"] == number_id and n["customer_id"] == customer["id"]),
+    if not SIM5_ENABLED:
+        raise HTTPException(503, "5SIM غير مفعّل")
+    try:
+        data = await _sim5_get(
+            f"/user/orders?category={category}&limit=100&offset=0&order=id&reverse=true",
+            auth=True,
+        )
+    except Sim5Error as e:
+        raise HTTPException(e.status or 503, e.message)
+
+    sim5_orders = data.get("Data") or []
+    existing = {o.get("sim5_id") for o in STORE["orders"]}
+
+    imported = 0
+    for so in sim5_orders:
+        if so["id"] in existing:
+            continue
+        STORE["orders"].append({
+            "id": len(STORE["orders"]) + 1,
+            "customer_id": customer["id"],
+            "sim5_id": so["id"],
+            "phone": so.get("phone", ""),
+            "country": so.get("country", ""),
+            "country_slug": so.get("country", ""),
+            "country_code": "",
+            "flag": "🏳️",
+            "service": so.get("product", ""),
+            "service_id": so.get("product", ""),
+            "operator": so.get("operator"),
+            "price": float(so.get("price", 0)),
+            "status": so.get("status", ""),
+            "expires": so.get("expires"),
+            "created_at": so.get("created_at"),
+            "sms": so.get("sms") or [],
+        })
+        imported += 1
+
+    return {"ok": True, "imported": imported, "total_from_sim5": len(sim5_orders)}
+
+
+@app.get("/api/v1/orders/{order_id}/check")
+async def check_order(order_id: int, request: Request):
+    """GET /v1/user/check/$id — يستورد SMS الجديدة ويحدّث الحالة."""
+    customer = await get_current_customer(request)
+    order = next(
+        (o for o in STORE["orders"]
+         if o["id"] == order_id and o["customer_id"] == customer["id"]),
         None,
     )
-    if not number:
-        raise HTTPException(status_code=404, detail="الرقم غير موجود")
-    if customer["balance"] < number["price"]:
-        raise HTTPException(status_code=400, detail="الرصيد غير كافٍ")
+    if not order or not order.get("sim5_id"):
+        raise HTTPException(404, "الطلب غير موجود")
 
-    customer["balance"] -= number["price"]
-    number["status"] = "active"
-    number["expires_in"] = "20:00"
+    try:
+        data = await _sim5_get(f"/user/check/{order['sim5_id']}", auth=True, timeout=15.0)
+    except Sim5Error as e:
+        raise HTTPException(e.status or 503, e.message)
 
-    now = datetime.now(timezone.utc)
+    order["status"] = data.get("status", order["status"])
+    order["expires"] = data.get("expires", order.get("expires"))
+
+    # استورد الرسائل الجديدة فقط (بدون تكرار)
+    existing_keys = {
+        (s.get("order_id"), s.get("created_at"))
+        for s in STORE["sms"]
+    }
+    imported = 0
+    for sms in (data.get("sms") or []):
+        key = (order_id, sms.get("created_at"))
+        if key in existing_keys:
+            continue
+        STORE["sms"].append({
+            "id": len(STORE["sms"]) + 1,
+            "sim5_id": sms.get("id"),
+            "customer_id": customer["id"],
+            "order_id": order_id,
+            "phone": order["phone"],
+            "sender": sms.get("sender", ""),
+            "text": sms.get("text", ""),
+            "code": sms.get("code", ""),
+            "created_at": sms.get("created_at") or _now_iso(),
+            "read": False,
+        })
+        imported += 1
+
+    # حدّث عدّاد SMS في الرقم
+    for n in STORE["numbers"]:
+        if n.get("sim5_id") == order["sim5_id"]:
+            n["sms_count"] = len([s for s in STORE["sms"] if s.get("order_id") == order_id])
+            if order["status"] == "RECEIVED":
+                n["status"] = "active"
+
+    return {
+        "ok": True,
+        "status": order["status"],
+        "expires": order["expires"],
+        "new_sms": imported,
+        "sms": data.get("sms") or [],
+    }
+
+
+@app.post("/api/v1/orders/{order_id}/finish")
+async def finish_order(order_id: int, request: Request):
+    customer = await get_current_customer(request)
+    order = next(
+        (o for o in STORE["orders"]
+         if o["id"] == order_id and o["customer_id"] == customer["id"]),
+        None,
+    )
+    if not order or not order.get("sim5_id"):
+        raise HTTPException(404, "الطلب غير موجود")
+    try:
+        data = await _sim5_get(f"/user/finish/{order['sim5_id']}", auth=True)
+    except Sim5Error as e:
+        raise HTTPException(e.status or 503, e.message)
+    order["status"] = data.get("status", "FINISHED")
+    return {"ok": True, "status": order["status"]}
+
+
+@app.post("/api/v1/orders/{order_id}/cancel")
+async def cancel_order(order_id: int, request: Request):
+    customer = await get_current_customer(request)
+    order = next(
+        (o for o in STORE["orders"]
+         if o["id"] == order_id and o["customer_id"] == customer["id"]),
+        None,
+    )
+    if not order or not order.get("sim5_id"):
+        raise HTTPException(404, "الطلب غير موجود")
+    try:
+        data = await _sim5_get(f"/user/cancel/{order['sim5_id']}", auth=True)
+    except Sim5Error as e:
+        raise HTTPException(e.status or 503, e.message)
+
+    order["status"] = data.get("status", "CANCELED")
+
+    # استرداد للعميل
+    refund = order["price"]
+    customer["balance"] += refund
     STORE["transactions"].append({
         "id": len(STORE["transactions"]) + 1,
         "customer_id": customer["id"],
-        "type": "purchase",
-        "description": f"تجديد رقم {number['phone']}",
-        "amount": -number["price"],
+        "type": "refund",
+        "description": f"استرداد طلب ملغي #{order_id}",
+        "amount": refund,
         "balance_after": customer["balance"],
-        "created_at": now.isoformat(),
-        "date": now.strftime("%Y-%m-%d %H:%M"),
+        "created_at": _now_iso(),
+        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"),
     })
-    return {"status": "renewed"}
+
+    # حدّث حالة الرقم
+    for n in STORE["numbers"]:
+        if n.get("sim5_id") == order["sim5_id"]:
+            n["status"] = "cancelled"
+
+    return {"ok": True, "status": order["status"], "refund": refund}
+
+
+@app.post("/api/v1/orders/{order_id}/ban")
+async def ban_order(order_id: int, request: Request):
+    customer = await get_current_customer(request)
+    order = next(
+        (o for o in STORE["orders"]
+         if o["id"] == order_id and o["customer_id"] == customer["id"]),
+        None,
+    )
+    if not order or not order.get("sim5_id"):
+        raise HTTPException(404, "الطلب غير موجود")
+    try:
+        data = await _sim5_get(f"/user/ban/{order['sim5_id']}", auth=True)
+    except Sim5Error as e:
+        raise HTTPException(e.status or 503, e.message)
+    order["status"] = data.get("status", "BANNED")
+    for n in STORE["numbers"]:
+        if n.get("sim5_id") == order["sim5_id"]:
+            n["status"] = "banned"
+    return {"ok": True, "status": order["status"]}
 
 
 # ══════════════════════════════════════════════════════════════
@@ -1831,7 +1849,6 @@ async def create_ticket(payload: TicketCreate, request: Request):
     customer = await get_current_customer(request)
     cid = customer["id"]
     now = datetime.now(timezone.utc)
-
     ticket = {
         "id": len(STORE["tickets"]) + 1,
         "customer_id": cid,
@@ -1876,12 +1893,6 @@ async def update_preferences(payload: PreferencesUpdate, request: Request):
     return {"status": "updated"}
 
 
-@app.delete("/api/v1/profile")
-async def delete_profile(request: Request):
-    await get_current_customer(request)
-    return {"status": "deleted"}
-
-
 # ══════════════════════════════════════════════════════════════
 # API — Security
 # ══════════════════════════════════════════════════════════════
@@ -1913,64 +1924,27 @@ async def disable_2fa(request: Request):
 @app.delete("/api/v1/security/sessions/{session_id}")
 async def end_session(session_id: str, request: Request):
     await get_current_customer(request)
-    STORE["sessions"] = [
-        s for s in STORE["sessions"] if s["id"] != session_id
-    ]
+    STORE["sessions"] = [s for s in STORE["sessions"] if s["id"] != session_id]
     return {"status": "ended"}
 
 
-@app.delete("/api/v1/security/sessions")
-async def end_all_sessions(request: Request):
-    await get_current_customer(request)
-    STORE["sessions"] = []
-    return {"status": "all_ended"}
-
-
 # ══════════════════════════════════════════════════════════════
-# ⚠️  Middleware — Auth Guard with Sliding Session
-# ══════════════════════════════════════════════════════════════
-#  ملاحظة مهمة عن الترتيب في Starlette:
-#  - @app.middleware("http") تضيف middleware إلى القائمة.
-#  - آخر middleware مُضاف هو الأقرب للتطبيق (يُنفَّذ أولاً عند الطلب).
-#  - لهذا نضيف auth_guard الآن، ثم SessionMiddleware بعده
-#    ليصبح SessionMiddleware أقرب للتطبيق (يُنفَّذ أولاً).
-#
-#  الترتيب المتوقع في user_middleware:
-#     [auth_guard, SessionMiddleware]
-#  التنفيذ عند الطلب: SessionMiddleware → auth_guard → route
+# Middleware — Auth Guard (Sliding Session)
 # ══════════════════════════════════════════════════════════════
 @app.middleware("http")
 async def auth_guard(request: Request, call_next):
-    """
-    يحمي المسارات الخاصة مع جلسة منزلقة (sliding session).
-
-    ✅ القاعدة (1.0.7):
-
-    - "/" → عام (صفحة تسجيل الدخول)
-    - PUBLIC_PATHS → عامة (بما فيها /auth/google, /logout, /static)
-    - "/api/..." (غير عام) → 401 JSON إذا لم يكن مسجّلاً
-    - صفحة محمية → 303 Redirect إلى / إذا لم يكن مسجّلاً
-
-    ✅ الجلسة المنزلقة:
-
-    - إذا تجاوز خمول الجلسة SESSION_IDLE_TIMEOUT → امسح الجلسة.
-    - إذا كان النشاط داخل المدة → جدّد _last_seen (تمديد الجلسة).
-    """
     path = request.url.path
     method = request.method
 
-    # ── "/" مسار عام ──
     if path == "/":
         return await call_next(request)
 
-    # ── مسارات عامة أخرى ──
     if any(
         path == p or path.startswith(p + "/") or path.startswith(p + "?")
         for p in PUBLIC_PATHS
     ):
         return await call_next(request)
 
-    # ── هل يحتاج تسجيل دخول؟ ──
     is_api = path.startswith("/api/")
     is_protected = is_api or any(
         path == p or path.startswith(p + "/") for p in PROTECTED_PREFIXES
@@ -1979,56 +1953,30 @@ async def auth_guard(request: Request, call_next):
     if not is_protected:
         return await call_next(request)
 
-    # ══════════════════════════════════════════════════════════
-    # فحص الجلسة + الجلسة المنزلقة
-    # ══════════════════════════════════════════════════════════
     cid = None
     expired = False
-
     try:
         cid = request.session.get("customer_id")
-
         if cid and _session_is_expired(request):
-            # ⚠️ الجلسة انتهت بسبب الخمول → امسحها
-            print(
-                f"⏰ SESSION EXPIRED (idle > {SESSION_IDLE_TIMEOUT}s) | "
-                f"path={path} | last_seen={request.session.get('_last_seen')}"
-            )
             request.session.clear()
             cid = None
             expired = True
             await _record_expired(path)
-    except Exception as e:
-        print(f"⚠️  session access error: {type(e).__name__}: {e}")
+    except Exception:
         cid = None
 
-    # ── إذا كان مسجّلاً وما زال نشطاً → جدّد _last_seen (sliding) ──
     if cid:
         try:
-            # تحديث _last_seen يجعل Starlette يرسل Set-Cookie جديداً
-            # مع max_age جديد = تمديد فعلي للجلسة
             request.session["_last_seen"] = _now_iso()
         except Exception:
             pass
         return await call_next(request)
 
-    # ══════════════════════════════════════════════════════════
-    # غير مسجّل → 401 للـ API / 303 Redirect إلى / للصفحات
-    # ══════════════════════════════════════════════════════════
     ua = request.headers.get("user-agent", "NONE")[:120]
     referer = request.headers.get("referer", "NONE")[:120]
-    client_host = request.client.host if request.client else "NONE"
-    xff = request.headers.get("x-forwarded-for", "NONE")[:80]
 
     if is_api:
         await _record_401(path, ua, referer)
-        print(
-            f"🔒 401 API | {method} {path} | "
-            f"client={client_host} | xff={xff} | "
-            f"expired={expired} | "
-            f"has_cookie={'cookie' in request.headers} | "
-            f"ua={ua!r}"
-        )
         return JSONResponse(
             {
                 "detail": "انتهت الجلسة" if expired else "غير مسجّل",
@@ -2037,26 +1985,10 @@ async def auth_guard(request: Request, call_next):
             status_code=401,
         )
 
-    # ── صفحة محمية → 303 Redirect إلى / ──
     await _record_redirect(path)
-
-    redirect_url = "/"
-
-    print(
-        f"↪️  303 REDIRECT | {method} {path} → {redirect_url} | "
-        f"client={client_host} | xff={xff} | "
-        f"expired={expired} | "
-        f"has_cookie={'cookie' in request.headers} | "
-        f"ua={ua!r}"
-    )
-
-    return RedirectResponse(url=redirect_url, status_code=303)
+    return RedirectResponse(url="/", status_code=303)
 
 
-# ══════════════════════════════════════════════════════════════
-# Session middleware — يُضاف بعد auth_guard ليكون الأقرب للتطبيق
-# (في Starlette، آخر middleware مضاف هو الأول في التنفيذ)
-# ══════════════════════════════════════════════════════════════
 app.add_middleware(
     SessionMiddleware,
     secret_key=SECRET_KEY,
