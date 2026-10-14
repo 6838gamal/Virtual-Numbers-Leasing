@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+{% set active_page = "buy" %}
+{% block title %}شراء رقم جديد — جمال سولوشنز{% endblock %}
+{% block page_title %}شراء رقم جديد{% endblock %}
+{% block page_subtitle %}اختر الدولة والخدمة لبدء الشراء{% endblock %}
+
+{% block content %}
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+  <!-- ══ Purchase Form ══════════════════════════════════════════ -->
+  <div class="lg:col-span-2 space-y-4">
+
+    <!-- Step 1: Country -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-7 h-7 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center">1</div>
+        <h3 class="text-base font-bold text-slate-800">اختر الدولة</h3>
+      </div>
+
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-3" id="country-grid">
+        {% for c in countries %}
+        <button type="button"
+                onclick="selectCountry('{{ c.code }}', this)"
+                data-code="{{ c.code }}"
+                class="country-btn flex items-center gap-2 p-3 rounded-xl border-2 border-slate-100 hover:border-blue-400 hover:bg-blue-50 transition-all text-right">
+          <span class="text-2xl">{{ c.flag }}</span>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-bold text-slate-700 truncate">{{ c.name }}</div>
+            <div class="text-[10px] text-slate-400">{{ c.price }}</div>
+          </div>
+        </button>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Step 2: Service -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 opacity-50 pointer-events-none" id="service-step">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-7 h-7 rounded-full bg-slate-300 text-white text-xs font-bold flex items-center justify-center">2</div>
+        <h3 class="text-base font-bold text-slate-800">اختر الخدمة</h3>
+      </div>
+
+      <div class="grid grid-cols-3 sm:grid-cols-4 gap-3" id="service-grid">
+        {% for s in services %}
+        <button type="button"
+                onclick="selectService('{{ s.id }}', this)"
+                data-id="{{ s.id }}"
+                class="service-btn flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 border-slate-100 hover:border-blue-400 hover:bg-blue-50 transition-all">
+          <span class="text-2xl">{{ s.icon }}</span>
+          <span class="text-xs font-bold text-slate-700">{{ s.name }}</span>
+        </button>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Step 3: Confirm -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 opacity-50 pointer-events-none" id="confirm-step">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-7 h-7 rounded-full bg-slate-300 text-white text-xs font-bold flex items-center justify-center">3</div>
+        <h3 class="text-base font-bold text-slate-800">تأكيد الشراء</h3>
+      </div>
+
+      <div class="bg-slate-50 rounded-xl p-4 mb-4">
+        <div class="flex items-center justify-between py-2 border-b border-slate-200">
+          <span class="text-sm text-slate-500">الدولة</span>
+          <span id="confirm-country" class="text-sm font-bold text-slate-700">—</span>
+        </div>
+        <div class="flex items-center justify-between py-2 border-b border-slate-200">
+          <span class="text-sm text-slate-500">الخدمة</span>
+          <span id="confirm-service" class="text-sm font-bold text-slate-700">—</span>
+        </div>
+        <div class="flex items-center justify-between py-2 border-b border-slate-200">
+          <span class="text-sm text-slate-500">مدة الرقم</span>
+          <span class="text-sm font-bold text-slate-700">20 دقيقة</span>
+        </div>
+        <div class="flex items-center justify-between pt-3">
+          <span class="text-sm font-bold text-slate-700">التكلفة</span>
+          <span id="confirm-price" class="text-lg font-bold text-blue-600">$0.00</span>
+        </div>
+      </div>
+
+      <button onclick="confirmPurchase()" id="buy-btn"
+              class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-colors flex items-center justify-center gap-2">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>
+        </svg>
+        شراء الآن
+      </button>
+    </div>
+  </div>
+
+  <!-- ══ Sidebar Info ═══════════════════════════════════════════ -->
+  <div class="space-y-4">
+
+    <!-- Balance -->
+    <div class="bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl p-5 text-white shadow-lg">
+      <div class="text-xs text-blue-100 font-medium mb-1">رصيدك الحالي</div>
+      <div class="text-3xl font-bold">${{ "%.2f"|format(customer.balance) }}</div>
+      <a href="/wallet" class="mt-3 inline-flex items-center gap-1 bg-white/20 hover:bg-white/30 backdrop-blur text-xs font-bold px-3 py-1.5 rounded-lg transition-colors">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+        </svg>
+        إيداع
+      </a>
+    </div>
+
+    <!-- How it works -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+      <h4 class="text-sm font-bold text-slate-800 mb-3">كيف يعمل؟</h4>
+      <ol class="space-y-3 text-xs text-slate-600">
+        <li class="flex gap-2">
+          <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-bold flex-shrink-0">1</span>
+          اختر الدولة والخدمة المطلوبة
+        </li>
+        <li class="flex gap-2">
+          <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-bold flex-shrink-0">2</span>
+          سيصلك رقم جديد فورًا
+        </li>
+        <li class="flex gap-2">
+          <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-bold flex-shrink-0">3</span>
+          استخدم الرقم للتسجيل في الخدمة
+        </li>
+        <li class="flex gap-2">
+          <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-bold flex-shrink-0">4</span>
+          ستظهر الرسالة في صندوقك مباشرة
+        </li>
+      </ol>
+    </div>
+
+    <!-- Support -->
+    <div class="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+      <div class="flex items-start gap-2">
+        <span class="text-lg">💡</span>
+        <div class="text-xs text-amber-800">
+          <p class="font-bold mb-1">تحتاج مساعدة؟</p>
+          <a href="/support" class="underline">تواصل مع الدعم الفني</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let selectedCountry = null;
+let selectedService = null;
+let currentPrice = 0;
+
+function selectCountry(code, btn) {
+  document.querySelectorAll('.country-btn').forEach(b => {
+    b.classList.remove('border-blue-500', 'bg-blue-50');
+    b.classList.add('border-slate-100');
+  });
+  btn.classList.add('border-blue-500', 'bg-blue-50');
+  btn.classList.remove('border-slate-100');
+  selectedCountry = { code, name: btn.querySelector('.text-sm').textContent };
+  currentPrice = parseFloat(btn.querySelector('.text-\[10px\]').textContent.replace('$','')) || 0;
+
+  document.getElementById('service-step').classList.remove('opacity-50','pointer-events-none');
+  updateConfirm();
+}
+
+function selectService(id, btn) {
+  document.querySelectorAll('.service-btn').forEach(b => {
+    b.classList.remove('border-blue-500', 'bg-blue-50');
+    b.classList.add('border-slate-100');
+  });
+  btn.classList.add('border-blue-500', 'bg-blue-50');
+  btn.classList.remove('border-slate-100');
+  selectedService = { id, name: btn.querySelector('.text-xs').textContent };
+
+  document.getElementById('confirm-step').classList.remove('opacity-50','pointer-events-none');
+  updateConfirm();
+}
+
+function updateConfirm() {
+  document.getElementById('confirm-country').textContent = selectedCountry?.name || '—';
+  document.getElementById('confirm-service').textContent = selectedService?.name || '—';
+  document.getElementById('confirm-price').textContent = `$${currentPrice.toFixed(2)}`;
+}
+
+async function confirmPurchase() {
+  if (!selectedCountry || !selectedService) return;
+  const btn = document.getElementById('buy-btn');
+  btn.disabled = true;
+  btn.innerHTML = 'جارٍ الشراء...';
+
+  try {
+    const r = await fetch('/api/v1/orders', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        country: selectedCountry.code,
+        service: selectedService.id,
+      }),
+    });
+    const d = await r.json();
+    if (r.ok) {
+      window.location.href = `/orders/${d.id}`;
+    } else {
+      alert(d.detail || 'حدث خطأ');
+      btn.disabled = false;
+      btn.innerHTML = 'شراء الآن';
+    }
+  } catch (e) {
+    alert('خطأ في الاتصال');
+    btn.disabled = false;
+    btn.innerHTML = 'شراء الآن';
+  }
+}
+</script>
+{% endblock %}
