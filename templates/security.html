@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+{% set active_page = "security" %}
+{% block title %}الأمان — جمال سولوشنز{% endblock %}
+{% block page_title %}الأمان{% endblock %}
+{% block page_subtitle %}حماية حسابك وكلمات المرور{% endblock %}
+
+{% block content %}
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+  <div class="lg:col-span-2 space-y-4">
+
+    <!-- Change password -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+      <h3 class="text-base font-bold text-slate-800 mb-5">تغيير كلمة المرور</h3>
+
+      <div class="space-y-4">
+        <div>
+          <label class="text-xs font-bold text-slate-500 mb-1.5 block">كلمة المرور الحالية</label>
+          <input type="password" id="current-password"
+                 class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-blue-500 outline-none text-sm">
+        </div>
+
+        <div>
+          <label class="text-xs font-bold text-slate-500 mb-1.5 block">كلمة المرور الجديدة</label>
+          <input type="password" id="new-password" oninput="checkPasswordStrength()"
+                 class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-blue-500 outline-none text-sm">
+
+          <!-- Strength meter -->
+          <div class="mt-2">
+            <div class="flex gap-1">
+              <div class="strength-bar flex-1 h-1 rounded-full bg-slate-200"></div>
+              <div class="strength-bar flex-1 h-1 rounded-full bg-slate-200"></div>
+              <div class="strength-bar flex-1 h-1 rounded-full bg-slate-200"></div>
+              <div class="strength-bar flex-1 h-1 rounded-full bg-slate-200"></div>
+            </div>
+            <div id="strength-text" class="text-[10px] text-slate-400 mt-1.5">استخدم 8 أحرف على الأقل</div>
+          </div>
+        </div>
+
+        <div>
+          <label class="text-xs font-bold text-slate-500 mb-1.5 block">تأكيد كلمة المرور</label>
+          <input type="password" id="confirm-password"
+                 class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-blue-500 outline-none text-sm">
+        </div>
+
+        <button onclick="changePassword()"
+                class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-xl transition-colors">
+          تحديث كلمة المرور
+        </button>
+      </div>
+    </div>
+
+    <!-- 2FA -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+      <div class="flex items-start justify-between mb-5">
+        <div>
+          <h3 class="text-base font-bold text-slate-800">المصادقة الثنائية (2FA)</h3>
+          <p class="text-xs text-slate-500 mt-1">طبقة حماية إضافية لحسابك</p>
+        </div>
+        <span class="text-[10px] font-bold px-2.5 py-1 rounded-full
+          {% if customer.two_fa_enabled %}bg-emerald-50 text-emerald-700{% else %}bg-slate-100 text-slate-500{% endif %}">
+          {% if customer.two_fa_enabled %}مفعّلة{% else %}معطلة{% endif %}
+        </span>
+      </div>
+
+      {% if customer.two_fa_enabled %}
+      <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-4">
+        <div class="flex items-start gap-2">
+          <span class="text-lg">✅</span>
+          <div class="text-xs text-emerald-800">
+            <p class="font-bold mb-0.5">حسابك محمي بـ 2FA</p>
+            <p>يُطلب منك رمز من تطبيق المصادقة عند تسجيل الدخول</p>
+          </div>
+        </div>
+      </div>
+      <button onclick="disable2FA()"
+              class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-6 py-3 rounded-xl transition-colors text-sm">
+        تعطيل 2FA
+      </button>
+      {% else %}
+      <button onclick="enable2FA()"
+              class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-3 rounded-xl transition-colors text-sm">
+        تفعيل 2FA
+      </button>
+      {% endif %}
+    </div>
+
+    <!-- Sessions -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+      <div class="flex items-center justify-between mb-5">
+        <h3 class="text-base font-bold text-slate-800">الجلسات النشطة</h3>
+        <button onclick="logoutAll()" class="text-xs text-red-600 hover:text-red-700 font-bold">
+          تسجيل خروج من الكل
+        </button>
+      </div>
+
+      <div class="space-y-3">
+        {% for s in sessions %}
+        <div class="flex items-center gap-3 p-3 rounded-xl bg-slate-50">
+          <div class="w-9 h-9 rounded-xl bg-white flex items-center justify-center flex-shrink-0">
+            {% if s.device == 'mobile' %}📱{% else %}💻{% endif %}
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="text-xs font-bold text-slate-700 truncate">{{ s.device_name }}</div>
+            <div class="text-[10px] text-slate-400">{{ s.location }} · {{ s.last_active }}</div>
+          </div>
+          {% if s.current %}
+          <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">الجلسة الحالية</span>
+          {% else %}
+          <button onclick="endSession('{{ s.id }}')"
+                  class="text-[10px] text-red-600 hover:underline font-bold">إنهاء</button>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Sidebar -->
+  <div class="space-y-4">
+
+    <!-- Security score -->
+    <div class="bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl p-5 text-white shadow-lg">
+      <div class="text-xs text-blue-100 font-medium mb-2">درجة أمان حسابك</div>
+      <div class="text-4xl font-bold mb-2">{{ customer.security_score }}%</div>
+      <div class="h-1.5 bg-white/20 rounded-full overflow-hidden">
+        <div class="h-full bg-white rounded-full" style="width:{{ customer.security_score }}%"></div>
+      </div>
+      <div class="text-[11px] text-blue-100 mt-2">ارفع درجتك بتفعيل 2FA</div>
+    </div>
+
+    <!-- Checklist -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+      <h4 class="text-sm font-bold text-slate-800 mb-3">قائمة الحماية</h4>
+      <div class="space-y-2.5 text-xs">
+        {% set checklist = [
+          ('كلمة مرور قوية', customer.has_strong_password),
+          ('البريد موثّق', customer.email_verified),
+          ('2FA مفعّلة', customer.two_fa_enabled),
+          ('رقم هاتف موثّق', customer.phone_verified),
+        ] %}
+        {% for label, done in checklist %}
+        <div class="flex items-center gap-2">
+          {% if done %}
+          <svg class="w-4 h-4 text-emerald-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+          </svg>
+          <span class="text-slate-700">{{ label }}</span>
+          {% else %}
+          <svg class="w-4 h-4 text-slate-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="9" stroke-width="2"/>
+          </svg>
+          <span class="text-slate-400">{{ label }}</span>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Info -->
+    <div class="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+      <div class="flex items-start gap-2">
+        <span class="text-lg">🔒</span>
+        <div class="text-xs text-amber-800">
+          <p class="font-bold mb-1">نصيحة أمنية</p>
+          <p>لا تشارك كلمة المرور مع أي شخص. فريق الدعم لن يطلبها أبدًا.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function checkPasswordStrength() {
+  const pwd = document.getElementById('new-password').value;
+  const bars = document.querySelectorAll('.strength-bar');
+  const txt = document.getElementById('strength-text');
+
+  let score = 0;
+  if (pwd.length >= 8) score++;
+  if (/[A-Z]/.test(pwd)) score++;
+  if (/[0-9]/.test(pwd)) score++;
+  if (/[^A-Za-z0-9]/.test(pwd)) score++;
+
+  const colors = ['#ef4444','#f59e0b','#3b82f6','#10b981'];
+  const labels = ['ضعيفة','متوسطة','جيدة','قوية'];
+
+  bars.forEach((b, i) => {
+    b.style.background = i < score ? colors[score-1] : '#e2e8f0';
+  });
+  txt.textContent = pwd ? labels[score-1] || 'ضعيفة' : 'استخدم 8 أحرف على الأقل';
+  txt.style.color = pwd ? colors[score-1] || '#94a3b8' : '#94a3b8';
+}
+
+async function changePassword() {
+  const current = document.getElementById('current-password').value;
+  const newPwd = document.getElementById('new-password').value;
+  const confirm = document.getElementById('confirm-password').value;
+
+  if (newPwd !== confirm) return alert('كلمتا المرور غير متطابقتين');
+  if (newPwd.length < 8) return alert('كلمة المرور قصيرة جدًا');
+
+  const r = await fetch('/api/v1/security/password', {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ current, new: newPwd }),
+  });
+  alert(r.ok ? 'تم تحديث كلمة المرور ✓' : 'فشل التحديث');
+  if (r.ok) location.reload();
+}
+
+async function enable2FA() {
+  const r = await fetch('/api/v1/security/2fa/enable', { method: 'POST' });
+  const d = await r.json();
+  if (r.ok) {
+    alert(`امسح رمز QR في تطبيق المصادقة\nالكود السري: ${d.secret}`);
+    location.reload();
+  }
+}
+
+async function disable2FA() {
+  if (!confirm('تعطيل 2FA؟ سيصبح حسابك أقل أمانًا')) return;
+  const r = await fetch('/api/v1/security/2fa/disable', { method: 'POST' });
+  if (r.ok) location.reload();
+}
+
+async function endSession(id) {
+  await fetch(`/api/v1/security/sessions/${id}`, { method: 'DELETE' });
+  location.reload();
+}
+
+async function logoutAll() {
+  if (!confirm('تسجيل الخروج من جميع الأجهزة؟')) return;
+  await fetch('/api/v1/security/sessions', { method: 'DELETE' });
+  location.href = '/logout';
+}
+</script>
+{% endblock %}
