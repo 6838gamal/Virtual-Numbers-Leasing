@@ -9,20 +9,15 @@
 
 {% block content %}
 
-{# ═══════════════════════════════════════════════════════════ #}
-{# حالة الفشل                                                 #}
-{# ═══════════════════════════════════════════════════════════ #}
 {% if not prices_meta.ok %}
 <div class="max-w-2xl mx-auto mt-8">
   <div class="bg-red-50 border-2 border-red-200 rounded-2xl p-8 text-center">
     <div class="text-5xl mb-4">⚠️</div>
     <h2 class="text-xl font-bold text-red-800 mb-3">تعذّر تحميل البيانات من 5SIM</h2>
     <p class="text-sm text-red-700 mb-2">{{ prices_meta.error or 'خطأ غير معروف' }}</p>
-
     {% if prices_meta.error_code %}
       <p class="text-xs text-red-500 mb-4" dir="ltr">HTTP {{ prices_meta.error_code }}</p>
     {% endif %}
-
     <div class="bg-white rounded-lg p-4 mt-4 text-right text-xs text-slate-600 space-y-1">
       <p class="font-bold text-slate-800 mb-2">ما الذي يمكن فعله؟</p>
       <p>• تأكد من ضبط <code class="bg-slate-100 px-1 rounded" dir="ltr">SIM5_API_KEY</code> في متغيرات البيئة.</p>
@@ -30,12 +25,10 @@
       <p>• تحقق من أن الخادم يستطيع الوصول إلى <code class="bg-slate-100 px-1 rounded" dir="ltr">5sim.net</code>.</p>
       <p>• إذا كنت متأكدًا من الإعداد، أعد المحاولة.</p>
     </div>
-
     <button onclick="refreshPrices(this)"
             class="mt-6 bg-red-600 hover:bg-red-700 text-white font-bold px-6 py-2.5 rounded-lg text-sm transition-colors">
       🔄 إعادة المحاولة
     </button>
-
     <div class="mt-4">
       <a href="/api/v1/system/sim5-profile" target="_blank"
          class="text-xs text-slate-500 hover:text-slate-700 underline">
@@ -46,11 +39,6 @@
 </div>
 {% else %}
 
-{# ═══════════════════════════════════════════════════════════ #}
-{# حالة النجاح                                                 #}
-{# ═══════════════════════════════════════════════════════════ #}
-
-<!-- ══ شريط مصدر الأسعار ══ -->
 <div class="mb-4 flex items-center justify-between gap-3 flex-wrap">
   <div class="flex items-center gap-2 flex-wrap">
     <span class="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold px-2.5 py-1 rounded-full">
@@ -67,7 +55,6 @@
   </button>
 </div>
 
-<!-- ══ الأكثر طلباً (4 + عرض المزيد) ══ -->
 {% if popular_services %}
 <div class="mb-6" id="popular-section">
   <div class="flex items-center justify-between mb-3">
@@ -88,7 +75,6 @@
       <span class="absolute top-2 left-2 bg-gradient-to-r from-orange-500 to-red-500 text-white text-[9px] font-bold px-2 py-0.5 rounded-full">
         {{ p.count }}+
       </span>
-
       <div class="flex flex-col items-center gap-1.5 pt-3">
         <div class="w-10 h-10 flex items-center justify-center group-hover:scale-110 transition-transform"
              data-service-icon="{{ p.service_id }}"
@@ -125,7 +111,6 @@
 </div>
 {% endif %}
 
-<!-- ══ الأرقام المتاحة الآن (4 + عرض المزيد) ══ -->
 {% if available_numbers %}
 <div class="mb-6" id="numbers-section">
   <div class="flex items-center justify-between mb-3">
@@ -217,18 +202,14 @@
 </div>
 {% endif %}
 
-<!-- ══ نموذج الشراء ══ -->
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
   <div class="lg:col-span-2 space-y-4">
 
-    <!-- الخطوة 1: الدولة -->
     <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
       <div class="flex items-center gap-3 mb-4">
         <div class="w-7 h-7 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center">1</div>
         <h3 class="text-base font-bold text-slate-800">اختر الدولة</h3>
-        <span class="text-[10px] text-slate-400">
-          {{ countries|length }} دولة متاحة من 5SIM
-        </span>
+        <span class="text-[10px] text-slate-400">{{ countries|length }} دولة متاحة من 5SIM</span>
       </div>
 
       <div class="grid grid-cols-2 sm:grid-cols-3 gap-3" id="country-grid">
@@ -251,23 +232,18 @@
       </div>
     </div>
 
-    <!-- الخطوة 2: الخدمة -->
     <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 opacity-50 pointer-events-none" id="service-step">
       <div class="flex items-center gap-3 mb-4">
         <div class="w-7 h-7 rounded-full bg-slate-300 text-white text-xs font-bold flex items-center justify-center">2</div>
         <h3 class="text-base font-bold text-slate-800">اختر الخدمة</h3>
       </div>
-
       <div class="grid grid-cols-2 sm:grid-cols-3 gap-3" id="service-grid"></div>
-
       <div id="service-empty" class="hidden text-center text-xs text-slate-400 py-6">
         لا توجد خدمات متاحة لهذه الدولة حالياً
       </div>
-
       <div id="service-more-wrap" class="hidden text-center mt-4"></div>
     </div>
 
-    <!-- الخطوة 3: التأكيد -->
     <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 opacity-50 pointer-events-none" id="confirm-step">
       <div class="flex items-center gap-3 mb-4">
         <div class="w-7 h-7 rounded-full bg-slate-300 text-white text-xs font-bold flex items-center justify-center">3</div>
@@ -301,14 +277,12 @@
         </svg>
         شراء الآن من 5SIM
       </button>
-
       <p class="text-[10px] text-slate-400 text-center mt-2">
         سيتم شراء رقم حقيقي من 5SIM. عند فشل الشراء ستظهر رسالة الخطأ بوضوح.
       </p>
     </div>
   </div>
 
-  <!-- العمود الجانبي -->
   <div class="space-y-4">
     <div class="bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl p-5 text-white shadow-lg">
       <div class="text-xs text-blue-100 font-medium mb-1">رصيدك الحالي</div>
@@ -377,7 +351,6 @@
   </div>
 </div>
 
-<!-- بيانات الدول إلى JavaScript (من 5SIM) -->
 <script id="countries-data" type="application/json">
 {{ countries | tojson }}
 </script>
@@ -391,264 +364,346 @@
 <script>
 // ══════════════════════════════════════════════════════════════
 // 1) خريطة الأيقونات — Simple Icons CDN
+//    تغطي: عالمية + إقليمية + محلية حسب المنطقة + احترافية + تعليمية
 // ══════════════════════════════════════════════════════════════
 const SERVICE_ICONS = {
-  // ── مراسلة ──
-  whatsapp:        { svg: 'whatsapp',        color: '25D366' },
-  whatsappbusiness:{ svg: 'whatsapp',        color: '25D366' },
-  wa:              { svg: 'whatsapp',        color: '25D366' },
-  wapp:            { svg: 'whatsapp',        color: '25D366' },
-  telegram:        { svg: 'telegram',        color: '26A5E4' },
-  tg:              { svg: 'telegram',        color: '26A5E4' },
-  signal:          { svg: 'signal',          color: '3A76F0' },
-  viber:           { svg: 'viber',           color: '7360F2' },
-  line:            { svg: 'line',            color: '00C300' },
-  wechat:          { svg: 'wechat',          color: '07C160' },
-  skype:           { svg: 'skype',           color: '00AFF0' },
-  imo:             { svg: 'imo',             color: '00A8E1' },
-  kakaotalk:       { svg: 'kakaotalk',       color: 'FEE500' },
+  // ── 🌍 عالمية — مراسلة ──
+  whatsapp:{svg:'whatsapp',color:'25D366'}, whatsappbusiness:{svg:'whatsapp',color:'25D366'},
+  wa:{svg:'whatsapp',color:'25D366'}, wapp:{svg:'whatsapp',color:'25D366'},
+  telegram:{svg:'telegram',color:'26A5E4'}, tg:{svg:'telegram',color:'26A5E4'},
+  signal:{svg:'signal',color:'3A76F0'}, viber:{svg:'viber',color:'7360F2'},
+  line:{svg:'line',color:'00C300'}, wechat:{svg:'wechat',color:'07C160'},
+  skype:{svg:'skype',color:'00AFF0'}, imo:{svg:'imo',color:'00A8E1'},
+  kakaotalk:{svg:'kakaotalk',color:'FEE500'}, kakao:{svg:'kakaotalk',color:'FEE500'},
+  groupme:{svg:'groupme',color:'00AFF0'}, keybase:{svg:'keybase',color:'33A0FF'},
+  michat:{svg:'michat',color:'FF4C4C'}, tango:{svg:'tango',color:'FF5A60'},
+  zalo:{svg:'zalo',color:'0068FF'}, yalla:{svg:'yalla',color:'00C4A7'},
 
-  // ── تواصل اجتماعي ──
-  instagram:       { svg: 'instagram',       color: 'E4405F' },
-  ig:              { svg: 'instagram',       color: 'E4405F' },
-  insta:           { svg: 'instagram',       color: 'E4405F' },
-  facebook:        { svg: 'facebook',        color: '1877F2' },
-  fb:              { svg: 'facebook',        color: '1877F2' },
-  twitter:         { svg: 'x',               color: '000000' },
-  x:               { svg: 'x',               color: '000000' },
-  tiktok:          { svg: 'tiktok',          color: '000000' },
-  tt:              { svg: 'tiktok',          color: '000000' },
-  snapchat:        { svg: 'snapchat',        color: 'FFFC00' },
-  snap:            { svg: 'snapchat',        color: 'FFFC00' },
-  discord:         { svg: 'discord',         color: '5865F2' },
-  reddit:          { svg: 'reddit',          color: 'FF4500' },
-  linkedin:        { svg: 'linkedin',        color: '0A66C2' },
-  pinterest:       { svg: 'pinterest',       color: 'BD081C' },
-  threads:         { svg: 'threads',         color: '000000' },
-  vk:              { svg: 'vk',              color: '0077FF' },
-  ok:              { svg: 'odnoklassniki',   color: 'EE8208' },
-  odnoklassniki:   { svg: 'odnoklassniki',   color: 'EE8208' },
-  clubhouse:       { svg: 'clubhouse',       color: 'F1C40F' },
-  truthsocial:     { svg: 'truthsocial',     color: '5448EE' },
-  weibo:           { svg: 'sinaweibo',       color: 'E6162D' },
+  // ── 🌍 عالمية — اجتماعي ──
+  instagram:{svg:'instagram',color:'E4405F'}, ig:{svg:'instagram',color:'E4405F'},
+  insta:{svg:'instagram',color:'E4405F'}, facebook:{svg:'facebook',color:'1877F2'},
+  fb:{svg:'facebook',color:'1877F2'}, twitter:{svg:'x',color:'000000'}, x:{svg:'x',color:'000000'},
+  tiktok:{svg:'tiktok',color:'000000'}, tt:{svg:'tiktok',color:'000000'},
+  snapchat:{svg:'snapchat',color:'FFFC00'}, snap:{svg:'snapchat',color:'FFFC00'},
+  discord:{svg:'discord',color:'5865F2'}, reddit:{svg:'reddit',color:'FF4500'},
+  linkedin:{svg:'linkedin',color:'0A66C2'}, pinterest:{svg:'pinterest',color:'BD081C'},
+  threads:{svg:'threads',color:'000000'}, mastodon:{svg:'mastodon',color:'6364FF'},
+  truthsocial:{svg:'truthsocial',color:'5448EE'}, weibo:{svg:'sinaweibo',color:'E6162D'},
+  qq:{svg:'tencentqq',color:'EB1923'}, tencentqq:{svg:'tencentqq',color:'EB1923'},
+  vk:{svg:'vk',color:'0077FF'}, ok:{svg:'odnoklassniki',color:'EE8208'},
+  odnoklassniki:{svg:'odnoklassniki',color:'EE8208'}, clubhouse:{svg:'clubhouse',color:'F1C40F'},
+  naver:{svg:'naver',color:'03C75A'}, baidu:{svg:'baidu',color:'2932E1'},
+  douyin:{svg:'tiktok',color:'000000'}, kuaishou:{svg:'kuaishou',color:'FF4E00'},
+  bigolive:{svg:'bigolive',color:'F26B21'},
 
-  // ── تسوق ──
-  amazon:          { svg: 'amazon',          color: 'FF9900' },
-  ebay:            { svg: 'ebay',            color: 'E53238' },
-  aliexpress:      { svg: 'aliexpress',      color: 'FF4747' },
-  alibaba:         { svg: 'alibabacloud',    color: 'FF6A00' },
-  shopify:         { svg: 'shopify',         color: '7AB55C' },
-  etsy:            { svg: 'etsy',            color: 'F16521' },
-  shopee:          { svg: 'shopee',          color: 'EE4D2D' },
-  lazada:          { svg: 'lazada',          color: '0F146D' },
-  olx:             { svg: 'olx',             color: '002F34' },
-  trendyol:        { svg: 'trendyol',        color: 'F27A1A' },
-  shein:           { svg: 'shein',           color: '000000' },
-  flipkart:        { svg: 'flipkart',        color: '2874F0' },
-  alibabacloud:    { svg: 'alibabacloud',    color: 'FF6A00' },
+  // ── 💼 احترافية وتوظيف ──
+  indeed:{svg:'indeed',color:'003A9B'}, glassdoor:{svg:'glassdoor',color:'0CAA41'},
+  monster:{svg:'monster',color:'6D4AFF'}, upwork:{svg:'upwork',color:'14A800'},
+  fiverr:{svg:'fiverr',color:'1DBF73'}, freelancer:{svg:'freelancer',color:'29B2FE'},
+  toptal:{svg:'toptal',color:'204ECF'}, guru:{svg:'guru',color:'4F8C3A'},
+  peopleperhour:{svg:'peopleperhour',color:'FF7300'}, weworkremotely:{svg:'weworkremotely',color:'F45A34'},
+  remoteok:{svg:'remoteok',color:'00A0A0'}, wellfound:{svg:'wellfound',color:'000000'},
+  naukri:{svg:'naukri',color:'FF7555'}, bayt:{svg:'bayt',color:'00A651'},
+  wuzzuf:{svg:'wuzzuf',color:'00A8E1'}, tanqeeb:{svg:'tanqeeb',color:'FF6B00'},
 
-  // ── ترفيه وبث ──
-  youtube:         { svg: 'youtube',         color: 'FF0000' },
-  yt:              { svg: 'youtube',         color: 'FF0000' },
-  netflix:         { svg: 'netflix',         color: 'E50914' },
-  spotify:         { svg: 'spotify',         color: '1DB954' },
-  twitch:          { svg: 'twitch',          color: '9146FF' },
-  soundcloud:      { svg: 'soundcloud',      color: 'FF5500' },
-  shazam:          { svg: 'shazam',          color: '0088FF' },
-  deezer:          { svg: 'deezer',          color: 'FEAA2D' },
-  disney:          { svg: 'disney',          color: '113CCF' },
-  disneyplus:      { svg: 'disneyplus',      color: '113CCF' },
-  hulu:            { svg: 'hulu',            color: '1CE783' },
-  vimeo:           { svg: 'vimeo',           color: '1AB7EA' },
-  applemusic:      { svg: 'applemusic',      color: 'FA243C' },
-  itunes:          { svg: 'itunes',          color: 'FB5BC5' },
+  // ── 📚 تعليم ──
+  coursera:{svg:'coursera',color:'0056D2'}, udemy:{svg:'udemy',color:'A435F0'},
+  edx:{svg:'edx',color:'02262B'}, khanacademy:{svg:'khanacademy',color:'14BF96'},
+  udacity:{svg:'udacity',color:'02B3E4'}, pluralsight:{svg:'pluralsight',color:'F15B2A'},
+  skillshare:{svg:'skillshare',color:'00FF84'}, byjus:{svg:'byjus',color:'813588'},
+  unacademy:{svg:'unacademy',color:'08BD80'}, vedantu:{svg:'vedantu',color:'FB6C21'},
+  toppr:{svg:'toppr',color:'4A90E2'}, doubtnut:{svg:'doubtnut',color:'FB6C21'},
+  chegg:{svg:'chegg',color:'F26B21'}, brainly:{svg:'brainly',color:'20C997'},
+  quizlet:{svg:'quizlet',color:'4255FF'}, duolingo:{svg:'duolingo',color:'58CC02'},
+  babbel:{svg:'babbel',color:'FF7100'}, rosettastone:{svg:'rosettastone',color:'0099CC'},
 
-  // ── Google وبريد ──
-  google:          { svg: 'google',          color: '4285F4' },
-  gmail:           { svg: 'gmail',           color: 'EA4335' },
-  googlevoice:     { svg: 'google',          color: '4285F4' },
-  yahoo:           { svg: 'yahoo',           color: '6001D2' },
-  outlook:         { svg: 'microsoftoutlook',color: '0078D4' },
-  hotmail:         { svg: 'microsoftoutlook',color: '0078D4' },
-  protonmail:      { svg: 'protonmail',      color: '6D4AFF' },
-  zoho:            { svg: 'zoho',            color: 'E42527' },
-  mailru:          { svg: 'maildotru',       color: '005FF9' },
-  yandex:          { svg: 'yandex',          color: 'FF0000' },
-  aol:             { svg: 'aol',             color: '3399FF' },
-  naver:           { svg: 'naver',           color: '03C75A' },
+  // ── 🏥 صحة ──
+  practo:{svg:'practo',color:'28328C'}, apollo:{svg:'apollo',color:'F58220'},
+  netmeds:{svg:'netmeds',color:'E11B22'}, '1mg':{svg:'1mg',color:'F47B20'},
+  pharmeasy:{svg:'pharmeasy',color:'10847E'}, cvs:{svg:'cvs',color:'CC0000'},
+  walgreens:{svg:'walgreens',color:'E31837'}, goodrx:{svg:'goodrx',color:'00CCBC'},
+  teladoc:{svg:'teladoc',color:'FF7900'}, zocdoc:{svg:'zocdoc',color:'FF6C6C'},
+  halodoc:{svg:'halodoc',color:'00A0DC'}, alodokter:{svg:'alodokter',color:'FF6B00'},
+  klikdokter:{svg:'klikdokter',color:'00B2A9'}, sehatq:{svg:'sehatq',color:'00A8E1'},
 
-  // ── أنظمة وأجهزة ──
-  apple:           { svg: 'apple',           color: '000000' },
-  icloud:          { svg: 'icloud',          color: '3693F3' },
-  microsoft:       { svg: 'microsoft',       color: '5E5E5E' },
-  windows:         { svg: 'windows',         color: '0078D4' },
+  // ── 🏦 بنوك عالمية ──
+  chase:{svg:'chase',color:'117ACA'}, wellsfargo:{svg:'wellsfargo',color:'D71E28'},
+  bankofamerica:{svg:'bankofamerica',color:'012169'}, citibank:{svg:'citibank',color:'003B70'},
+  hsbc:{svg:'hsbc',color:'DB0011'}, barclays:{svg:'barclays',color:'00AEEF'},
+  lloyds:{svg:'lloyds',color:'006A4D'}, natwest:{svg:'natwest',color:'5A287D'},
+  standardchartered:{svg:'standardchartered',color:'0473EA'}, dbs:{svg:'dbs',color:'EC1C24'},
+  ocbc:{svg:'ocbc',color:'EE2E24'}, uob:{svg:'uob',color:'005EB8'},
+  maybank:{svg:'maybank',color:'FFCC00'}, cimb:{svg:'cimb',color:'ED1C24'},
 
-  // ── ألعاب ──
-  steam:           { svg: 'steam',           color: '000000' },
-  playstation:     { svg: 'playstation',     color: '003791' },
-  psn:             { svg: 'playstation',     color: '003791' },
-  xbox:            { svg: 'xbox',            color: '107C10' },
-  nintendo:        { svg: 'nintendoswitch',  color: 'E60012' },
-  epicgames:       { svg: 'epicgames',       color: '313131' },
-  epic:            { svg: 'epicgames',       color: '313131' },
-  roblox:          { svg: 'roblox',          color: '000000' },
-  minecraft:       { svg: 'minecraft',       color: '62B47A' },
-  pubg:            { svg: 'pubg',            color: 'F2A900' },
-  freefire:        { svg: 'freefire',        color: 'FF6B00' },
-  genshin:         { svg: 'genshinimpact',   color: '4A90D9' },
-  blizzard:        { svg: 'blizzard',        color: '148EFF' },
-  ea:              { svg: 'ea',              color: '000000' },
-  riotgames:       { svg: 'riotgames',       color: 'D32936' },
-  ubisoft:         { svg: 'ubisoft',         color: '000000' },
+  // ── 📰 إخبارية ──
+  cnn:{svg:'cnn',color:'CC0000'}, bbc:{svg:'bbc',color:'000000'},
+  nytimes:{svg:'newyorktimes',color:'000000'}, wsj:{svg:'wsj',color:'000000'},
+  washingtonpost:{svg:'washingtonpost',color:'000000'}, theguardian:{svg:'theguardian',color:'052962'},
+  reuters:{svg:'reuters',color:'FF8000'}, bloomberg:{svg:'bloomberg',color:'000000'},
+  forbes:{svg:'forbes',color:'000000'}, techcrunch:{svg:'techcrunch',color:'0A8F2D'},
+  theverge:{svg:'theverge',color:'5200FF'}, wired:{svg:'wired',color:'000000'},
 
-  // ── دفع وبنوك ──
-  paypal:          { svg: 'paypal',          color: '00457C' },
-  visa:            { svg: 'visa',            color: '1A1F71' },
-  mastercard:      { svg: 'mastercard',      color: 'EB001B' },
-  binance:         { svg: 'binance',         color: 'F0B90B' },
-  coinbase:        { svg: 'coinbase',        color: '0052FF' },
-  stripe:          { svg: 'stripe',          color: '635BFF' },
-  revolut:         { svg: 'revolut',         color: '0075EB' },
-  skrill:          { svg: 'skrill',          color: '7F1E8C' },
-  payoneer:        { svg: 'payoneer',        color: 'FF4800' },
-  wise:            { svg: 'wise',            color: '9FE870' },
-  westernunion:    { svg: 'westernunion',    color: 'FFDD00' },
-  payzapp:         { svg: 'payzapp',         color: 'FDB913' },
-  papara:          { svg: 'papara',          color: '4A1AA9' },
-  picpay:          { svg: 'picpay',          color: '21C25E' },
+  // ── 🌍 تسوق ──
+  amazon:{svg:'amazon',color:'FF9900'}, ebay:{svg:'ebay',color:'E53238'},
+  aliexpress:{svg:'aliexpress',color:'FF4747'}, alibaba:{svg:'alibabacloud',color:'FF6A00'},
+  shopify:{svg:'shopify',color:'7AB55C'}, etsy:{svg:'etsy',color:'F16521'},
+  walmart:{svg:'walmart',color:'0071CE'}, target:{svg:'target',color:'CC0000'},
+  shein:{svg:'shein',color:'000000'}, dhgate:{svg:'dhgate',color:'FF6A00'},
+  adidas:{svg:'adidas',color:'000000'}, nike:{svg:'nike',color:'000000'},
+  puma:{svg:'puma',color:'000000'}, temu:{svg:'temu',color:'FB7701'},
+  wish:{svg:'wish',color:'2FB7EC'}, banggood:{svg:'banggood',color:'FF6A00'},
+  gearbest:{svg:'gearbest',color:'FF6A00'}, joom:{svg:'joom',color:'83B735'},
+  lightinthebox:{svg:'lightinthebox',color:'FF6A00'},
 
-  // ── مواصلات وحجوزات ──
-  uber:            { svg: 'uber',            color: '000000' },
-  airbnb:          { svg: 'airbnb',          color: 'FF5A5F' },
-  booking:         { svg: 'bookingdotcom',   color: '003580' },
-  careem:          { svg: 'careem',          color: '25C16F' },
-  grab:            { svg: 'grab',            color: '00B14F' },
-  gojek:           { svg: 'gojek',           color: '00AA13' },
-  bolt:            { svg: 'bolt',            color: '34D186' },
-  didi:            { svg: 'didi',            color: 'FF7D41' },
-  indriver:        { svg: 'indriver',        color: 'C8E600' },
-  lyft:            { svg: 'lyft',            color: 'FF00BF' },
-  blablacar:       { svg: 'blablacar',       color: '00AFF5' },
-  olacabs:         { svg: 'olacabs',         color: 'FFCC00' },
+  // ── 🇨🇳🇯🇵🇰🇷 آسيا ──
+  taobao:{svg:'taobao',color:'FF4400'}, tmall:{svg:'taobao',color:'FF4400'},
+  jd:{svg:'jd',color:'E1251B'}, '1688':{svg:'alibabacloud',color:'FF6A00'},
+  bilibili:{svg:'bilibili',color:'00A1D6'}, iqiyi:{svg:'iqiyi',color:'00CC36'},
+  douyu:{svg:'douyu',color:'FF5D23'}, huya:{svg:'huya',color:'FF9200'},
+  wegame:{svg:'tencentqq',color:'EB1923'}, linepay:{svg:'line',color:'00C300'},
+  paypay:{svg:'paypay',color:'FF0033'}, rakuten:{svg:'rakuten',color:'BF0000'},
+  mercari:{svg:'mercari',color:'FF3333'}, yahoojapan:{svg:'yahoo',color:'6001D2'},
+  naverpay:{svg:'naver',color:'03C75A'}, kakaopay:{svg:'kakaopay',color:'FFCC00'},
+  coupang:{svg:'coupang',color:'0074E4'}, coupangeats:{svg:'coupangeats',color:'0074E4'},
+  baemin:{svg:'baemin',color:'2AC1BC'}, yogiyo:{svg:'yogiyo',color:'FA0050'},
+  lazada:{svg:'lazada',color:'0F146D'}, shopee:{svg:'shopee',color:'EE4D2D'},
+  tokopedia:{svg:'tokopedia',color:'03AC0E'}, bukalapak:{svg:'bukalapak',color:'E31E52'},
+  blibli:{svg:'blibli',color:'199ED9'}, traveloka:{svg:'traveloka',color:'0099FF'},
+  tiket:{svg:'tiket',color:'0064D2'}, ovo:{svg:'ovo',color:'4C3494'},
+  dana:{svg:'dana',color:'118EEA'}, gopay:{svg:'gopay',color:'00AED6'},
+  shopeepay:{svg:'shopeepay',color:'EE4D2D'}, gojek:{svg:'gojek',color:'00AA13'},
+  grab:{svg:'grab',color:'00B14F'}, grabtaxi:{svg:'grab',color:'00B14F'},
+  grabfood:{svg:'grab',color:'00B14F'},
 
-  // ── طعام ──
-  foodpanda:       { svg: 'foodpanda',       color: 'D70F64' },
-  doordash:        { svg: 'doordash',        color: 'FF3008' },
-  deliveroo:       { svg: 'deliveroo',       color: '00CCBC' },
-  talabat:         { svg: 'talabat',         color: 'FF5A00' },
-  mcdonalds:       { svg: 'mcdonalds',       color: 'FFC72C' },
-  burgerking:      { svg: 'burgerking',      color: 'D62300' },
-  kfc:             { svg: 'kfc',             color: 'E4002B' },
-  dominos:         { svg: 'dominos',         color: 'E31837' },
-  dominospizza:    { svg: 'dominos',         color: 'E31837' },
-  starbucks:       { svg: 'starbucks',       color: '00704A' },
-  zomato:          { svg: 'zomato',          color: 'E23744' },
-  swiggy:          { svg: 'swiggy',          color: 'FC8019' },
-  yemeksepeti:     { svg: 'yemeksepeti',     color: 'FA0050' },
-  getir:           { svg: 'getir',           color: '5D3EBC' },
-  glovo:           { svg: 'glovo',           color: 'FFC244' },
-  wolt:            { svg: 'wolt',            color: '009DE0' },
+  // ── 🇮🇳 الهند ──
+  flipkart:{svg:'flipkart',color:'2874F0'}, myntra:{svg:'myntra',color:'FF3F6C'},
+  ajio:{svg:'ajio',color:'2C4152'}, nykaa:{svg:'nykaa',color:'FC2779'},
+  snapdeal:{svg:'snapdeal',color:'E40046'}, paytm:{svg:'paytm',color:'00BAF2'},
+  phonepe:{svg:'phonepe',color:'5F259F'}, gpay:{svg:'googlepay',color:'4285F4'},
+  googlepay:{svg:'googlepay',color:'4285F4'}, zomato:{svg:'zomato',color:'E23744'},
+  swiggy:{svg:'swiggy',color:'FC8019'}, zepto:{svg:'zepto',color:'5F259F'},
+  blinkit:{svg:'blinkit',color:'F8CB46'}, bigbasket:{svg:'bigbasket',color:'84C225'},
+  dunzo:{svg:'dunzo',color:'00D290'}, ola:{svg:'ola',color:'00A854'},
+  olacabs:{svg:'olacabs',color:'FFCC00'}, jio:{svg:'jio',color:'0F3CC9'},
+  airtel:{svg:'airtel',color:'ED1C24'}, bsnl:{svg:'bsnl',color:'0066B3'},
+  dream11:{svg:'dream11',color:'EE2A24'}, mpl:{svg:'mpl',color:'FF3D71'},
+  rummycircle:{svg:'rummycircle',color:'FFCC00'}, zupee:{svg:'zupee',color:'5E2D91'},
+  irctc:{svg:'irctc',color:'F37021'}, redbus:{svg:'redbus',color:'D32F2F'},
+  abhibus:{svg:'abhibus',color:'E91E63'}, makemytrip:{svg:'makemytrip',color:'E8322D'},
+  yatra:{svg:'yatra',color:'F9A825'}, goibibo:{svg:'goibibo',color:'EE2A24'},
+  oyo:{svg:'oyo',color:'EE2A24'},
 
-  // ── AI وأدوات ──
-  openai:          { svg: 'openai',          color: '412991' },
-  chatgpt:         { svg: 'openai',          color: '10A37F' },
-  gpt:             { svg: 'openai',          color: '10A37F' },
-  github:          { svg: 'github',          color: '181717' },
-  dropbox:         { svg: 'dropbox',         color: '0061FF' },
-  notion:          { svg: 'notion',          color: '000000' },
-  zoom:            { svg: 'zoom',            color: '2D8CFF' },
-  slack:           { svg: 'slack',           color: '4A154B' },
-  figma:           { svg: 'figma',           color: 'F24E1E' },
-  canva:           { svg: 'canva',           color: '00C4CC' },
+  // ── 🇸🇦 الخليج ──
+  careem:{svg:'careem',color:'25C16F'}, talabat:{svg:'talabat',color:'FF5A00'},
+  noon:{svg:'noon',color:'FEEE00'}, souq:{svg:'amazon',color:'FF9900'},
+  dubizzle:{svg:'dubizzle',color:'FFCE00'}, bayut:{svg:'bayut',color:'FBAF17'},
+  anghami:{svg:'anghami',color:'8A2BE2'}, shahid:{svg:'shahid',color:'EE2A24'},
+  starzplay:{svg:'starzplay',color:'E60000'}, ooredoo:{svg:'ooredoo',color:'ED1C24'},
+  stc:{svg:'stc',color:'4F008C'}, mobily:{svg:'mobily',color:'0099DD'},
+  zain:{svg:'zain',color:'00A651'}, du:{svg:'du',color:'F58220'},
+  etisalat:{svg:'etisalat',color:'00A651'}, mzadqatar:{svg:'mzadqatar',color:'C8102E'},
+  qatarliving:{svg:'qatarliving',color:'C8102E'}, sahibinden:{svg:'sahibinden',color:'FFE500'},
+  hepsiburada:{svg:'hepsiburada',color:'FF6000'}, gittigidiyor:{svg:'gittigidiyor',color:'FF5B00'},
+  trendyol:{svg:'trendyol',color:'F27A1A'}, yemeksepeti:{svg:'yemeksepeti',color:'FA0050'},
+  getir:{svg:'getir',color:'5D3EBC'}, papara:{svg:'papara',color:'4A1AA9'},
+  tosla:{svg:'tosla',color:'9B5DE5'}, ininal:{svg:'ininal',color:'5C2D91'},
+  bitaksi:{svg:'bitaksi',color:'FFC72C'}, marti:{svg:'marti',color:'FF5B00'},
 
-  // ── مواعدة ──
-  tinder:          { svg: 'tinder',          color: 'FF6B6B' },
-  badoo:           { svg: 'badoo',           color: '783BF9' },
-  bumble:          { svg: 'bumble',          color: 'FFC629' },
-  grindr:          { svg: 'grindr',          color: 'FDCF10' },
-  happn:           { svg: 'happn',           color: 'FF4F5E' },
-  pof:             { svg: 'pof',             color: 'FF603B' },
+  // ── 🇷🇺 روسيا ──
+  yandex:{svg:'yandex',color:'FF0000'}, yandexgo:{svg:'yandex',color:'FF0000'},
+  yandexmoney:{svg:'yandex',color:'FF0000'}, avito:{svg:'avito',color:'97CF26'},
+  ozon:{svg:'ozon',color:'005BFF'}, wildberries:{svg:'wildberries',color:'481173'},
+  sberbank:{svg:'sberbank',color:'21A038'}, tinkoff:{svg:'tinkoff',color:'FFDD2D'},
+  alfa:{svg:'alfa',color:'EF3124'}, kolesakz:{svg:'kolesakz',color:'FF6A00'},
+  kufarby:{svg:'kufarby',color:'FF6A00'}, onlinerby:{svg:'onlinerby',color:'FF6600'},
+  ukrnet:{svg:'ukrnet',color:'000000'}, hamrahaval:{svg:'hamrahaval',color:'00A651'},
+  dostup:{svg:'dostup',color:'F58220'}, aitu:{svg:'aitu',color:'00C4A7'},
+  mailru:{svg:'maildotru',color:'005FF9'},
 
-  // ── تسويق وعمل ──
-  craigslist:      { svg: 'craigslist',      color: '7F23D1' },
-  fiverr:          { svg: 'fiverr',          color: '1DBF73' },
-  upwork:          { svg: 'upwork',          color: '14A800' },
-  gofundme:        { svg: 'gofundme',        color: '00B964' },
+  // ── 🌎 أمريكا اللاتينية ──
+  mercado:{svg:'mercadolibre',color:'FFE600'}, mercadolivre:{svg:'mercadolibre',color:'FFE600'},
+  mercadopago:{svg:'mercadopago',color:'009EE3'}, rappi:{svg:'rappi',color:'FF441F'},
+  ifood:{svg:'ifood',color:'EA1D2C'}, picpay:{svg:'picpay',color:'21C25E'},
+  nubank:{svg:'nubank',color:'820AD1'}, bancointer:{svg:'bancointer',color:'FF7A00'},
+  c6bank:{svg:'c6bank',color:'242424'}, pagseguro:{svg:'pagseguro',color:'00A868'},
+  itau:{svg:'itau',color:'EC7000'}, bradesco:{svg:'bradesco',color:'CC092F'},
+  santander:{svg:'santander',color:'EC0000'},
 
-  // ── رياضة ──
-  nike:            { svg: 'nike',            color: '000000' },
-  adidas:          { svg: 'adidas',          color: '000000' },
-  puma:            { svg: 'puma',            color: '000000' },
+  // ── 🌍 أفريقيا ──
+  jumia:{svg:'jumia',color:'F68B1E'}, mpesa:{svg:'mpesa',color:'00A651'},
+  safaricom:{svg:'safaricom',color:'00A651'}, mtn:{svg:'mtn',color:'FFCC00'},
+  glo:{svg:'glo',color:'00A651'}, vodacom:{svg:'vodacom',color:'E60000'},
+  telkom:{svg:'telkom',color:'0072CE'}, equitybank:{svg:'equitybank',color:'E60000'},
+  kcb:{svg:'kcb',color:'00A651'}, opay:{svg:'opay',color:'1DCF5A'},
+  palmpay:{svg:'palmpay',color:'6C3DBE'}, paga:{svg:'paga',color:'FF5A00'},
+  flutterwave:{svg:'flutterwave',color:'F5A623'}, paystack:{svg:'paystack',color:'011B33'},
 
-  // ── شحن ──
-  shell:           { svg: 'shell',           color: 'FBCE07' },
-  fedex:           { svg: 'fedex',           color: '4D148C' },
-  dhl:             { svg: 'dhl',             color: 'FFCC00' },
-  ups:             { svg: 'ups',             color: '351C15' },
+  // ── 🎬 ترفيه ──
+  youtube:{svg:'youtube',color:'FF0000'}, yt:{svg:'youtube',color:'FF0000'},
+  netflix:{svg:'netflix',color:'E50914'}, spotify:{svg:'spotify',color:'1DB954'},
+  twitch:{svg:'twitch',color:'9146FF'}, soundcloud:{svg:'soundcloud',color:'FF5500'},
+  shazam:{svg:'shazam',color:'0088FF'}, deezer:{svg:'deezer',color:'FEAA2D'},
+  disney:{svg:'disney',color:'113CCF'}, disneyplus:{svg:'disneyplus',color:'113CCF'},
+  hulu:{svg:'hulu',color:'1CE783'}, vimeo:{svg:'vimeo',color:'1AB7EA'},
+  applemusic:{svg:'applemusic',color:'FA243C'}, itunes:{svg:'itunes',color:'FB5BC5'},
+  hbomax:{svg:'hbo',color:'991EEB'}, hbo:{svg:'hbo',color:'000000'},
+  primevideo:{svg:'primevideo',color:'1F2E3E'}, appletv:{svg:'appletv',color:'000000'},
+  peacock:{svg:'peacock',color:'000000'}, paramount:{svg:'paramountplus',color:'0064FF'},
+  crunchyroll:{svg:'crunchyroll',color:'F47521'}, viu:{svg:'viu',color:'FFCC00'},
+  iflix:{svg:'iflix',color:'E60000'}, wetv:{svg:'wetv',color:'FFCC00'},
+  tidal:{svg:'tidal',color:'000000'}, napster:{svg:'napster',color:'0072CE'},
+  pandora:{svg:'pandora',color:'3668FF'}, audiomack:{svg:'audiomack',color:'FFA200'},
+  boomplay:{svg:'boomplay',color:'FF6A00'}, iheartradio:{svg:'iheartradio',color:'C6002B'},
+
+  // ── 📧 بريد ──
+  google:{svg:'google',color:'4285F4'}, gmail:{svg:'gmail',color:'EA4335'},
+  googlevoice:{svg:'google',color:'4285F4'}, yahoo:{svg:'yahoo',color:'6001D2'},
+  outlook:{svg:'microsoftoutlook',color:'0078D4'}, hotmail:{svg:'microsoftoutlook',color:'0078D4'},
+  protonmail:{svg:'protonmail',color:'6D4AFF'}, zoho:{svg:'zoho',color:'E42527'},
+  aol:{svg:'aol',color:'3399FF'}, gmx:{svg:'gmx',color:'1C449B'},
+  mailcom:{svg:'maildotcom',color:'0077FF'}, tutanota:{svg:'tutanota',color:'840010'},
+  rambler:{svg:'rambler',color:'315EFB'},
+
+  // ── 🖥️ أنظمة ──
+  apple:{svg:'apple',color:'000000'}, icloud:{svg:'icloud',color:'3693F3'},
+  microsoft:{svg:'microsoft',color:'5E5E5E'}, windows:{svg:'windows',color:'0078D4'},
+
+  // ── 🎮 ألعاب ──
+  steam:{svg:'steam',color:'000000'}, playstation:{svg:'playstation',color:'003791'},
+  psn:{svg:'playstation',color:'003791'}, xbox:{svg:'xbox',color:'107C10'},
+  nintendo:{svg:'nintendoswitch',color:'E60012'}, epicgames:{svg:'epicgames',color:'313131'},
+  epic:{svg:'epicgames',color:'313131'}, roblox:{svg:'roblox',color:'000000'},
+  minecraft:{svg:'minecraft',color:'62B47A'}, pubg:{svg:'pubg',color:'F2A900'},
+  freefire:{svg:'freefire',color:'FF6B00'}, genshin:{svg:'genshinimpact',color:'4A90D9'},
+  blizzard:{svg:'blizzard',color:'148EFF'}, battlenet:{svg:'battlenet',color:'148EFF'},
+  ea:{svg:'ea',color:'000000'}, riotgames:{svg:'riotgames',color:'D32936'},
+  ubisoft:{svg:'ubisoft',color:'000000'}, rockstargames:{svg:'rockstargames',color:'FCAF17'},
+  rockstar:{svg:'rockstargames',color:'FCAF17'}, valorant:{svg:'valorant',color:'FF4655'},
+  leagueoflegends:{svg:'leagueoflegends',color:'C89B3C'}, dota2:{svg:'dota2',color:'BF2E1A'},
+  csgo:{svg:'counterstrike',color:'F0A500'}, cs2:{svg:'counterstrike',color:'F0A500'},
+  apexlegends:{svg:'apexlegends',color:'DA292A'}, callofduty:{svg:'callofduty',color:'000000'},
+  warzone:{svg:'callofduty',color:'000000'}, fortnite:{svg:'fortnite',color:'2A2A2A'},
+  razer:{svg:'razer',color:'44D62C'}, logitech:{svg:'logitech',color:'00B8FC'},
+  corsair:{svg:'corsair',color:'000000'}, steelseries:{svg:'steelseries',color:'FF6600'},
+  hyperx:{svg:'hyperx',color:'E21836'}, faceit:{svg:'faceit',color:'FF5500'},
+
+  // ── 🎰 مراهنات ──
+  betfair:{svg:'betfair',color:'FFCC00'}, betway:{svg:'betway',color:'00A651'},
+  bet365:{svg:'bet365',color:'027B5B'}, '1xbet':{svg:'1xbet',color:'1B5E20'},
+  betwinner:{svg:'betwinner',color:'FFC107'}, dafabet:{svg:'dafabet',color:'ED1C24'},
+  '22bet':{svg:'22bet',color:'FF6B00'}, '888':{svg:'888',color:'FF6B00'},
+  '32red':{svg:'32red',color:'E60000'}, mrgreen:{svg:'mrgreen',color:'00A651'},
+  paddypower:{svg:'paddypower',color:'007A33'}, pokerstars:{svg:'pokerstars',color:'E4002B'},
+  williamhill:{svg:'williamhill',color:'003D6B'}, unibet:{svg:'unibet',color:'007A33'},
+  bwin:{svg:'bwin',color:'FFCC00'}, leovegas:{svg:'leovegas',color:'FF6B00'},
+  casumo:{svg:'casumo',color:'00A651'}, draftkings:{svg:'draftkings',color:'53D337'},
+  fanduel:{svg:'fanduel',color:'1493FF'}, betmgm:{svg:'betmgm',color:'C7A253'},
+  caesars:{svg:'caesars',color:'000000'}, pointsbet:{svg:'pointsbet',color:'FF5A00'},
+
+  // ── 💳 دفع ──
+  paypal:{svg:'paypal',color:'00457C'}, visa:{svg:'visa',color:'1A1F71'},
+  mastercard:{svg:'mastercard',color:'EB001B'}, binance:{svg:'binance',color:'F0B90B'},
+  coinbase:{svg:'coinbase',color:'0052FF'}, stripe:{svg:'stripe',color:'635BFF'},
+  revolut:{svg:'revolut',color:'0075EB'}, skrill:{svg:'skrill',color:'7F1E8C'},
+  payoneer:{svg:'payoneer',color:'FF4800'}, wise:{svg:'wise',color:'9FE870'},
+  westernunion:{svg:'westernunion',color:'FFDD00'}, payzapp:{svg:'payzapp',color:'FDB913'},
+  neteller:{svg:'neteller',color:'89C540'}, kraken:{svg:'kraken',color:'5741D9'},
+  kucoin:{svg:'kucoin',color:'24AE8F'}, okx:{svg:'okx',color:'000000'},
+  bybit:{svg:'bybit',color:'F7A600'}, gate:{svg:'gate',color:'2354E6'},
+  huobi:{svg:'huobi',color:'2CA9E1'}, gpay2:{svg:'googlepay',color:'4285F4'},
+  applepay:{svg:'applepay',color:'000000'}, samsungpay:{svg:'samsungpay',color:'1428A0'},
+
+  // ── 🚗 نقل ──
+  uber:{svg:'uber',color:'000000'}, airbnb:{svg:'airbnb',color:'FF5A5F'},
+  booking:{svg:'bookingdotcom',color:'003580'}, bolt:{svg:'bolt',color:'34D186'},
+  didi:{svg:'didi',color:'FF7D41'}, indriver:{svg:'indriver',color:'C8E600'},
+  lyft:{svg:'lyft',color:'FF00BF'}, blablacar:{svg:'blablacar',color:'00AFF5'},
+  cabify:{svg:'cabify',color:'7045AF'}, beat:{svg:'beat',color:'FDD500'},
+  heetch:{svg:'heetch',color:'E10078'}, kapten:{svg:'kapten',color:'FFCC00'},
+  maxim:{svg:'maxim',color:'F7B500'}, citymapper:{svg:'citymapper',color:'00FF00'},
+  moovit:{svg:'moovit',color:'00B5E2'}, waze:{svg:'waze',color:'33CCFF'},
+
+  // ── 🍔 طعام ──
+  foodpanda:{svg:'foodpanda',color:'D70F64'}, doordash:{svg:'doordash',color:'FF3008'},
+  deliveroo:{svg:'deliveroo',color:'00CCBC'}, ubereats:{svg:'ubereats',color:'06C167'},
+  grubhub:{svg:'grubhub',color:'F63440'}, postmates:{svg:'postmates',color:'FFDF18'},
+  justeat:{svg:'justeat',color:'FF8000'}, takeaway:{svg:'takeaway',color:'FF8000'},
+  foodora:{svg:'foodora',color:'D70F64'}, hungrypanda:{svg:'hungrypanda',color:'FF6A00'},
+  mcdonalds:{svg:'mcdonalds',color:'FFC72C'}, burgerking:{svg:'burgerking',color:'D62300'},
+  kfc:{svg:'kfc',color:'E4002B'}, pizzahut:{svg:'pizzahut',color:'EE3124'},
+  dominos:{svg:'dominos',color:'E31837'}, dominospizza:{svg:'dominos',color:'E31837'},
+  starbucks:{svg:'starbucks',color:'00704A'}, dunkin:{svg:'dunkin',color:'FF6E0C'},
+  subway:{svg:'subway',color:'009C3D'}, wendys:{svg:'wendys',color:'E2203D'},
+  tacobell:{svg:'tacobell',color:'7B2D8E'}, popeyes:{svg:'popeyes',color:'F58220'},
+  glovo:{svg:'glovo',color:'FFC244'}, wolt:{svg:'wolt',color:'009DE0'},
+
+  // ── 🛒 عمل ──
+  craigslist:{svg:'craigslist',color:'7F23D1'}, gofundme:{svg:'gofundme',color:'00B964'},
+
+  // ── ✈️ سفر ──
+  agoda:{svg:'agoda',color:'F03D49'}, expedia:{svg:'expedia',color:'003580'},
+  hotels:{svg:'hotels',color:'D32F2F'}, trivago:{svg:'trivago',color:'E60000'},
+  kayak:{svg:'kayak',color:'FF690F'}, skyscanner:{svg:'skyscanner',color:'0770E3'},
+  momondo:{svg:'momondo',color:'00A0DC'}, trip:{svg:'trip',color:'287DFA'},
+  vrbo:{svg:'vrbo',color:'0F2A54'}, hostelworld:{svg:'hostelworld',color:'FF5B00'},
+  cleartrip:{svg:'cleartrip',color:'EF6E18'},
+
+  // ── 🛍️ متاجر نُسيت ──
+  aliexpressru:{svg:'aliexpress',color:'FF4747'}, aliexpressbusiness:{svg:'alibaba',color:'FF6A00'},
+
+  // ── 📱 مواعدة ──
+  tinder:{svg:'tinder',color:'FF6B6B'}, badoo:{svg:'badoo',color:'783BF9'},
+  bumble:{svg:'bumble',color:'FFC629'}, grindr:{svg:'grindr',color:'FDCF10'},
+  happn:{svg:'happn',color:'FF4F5E'}, pof:{svg:'pof',color:'FF603B'},
+  cupid:{svg:'cupid',color:'ED1C24'}, skout:{svg:'skout',color:'FF6B00'},
+  hily:{svg:'hily',color:'FF4F5E'},
 };
 
 // ══════════════════════════════════════════════════════════════
-// 2) قواعد الفئات — إيموجي حسب النوع (للخدمات غير المعروفة)
+// 2) قواعد الفئات — إيموجي ذكي للخدمات غير المعروفة
 // ══════════════════════════════════════════════════════════════
 const CATEGORY_RULES = [
-  // المراهنات والكازينو (يجب أن تسبق الألعاب)
-  { re: /(betfair|betway|bet365|1xbet|betwinner|poker|casino|slots|32red|888|royalwin|galaxywin|paddypower|mrgreen|pairs|bet|gamearena)/,
-    emoji: '🎰' },
+  // المراهنات والكازينو (تسبق الألعاب)
+  { re: /(betfair|betway|bet365|1xbet|betwinner|poker|casino|slots|32red|888|royalwin|galaxywin|paddypower|mrgreen|pairs|bet|gamearena|draftkings|fanduel|betmgm|caesars|pointsbet)/, emoji: '🎰' },
   // الألعاب
-  { re: /(game|blizzard|riot|pubg|freefire|genshin|steam|epic|xbox|playstation|nintendo|roblox|minecraft|maplesea|gamekit|mpl|dream11|nttgame|humblebundle|dundle|eneba|offgamers|cdkeys|maplestory)/,
-    emoji: '🎮' },
+  { re: /(game|blizzard|battlenet|riot|pubg|freefire|genshin|steam|epic|xbox|playstation|nintendo|roblox|minecraft|maplesea|gamekit|mpl|dream11|nttgame|humblebundle|dundle|eneba|offgamers|cdkeys|rockstar|valorant|apex|fortnite|dota|league|razer|logitech|corsair|steelseries|hyperx|faceit|callofduty|warzone)/, emoji: '🎮' },
   // المواصلات
-  { re: /(uber|careem|grab|gojek|bolt|didi|indriver|lyft|taxi|swvl|ontaxi|gett|blablacar|olacabs|yandexgo|cabify|beat)/,
-    emoji: '🚗' },
+  { re: /(uber|careem|grab|gojek|bolt|didi|indriver|lyft|taxi|swvl|ontaxi|gett|blablacar|olacabs|yandexgo|cabify|beat|heetch|kapten|maxim|citymapper|moovit|waze)/, emoji: '🚗' },
   // الطعام
-  { re: /(food|panda|talabat|zomato|swiggy|yemek|getir|glovo|wolt|deliveroo|doordash|mcdonald|burger|kfc|pizza|starbucks|cafe|restaurant|snappfood|ifood|nana|carrefour|metro)/,
-    emoji: '🍔' },
+  { re: /(food|panda|talabat|zomato|swiggy|yemek|getir|glovo|wolt|deliveroo|doordash|mcdonald|burger|kfc|pizza|starbucks|dunkin|subway|wendys|taco|popeye|cafe|restaurant|snappfood|ifood|nana|carrefour|metro|grubhub|postmates|justeat|takeaway|foodora|hungrypanda|ubereats)/, emoji: '🍔' },
   // التسوق
-  { re: /(shop|amazon|ebay|aliex|alibaba|taobao|jd|1688|lazada|shopee|trendyol|olx|carousell|mercado|quikr|offerup|vinted|etsy|sneakers|hepsiburada|gittigidiyor|kaidee|mzad|ezbuy|dhgate|shein|myntra|flipkart|snapdeal|adidas|nike|puma)/,
-    emoji: '🛒' },
+  { re: /(shop|amazon|ebay|aliex|alibaba|taobao|jd|1688|lazada|shopee|trendyol|olx|carousell|mercado|quikr|offerup|vinted|etsy|sneakers|hepsiburada|gittigidiyor|kaidee|mzad|ezbuy|dhgate|shein|myntra|flipkart|snapdeal|adidas|nike|puma|walmart|target|temu|wish|banggood|gearbest|joom|lightinthebox|ajio|nykaa|tokopedia|bukalapak|blibli|coupang)/, emoji: '🛒' },
   // الدفع والبنوك
-  { re: /(pay|papara|picpay|banqi|dhani|binance|coin|visa|master|stripe|revolut|wise|skrill|payoneer|bank|wallet|payzapp|tosla|bitaqaty|clickentregas|paxful)/,
-    emoji: '💳' },
+  { re: /(pay|papara|picpay|banqi|dhani|binance|coin|visa|master|stripe|revolut|wise|skrill|payoneer|bank|wallet|payzapp|tosla|bitaqaty|clickentregas|paxful|neteller|kraken|kucoin|okx|bybit|gate|huobi|chase|wellsfargo|citibank|hsbc|barclays|lloyds|natwest|standardchartered|dbs|ocbc|uob|maybank|cimb|itau|bradesco|santander|nubank|inter|pagseguro|mpesa|opay|palmpay|paga|flutterwave|paystack|sberbank|tinkoff|alfa)/, emoji: '💳' },
   // البث المباشر
-  { re: /(huya|douyu|iqiyi|twitch|youtube|bigo|bigolive|kuaishou|tiktoklive|netflix|hulu|disney|primevideo|hbomax|showtime|starchat|maplesea)/,
-    emoji: '📺' },
+  { re: /(huya|douyu|iqiyi|twitch|youtube|bigo|bigolive|kuaishou|tiktoklive|netflix|hulu|disney|primevideo|hbomax|hbo|showtime|starchat|peacock|paramount|crunchyroll|viu|iflix|wetv|appletv|tidal|napster|pandora|audiomack|boomplay|iheartradio)/, emoji: '📺' },
   // التواصل الاجتماعي
-  { re: /(chat|talk|messenger|weibo|yalla|zalo|imo|kakao|line|viber|telegram|signal|tencentqq|qq|groupme|keybase|michat|tango|yubo|potato|tantan|blued|aitu|dostup)/,
-    emoji: '💬' },
+  { re: /(chat|talk|messenger|weibo|yalla|zalo|imo|kakao|line|viber|telegram|signal|tencentqq|qq|groupme|keybase|michat|tango|yubo|potato|tantan|blued|aitu|dostup|mastodon|truthsocial|vk|ok|odnoklassniki|naver|baidu|kuaishou)/, emoji: '💬' },
   // المواعدة
-  { re: /(tinder|badoo|bumble|grindr|happn|pof|cupid|skout|justdating|hily|dating|love|match)/,
-    emoji: '❤️' },
-  // التسويق والعمل
-  { re: /(fiverr|upwork|freelanc|gofundme|seosprint|surveytime|unacademy|sheerid|truecaller|seosprint|taksheel|hermes|yemeksepeti)/,
-    emoji: '💼' },
+  { re: /(tinder|badoo|bumble|grindr|happn|pof|cupid|skout|justdating|hily|dating|love|match)/, emoji: '❤️' },
+  // التعليم
+  { re: /(coursera|udemy|edx|khanacademy|udacity|pluralsight|skillshare|byjus|unacademy|vedantu|toppr|doubtnut|chegg|brainly|quizlet|duolingo|babbel|rosetta|naukri|bayt|wuzzuf)/, emoji: '📚' },
+  // التوظيف
+  { re: /(linkedin|indeed|glassdoor|monster|upwork|fiverr|freelancer|toptal|guru|peopleperhour|weworkremotely|remoteok|wellfound)/, emoji: '💼' },
+  // الصحة
+  { re: /(practo|apollo|netmeds|1mg|pharmeasy|cvs|walgreens|goodrx|teladoc|zocdoc|halodoc|alodokter|klikdokter|sehatq|health|medic|pharma|clinic|doctor|hopi)/, emoji: '💊' },
+  // الإخبارية
+  { re: /(cnn|bbc|nytimes|wsj|washingtonpost|guardian|reuters|bloomberg|forbes|techcrunch|theverge|wired)/, emoji: '📰' },
   // الموسيقى
-  { re: /(spotify|music|soundcloud|deezer|shazam|itunes|audiomack|boomplay)/,
-    emoji: '🎵' },
+  { re: /(spotify|music|soundcloud|deezer|shazam|applemusic|itunes|audiomack|boomplay|anghami)/, emoji: '🎵' },
+  // السفر
+  { re: /(airbnb|booking|hotel|trip|agoda|expedia|skyscanner|kayak|trivago|airline|flight|reunion|newcaledonia|mzadqatar|vrbo|hostelworld|cleartrip|makemytrip|yatra|goibibo|oyo|redbus|abhibus|irctc|traveloka|tiket)/, emoji: '✈️' },
   // الاتصالات
-  { re: /(myglo|globus|ukrnet|onliner|kolesakz|kufar|alfa|hamrahaval|sikayetvar|wmaraci|weststein|zcity|bisu|yalla|cliqq|global24)/,
-    emoji: '📡' },
-  // السفر والحجوزات
-  { re: /(airbnb|booking|hotel|trip|agoda|expedia|skyscanner|kayak|trivago|airline|flight|reunion|newcaledonia|mzadqatar)/,
-    emoji: '✈️' },
-  // الرعاية الصحية
-  { re: /(health|medic|pharma|clinic|doctor|hopi)/,
-    emoji: '💊' },
+  { re: /(myglo|globus|ukrnet|onliner|kolesakz|kufar|hamrahaval|sikayetvar|wmaraci|weststein|zcity|bisu|yalla|cliqq|global24|ooredoo|stc|mobily|zain|du|etisalat|jio|airtel|bsnl|vi|vodacom|telkom|mtn|glo)/, emoji: '📡' },
   // العقارات
-  { re: /(realestate|property|aqar|zameen|bayut|dubizzle)/,
-    emoji: '🏠' },
-  // الألعاب الإلكترونية والترفيه
-  { re: /(keybase|discord|clubhouse|gg|gamekit|mpl|hily)/,
-    emoji: '🎮' },
+  { re: /(realestate|property|aqar|zameen|bayut|dubizzle|sahibinden|mzad|qatarliving|avito|kufarby)/, emoji: '🏠' },
 ];
 
 // ══════════════════════════════════════════════════════════════
 // 3) دوال مساعدة
 // ══════════════════════════════════════════════════════════════
 function _iconKey(id) {
-  return String(id || '')
-    .toLowerCase()
-    .normalize('NFKD')
-    .replace(/[^a-z0-9]/g, '');
+  return String(id || '').toLowerCase().normalize('NFKD').replace(/[^a-z0-9]/g, '');
 }
 
 function _detectCategory(id, name) {
@@ -665,71 +720,53 @@ function _categoryEmoji(id, name) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// 4) الدالة الرئيسية للأيقونة
+// 4) الأيقونة الرئيسية
 // ══════════════════════════════════════════════════════════════
 function serviceIconHtml(serviceId, name, size) {
   size = size || 24;
   const key = _iconKey(serviceId);
   const meta = SERVICE_ICONS[key];
 
-  // الطبقة 1: Simple Icons
   if (meta) {
-    const url = `https://cdn.simpleicons.org/${meta.svg}/${meta.color}`;
+    const url = 'https://cdn.simpleicons.org/' + meta.svg + '/' + meta.color;
     const alt = String(name || serviceId || '').replace(/"/g, '&quot;');
-    return `<img src="${url}" alt="${alt}" width="${size}" height="${size}" loading="lazy"
-                 style="display:inline-block;object-fit:contain"
-                 onerror="this.style.display='none';this.nextElementSibling.style.display='inline-flex'">
-            <span style="display:none;align-items:center;justify-content:center;width:${size}px;height:${size}px;font-size:${Math.round(size*0.75)}px;line-height:1">${_categoryEmoji(serviceId, name)}</span>`;
+    return '<img src="' + url + '" alt="' + alt + '" width="' + size + '" height="' + size + '" loading="lazy" ' +
+           'style="display:inline-block;object-fit:contain" ' +
+           'onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'inline-flex\'">' +
+           '<span style="display:none;align-items:center;justify-content:center;width:' + size + 'px;height:' + size + 'px;font-size:' + Math.round(size * 0.75) + 'px;line-height:1">' + _categoryEmoji(serviceId, name) + '</span>';
   }
 
-  // محاولة باسم الخدمة
   if (name && name !== serviceId) {
     const keyByName = _iconKey(name);
     const metaByName = SERVICE_ICONS[keyByName];
     if (metaByName) {
-      const url = `https://cdn.simpleicons.org/${metaByName.svg}/${metaByName.color}`;
-      return `<img src="${url}" alt="${String(name).replace(/"/g,'&quot;')}" width="${size}" height="${size}" loading="lazy"
-                   style="display:inline-block;object-fit:contain"
-                   onerror="this.style.display='none';this.nextElementSibling.style.display='inline-flex'">
-              <span style="display:none;align-items:center;justify-content:center;width:${size}px;height:${size}px;font-size:${Math.round(size*0.75)}px;line-height:1">${_categoryEmoji(serviceId, name)}</span>`;
+      const url = 'https://cdn.simpleicons.org/' + metaByName.svg + '/' + metaByName.color;
+      return '<img src="' + url + '" alt="' + String(name).replace(/"/g, '&quot;') + '" width="' + size + '" height="' + size + '" loading="lazy" ' +
+             'style="display:inline-block;object-fit:contain" ' +
+             'onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'inline-flex\'">' +
+             '<span style="display:none;align-items:center;justify-content:center;width:' + size + 'px;height:' + size + 'px;font-size:' + Math.round(size * 0.75) + 'px;line-height:1">' + _categoryEmoji(serviceId, name) + '</span>';
     }
   }
 
-  // الطبقة 3: إيموجي حسب الفئة
-  return `<span style="display:inline-flex;align-items:center;justify-content:center;width:${size}px;height:${size}px;font-size:${Math.round(size*0.75)}px;line-height:1">${_categoryEmoji(serviceId, name)}</span>`;
+  return '<span style="display:inline-flex;align-items:center;justify-content:center;width:' + size + 'px;height:' + size + 'px;font-size:' + Math.round(size * 0.75) + 'px;line-height:1">' + _categoryEmoji(serviceId, name) + '</span>';
 }
 
 // ══════════════════════════════════════════════════════════════
 // 5) ترتيب حسب الشهرة
 // ══════════════════════════════════════════════════════════════
 const POPULARITY_ORDER = [
-  'whatsapp', 'whatsappbusiness', 'wa',
-  'telegram', 'tg',
-  'instagram', 'ig', 'insta',
-  'facebook', 'fb',
-  'tiktok', 'tt',
-  'google', 'gmail',
-  'youtube', 'yt',
-  'twitter', 'x',
-  'snapchat', 'snap',
-  'discord',
-  'signal', 'viber', 'line', 'wechat',
-  'netflix', 'spotify',
-  'amazon', 'paypal', 'uber',
-  'apple', 'icloud', 'microsoft',
-  'steam', 'playstation', 'psn', 'xbox',
-  'openai', 'chatgpt',
-  'linkedin', 'reddit', 'pinterest', 'threads',
-  'twitch', 'soundcloud', 'ebay', 'aliexpress', 'shopify',
-  'nintendo', 'epicgames', 'roblox', 'minecraft', 'pubg', 'freefire',
-  'binance', 'coinbase', 'stripe', 'revolut', 'skrill',
-  'airbnb', 'booking', 'careem', 'grab', 'gojek', 'bolt',
-  'github', 'dropbox', 'notion', 'zoom', 'slack',
-  'yahoo', 'outlook', 'hotmail', 'protonmail', 'zoho', 'mailru', 'yandex',
-  'vk', 'ok', 'odnoklassniki', 'clubhouse', 'truthsocial',
-  'tinder', 'badoo', 'bumble',
-  'foodpanda', 'talabat', 'doordash', 'deliveroo',
-  'imo', 'kakaotalk', 'skype', 'shazam', 'deezer', 'etsy', 'alibaba',
+  'whatsapp','whatsappbusiness','wa','telegram','tg','instagram','ig','insta',
+  'facebook','fb','tiktok','tt','google','gmail','youtube','yt','twitter','x',
+  'snapchat','snap','discord','signal','viber','line','wechat','linkedin',
+  'netflix','spotify','amazon','paypal','uber','apple','microsoft','steam',
+  'playstation','psn','xbox','openai','chatgpt','reddit','pinterest','threads',
+  'twitch','soundcloud','ebay','aliexpress','shopify','nintendo','epicgames',
+  'roblox','minecraft','pubg','freefire','binance','coinbase','stripe',
+  'airbnb','booking','careem','grab','gojek','bolt','github','dropbox','notion',
+  'zoom','slack','yahoo','outlook','hotmail','protonmail','zoho','vk','ok',
+  'tinder','badoo','bumble','foodpanda','talabat','doordash','deliveroo',
+  'imo','kakaotalk','skype','shazam','deezer','etsy','alibaba','naver','yahoojapan',
+  'indeed','glassdoor','upwork','fiverr','coursera','udemy','duolingo','wuzzuf',
 ];
 
 function serviceRank(id) {
@@ -749,16 +786,14 @@ function sortByPopularity(arr, getId) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// 6) حالة التطبيق
+// 6) الحالة
 // ══════════════════════════════════════════════════════════════
 const PREVIEW_COUNT = 4;
 let COUNTRIES = [];
 try {
   const el = document.getElementById('countries-data');
   if (el) COUNTRIES = JSON.parse(el.textContent);
-} catch (e) {
-  console.error('فشل تحميل بيانات الدول', e);
-}
+} catch (e) { console.error('فشل تحميل بيانات الدول', e); }
 
 let selectedCountry = null;
 let selectedService = null;
@@ -771,9 +806,7 @@ let currentCount = 0;
 function hydrateServiceIcons(root) {
   (root || document).querySelectorAll('[data-service-icon]').forEach(function (el) {
     if (el.dataset.iconHydrated === '1') return;
-    const id = el.dataset.serviceIcon;
-    const name = el.dataset.serviceName || '';
-    el.innerHTML = serviceIconHtml(id, name, 22);
+    el.innerHTML = serviceIconHtml(el.dataset.serviceIcon, el.dataset.serviceName || '', 22);
     el.dataset.iconHydrated = '1';
   });
 }
@@ -805,7 +838,7 @@ function selectCountry(slug, btn) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// 9) عرض الخدمات (4 + عرض المزيد)
+// 9) عرض الخدمات
 // ══════════════════════════════════════════════════════════════
 function renderServices(services) {
   const grid = document.getElementById('service-grid');
@@ -834,9 +867,7 @@ function renderServices(services) {
 
     if (s.available) {
       btn.onclick = function () { selectService(s.id, s.cost, s.count, btn); };
-    } else {
-      btn.disabled = true;
-    }
+    } else { btn.disabled = true; }
 
     const iconEl = document.createElement('div');
     iconEl.className = 'w-10 h-10 flex items-center justify-center';
@@ -845,10 +876,8 @@ function renderServices(services) {
     const priceHtml = s.available
       ? '<span class="text-[11px] font-bold text-blue-600">$' + Number(s.cost).toFixed(2) + '</span>'
       : '<span class="text-[10px] text-slate-400">غير متاح</span>';
-    const countHtml = s.available
-      ? '<span class="text-[9px] text-slate-400">' + s.count + ' متاح</span>' : '';
-    const rateHtml = (s.available && s.rate)
-      ? '<span class="text-[9px] text-emerald-600">' + Number(s.rate).toFixed(0) + '% ✓</span>' : '';
+    const countHtml = s.available ? '<span class="text-[9px] text-slate-400">' + s.count + ' متاح</span>' : '';
+    const rateHtml = (s.available && s.rate) ? '<span class="text-[9px] text-emerald-600">' + Number(s.rate).toFixed(0) + '% ✓</span>' : '';
 
     const nameEl = document.createElement('span');
     nameEl.className = 'text-xs font-bold text-slate-700';
@@ -863,8 +892,7 @@ function renderServices(services) {
   if (sorted.length > PREVIEW_COUNT) {
     moreWrap.classList.remove('hidden');
     moreWrap.innerHTML =
-      '<button type="button" onclick="toggleServices(this)" ' +
-      'data-expanded="false" data-preview="' + PREVIEW_COUNT + '" ' +
+      '<button type="button" onclick="toggleServices(this)" data-expanded="false" data-preview="' + PREVIEW_COUNT + '" ' +
       'class="text-xs font-bold text-blue-600 hover:text-blue-700 border border-blue-200 hover:border-blue-400 bg-white px-4 py-2 rounded-lg transition-colors inline-flex items-center gap-1">' +
       '<span class="label">عرض المزيد (' + (sorted.length - PREVIEW_COUNT) + ')</span>' +
       '<svg class="w-3.5 h-3.5 transition-transform duration-200 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
@@ -873,7 +901,7 @@ function renderServices(services) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// 10) زر "عرض المزيد" — عام
+// 10) عرض المزيد
 // ══════════════════════════════════════════════════════════════
 function toggleMore(btn, selector, indexAttr) {
   const expanded = btn.dataset.expanded === 'true';
@@ -887,14 +915,9 @@ function toggleMore(btn, selector, indexAttr) {
   btn.dataset.expanded = expanded ? 'false' : 'true';
   const label = btn.querySelector('.label');
   const chev = btn.querySelector('.chevron');
-  if (label) {
-    label.textContent = expanded
-      ? 'عرض المزيد (' + (items.length - preview) + ')'
-      : 'عرض أقل';
-  }
+  if (label) label.textContent = expanded ? 'عرض المزيد (' + (items.length - preview) + ')' : 'عرض أقل';
   if (chev) chev.style.transform = expanded ? '' : 'rotate(180deg)';
 }
-
 function togglePopular(btn) { toggleMore(btn, '[data-popular-item]', 'popularIndex'); }
 function toggleNumbers(btn) { toggleMore(btn, '[data-number-item]', 'numberIndex'); }
 function toggleServices(btn) { toggleMore(btn, '.service-btn', 'serviceIndex'); }
@@ -915,7 +938,6 @@ function selectService(id, cost, count, btn) {
   selectedService = { id: id, name: (svc && svc.name) || id };
   currentPrice = parseFloat(cost) || 0;
   currentCount = parseInt(count, 10) || 0;
-
   document.getElementById('confirm-step').classList.remove('opacity-50', 'pointer-events-none');
   updateConfirm();
 }
@@ -948,26 +970,18 @@ function quickBuy(countrySlug, serviceId) {
         const moreBtn = document.querySelector('#service-more-wrap button');
         if (moreBtn) toggleServices(moreBtn);
       }
-      const c = COUNTRIES.find(function (x) {
-        return x.slug === countryBtn.dataset.slug || x.code === countryBtn.dataset.code;
-      });
-      const s = c && (c.services || []).find(function (x) {
-        return String(x.id) === String(serviceId);
-      });
+      const c = COUNTRIES.find(function (x) { return x.slug === countryBtn.dataset.slug || x.code === countryBtn.dataset.code; });
+      const s = c && (c.services || []).find(function (x) { return String(x.id) === String(serviceId); });
       selectService(serviceId, (s && s.cost) || 0, (s && s.count) || 0, svcBtn);
     }
-    const confirmEl = document.getElementById('confirm-step');
-    if (confirmEl) confirmEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const cf = document.getElementById('confirm-step');
+    if (cf) cf.scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
 }
 
 function showAlert(msg, type) {
   type = type || 'info';
-  const colors = {
-    error:   'bg-red-100 border-red-300 text-red-800',
-    success: 'bg-emerald-100 border-emerald-300 text-emerald-800',
-    info:    'bg-blue-100 border-blue-300 text-blue-800',
-  };
+  const colors = { error: 'bg-red-100 border-red-300 text-red-800', success: 'bg-emerald-100 border-emerald-300 text-emerald-800', info: 'bg-blue-100 border-blue-300 text-blue-800' };
   const div = document.createElement('div');
   div.className = 'fixed top-4 left-1/2 -translate-x-1/2 z-50 border-2 rounded-xl px-6 py-3 text-sm font-bold shadow-lg ' + (colors[type] || colors.info);
   div.textContent = msg;
@@ -984,32 +998,23 @@ async function confirmPurchase() {
   const original = btn.innerHTML;
   btn.disabled = true;
   btn.innerHTML = 'جارٍ الشراء من 5SIM...';
-
   try {
     const r = await fetch('/api/v1/orders', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        country: selectedCountry.slug,
-        service: selectedService.id,
-      }),
+      body: JSON.stringify({ country: selectedCountry.slug, service: selectedService.id }),
     });
     const d = await r.json();
-
     if (r.ok) {
       showAlert('✅ تم الشراء بنجاح — جارٍ التحويل...', 'success');
-      setTimeout(function () {
-        window.location.href = '/orders/' + d.id;
-      }, 800);
+      setTimeout(function () { window.location.href = '/orders/' + d.id; }, 800);
     } else {
       showAlert('❌ ' + (d.detail || 'فشل الشراء'), 'error');
-      btn.disabled = false;
-      btn.innerHTML = original;
+      btn.disabled = false; btn.innerHTML = original;
     }
   } catch (e) {
     showAlert('❌ خطأ في الاتصال بالخادم', 'error');
-    btn.disabled = false;
-    btn.innerHTML = original;
+    btn.disabled = false; btn.innerHTML = original;
   }
 }
 
@@ -1025,15 +1030,11 @@ async function refreshPrices(btn) {
     const j = await r.json();
     if (!r.ok) {
       showAlert('فشل التحديث: ' + (j.detail || 'خطأ غير معروف'), 'error');
-      btn.disabled = false;
-      btn.innerHTML = old;
-    } else {
-      location.reload();
-    }
+      btn.disabled = false; btn.innerHTML = old;
+    } else { location.reload(); }
   } catch (e) {
     showAlert('خطأ في الاتصال', 'error');
-    btn.disabled = false;
-    btn.innerHTML = old;
+    btn.disabled = false; btn.innerHTML = old;
   }
 }
 
@@ -1041,18 +1042,11 @@ async function refreshPrices(btn) {
 // 15) التهيئة
 // ══════════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', function () {
-  // أضف data-index للعناصر الثابتة
-  document.querySelectorAll('[data-popular-item]').forEach(function (el, i) {
-    el.dataset.popularIndex = i;
-  });
-  document.querySelectorAll('[data-number-item]').forEach(function (el, i) {
-    el.dataset.numberIndex = i;
-  });
+  document.querySelectorAll('[data-popular-item]').forEach(function (el, i) { el.dataset.popularIndex = i; });
+  document.querySelectorAll('[data-number-item]').forEach(function (el, i) { el.dataset.numberIndex = i; });
 
-  // عبّئ الأيقونات
   hydrateServiceIcons(document);
 
-  // التحديد المسبق من query params
   const preCountry = {{ (preselected_country or '') | tojson }};
   const preService = {{ (preselected_service or '') | tojson }};
 
@@ -1070,12 +1064,8 @@ document.addEventListener('DOMContentLoaded', function () {
               const moreBtn = document.querySelector('#service-more-wrap button');
               if (moreBtn) toggleServices(moreBtn);
             }
-            const c = COUNTRIES.find(function (x) {
-              return x.slug === btn.dataset.slug || x.code === btn.dataset.code;
-            });
-            const s = c && (c.services || []).find(function (x) {
-              return String(x.id) === String(preService);
-            });
+            const c = COUNTRIES.find(function (x) { return x.slug === btn.dataset.slug || x.code === btn.dataset.code; });
+            const s = c && (c.services || []).find(function (x) { return String(x.id) === String(preService); });
             selectService(preService, (s && s.cost) || 0, (s && s.count) || 0, svcBtn);
           }
         });
