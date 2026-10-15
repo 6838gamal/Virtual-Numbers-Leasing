@@ -69,7 +69,7 @@
 
 <!-- ══ الأكثر طلباً ══ -->
 {% if popular_services %}
-<div class="mb-6">
+<div class="mb-6" id="popular-section">
   <div class="flex items-center justify-between mb-3">
     <div class="flex items-center gap-2">
       <div class="w-1.5 h-5 bg-gradient-to-b from-orange-400 to-red-500 rounded-full"></div>
@@ -78,17 +78,21 @@
     <a href="/catalog" class="text-xs text-blue-600 hover:text-blue-700 font-bold">عرض الكل ←</a>
   </div>
 
-  <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+  <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3" id="popular-grid">
     {% for p in popular_services %}
     <button type="button"
+            data-popular-item
+            data-service-id="{{ p.service_id }}"
             onclick="quickBuy('{{ p.country_slug }}', '{{ p.service_id }}')"
-            class="group relative bg-white rounded-2xl shadow-sm border border-slate-100 hover:border-blue-400 hover:shadow-md transition-all p-3 text-right overflow-hidden">
+            class="group relative bg-white rounded-2xl shadow-sm border border-slate-100 hover:border-blue-400 hover:shadow-md transition-all p-3 text-right overflow-hidden {% if loop.index > 4 %}hidden{% endif %}">
       <span class="absolute top-2 left-2 bg-gradient-to-r from-orange-500 to-red-500 text-white text-[9px] font-bold px-2 py-0.5 rounded-full">
         {{ p.count }}+
       </span>
 
       <div class="flex flex-col items-center gap-1.5 pt-3">
-        <span class="text-3xl group-hover:scale-110 transition-transform">{{ p.service_icon }}</span>
+        <div class="w-10 h-10 flex items-center justify-center group-hover:scale-110 transition-transform"
+             data-service-icon="{{ p.service_id }}"
+             data-service-name="{{ p.service_name }}"></div>
         <div class="text-center">
           <div class="text-xs font-bold text-slate-700 truncate">{{ p.service_name }}</div>
           <div class="text-[10px] text-slate-400 flex items-center justify-center gap-1 mt-0.5">
@@ -103,6 +107,20 @@
     </button>
     {% endfor %}
   </div>
+
+  {% if popular_services|length > 4 %}
+  <div class="text-center mt-4">
+    <button type="button"
+            onclick="togglePopular(this)"
+            data-expanded="false"
+            class="text-xs font-bold text-blue-600 hover:text-blue-700 border border-blue-200 hover:border-blue-400 bg-white px-4 py-2 rounded-lg transition-colors inline-flex items-center gap-1">
+      <span class="label">عرض المزيد ({{ popular_services|length - 4 }})</span>
+      <svg class="w-3.5 h-3.5 transition-transform duration-200 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+      </svg>
+    </button>
+  </div>
+  {% endif %}
 </div>
 {% endif %}
 
@@ -147,7 +165,9 @@
             </td>
             <td class="px-4 py-3">
               <div class="flex items-center gap-1.5">
-                <span class="text-base">{{ n.service_icon }}</span>
+                <span class="inline-flex items-center justify-center w-6 h-6"
+                      data-service-icon="{{ n.service_id }}"
+                      data-service-name="{{ n.service_name }}"></span>
                 <span class="text-xs text-slate-600">{{ n.service_name }}</span>
               </div>
             </td>
@@ -226,6 +246,8 @@
       <div id="service-empty" class="hidden text-center text-xs text-slate-400 py-6">
         لا توجد خدمات متاحة لهذه الدولة حالياً
       </div>
+
+      <div id="service-more-wrap" class="hidden text-center mt-4"></div>
     </div>
 
     <!-- الخطوة 3: التأكيد -->
@@ -351,8 +373,169 @@
 {% block scripts %}
 <script>
 // ══════════════════════════════════════════════════════════════
-// البيانات المضمّنة من الـ backend — كلها من 5SIM
+// 1) خريطة الأيقونات المعبّرة (Simple Icons CDN) + احتياطي إيموجي
 // ══════════════════════════════════════════════════════════════
+const SERVICE_ICONS = {
+  whatsapp:    { svg: 'whatsapp',        color: '25D366' },
+  telegram:    { svg: 'telegram',        color: '26A5E4' },
+  signal:      { svg: 'signal',          color: '3A76F0' },
+  viber:       { svg: 'viber',           color: '7360F2' },
+  line:        { svg: 'line',            color: '00C300' },
+  wechat:      { svg: 'wechat',          color: '07C160' },
+  instagram:   { svg: 'instagram',       color: 'E4405F' },
+  facebook:    { svg: 'facebook',        color: '1877F2' },
+  twitter:     { svg: 'x',               color: '000000' },
+  x:           { svg: 'x',               color: '000000' },
+  tiktok:      { svg: 'tiktok',          color: '000000' },
+  snapchat:    { svg: 'snapchat',        color: 'FFFC00' },
+  discord:     { svg: 'discord',         color: '5865F2' },
+  reddit:      { svg: 'reddit',          color: 'FF4500' },
+  linkedin:    { svg: 'linkedin',        color: '0A66C2' },
+  pinterest:   { svg: 'pinterest',       color: 'BD081C' },
+  threads:     { svg: 'threads',         color: '000000' },
+  amazon:      { svg: 'amazon',          color: 'FF9900' },
+  ebay:        { svg: 'ebay',            color: 'E53238' },
+  aliexpress:  { svg: 'aliexpress',      color: 'FF4747' },
+  shopify:     { svg: 'shopify',         color: '7AB55C' },
+  youtube:     { svg: 'youtube',         color: 'FF0000' },
+  netflix:     { svg: 'netflix',         color: 'E50914' },
+  spotify:     { svg: 'spotify',         color: '1DB954' },
+  twitch:      { svg: 'twitch',          color: '9146FF' },
+  soundcloud:  { svg: 'soundcloud',      color: 'FF5500' },
+  google:      { svg: 'google',          color: '4285F4' },
+  gmail:       { svg: 'gmail',           color: 'EA4335' },
+  apple:       { svg: 'apple',           color: '000000' },
+  microsoft:   { svg: 'microsoft',       color: '5E5E5E' },
+  steam:       { svg: 'steam',           color: '000000' },
+  playstation: { svg: 'playstation',     color: '003791' },
+  xbox:        { svg: 'xbox',            color: '107C10' },
+  nintendo:    { svg: 'nintendoswitch',  color: 'E60012' },
+  epicgames:   { svg: 'epicgames',       color: '313131' },
+  roblox:      { svg: 'roblox',          color: '000000' },
+  minecraft:   { svg: 'minecraft',       color: '62B47A' },
+  paypal:      { svg: 'paypal',          color: '00457C' },
+  visa:        { svg: 'visa',            color: '1A1F71' },
+  mastercard:  { svg: 'mastercard',      color: 'EB001B' },
+  binance:     { svg: 'binance',         color: 'F0B90B' },
+  coinbase:    { svg: 'coinbase',        color: '0052FF' },
+  uber:        { svg: 'uber',            color: '000000' },
+  airbnb:      { svg: 'airbnb',          color: 'FF5A5F' },
+  booking:     { svg: 'bookingdotcom',   color: '003580' },
+  openai:      { svg: 'openai',          color: '412991' },
+  chatgpt:     { svg: 'openai',          color: '10A37F' },
+  github:      { svg: 'github',          color: '181717' },
+  dropbox:     { svg: 'dropbox',         color: '0061FF' },
+  twitter2:    { svg: 'twitter',         color: '1DA1F2' },
+  ok:          { svg: 'odnoklassniki',   color: 'EE8208' },
+  vk:          { svg: 'vk',              color: '0077FF' },
+  yahoo:       { svg: 'yahoo',           color: '6001D2' },
+  zoom:        { svg: 'zoom',            color: '2D8CFF' },
+  skype:       { svg: 'skype',           color: '00AFF0' },
+  tinder:      { svg: 'tinder',          color: 'FF6B6B' },
+  badoo:       { svg: 'badoo',           color: '783BF9' },
+  clubhouse:   { svg: 'clubhouse',       color: 'F1C40F' },
+  truthsocial: { svg: 'truthsocial',     color: '5448EE' },
+  protonmail:  { svg: 'protonmail',      color: '6D4AFF' },
+  zoho:        { svg: 'zoho',            color: 'E42527' },
+  gojek:       { svg: 'gojek',           color: '00AA13' },
+  grab:        { svg: 'grab',            color: '00B14F' },
+  foodpanda:   { svg: 'foodpanda',       color: 'D70F64' },
+  careem:      { svg: 'careem',          color: '25C16F' },
+};
+
+function _iconKey(id) {
+  return String(id || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function _fallbackEmoji(id) {
+  const k = _iconKey(id);
+  if (/whats|wapp/.test(k)) return '💬';
+  if (/telegram|tg/.test(k)) return '✈️';
+  if (/signal/.test(k)) return '🔒';
+  if (/viber/.test(k)) return '📞';
+  if (/insta|ig/.test(k)) return '📷';
+  if (/face|fb/.test(k)) return '👍';
+  if (/tiktok/.test(k)) return '🎵';
+  if (/snap/.test(k)) return '👻';
+  if (/discord/.test(k)) return '🎮';
+  if (/youtube|yt/.test(k)) return '▶️';
+  if (/netflix/.test(k)) return '🎬';
+  if (/spotify/.test(k)) return '🎧';
+  if (/twitch/.test(k)) return '🟣';
+  if (/google|gmail/.test(k)) return '🔍';
+  if (/apple/.test(k)) return '🍎';
+  if (/microsoft|outlook/.test(k)) return '🪟';
+  if (/steam/.test(k)) return '🎮';
+  if (/playstation|psn/.test(k)) return '🎮';
+  if (/xbox/.test(k)) return '🎮';
+  if (/paypal|visa|master|binance|coin|pay/.test(k)) return '💳';
+  if (/uber|careem|grab|gojek/.test(k)) return '🚗';
+  if (/amazon|ebay|aliex|shop/.test(k)) return '🛒';
+  if (/openai|chatgpt|gpt/.test(k)) return '🤖';
+  if (/github/.test(k)) return '🐙';
+  if (/tinder|badoo/.test(k)) return '❤️';
+  if (/twitter|^x$/.test(k)) return '🐦';
+  return '📱';
+}
+
+/**
+ * يُرجع HTML لأيقونة الخدمة (img من CDN + احتياطي إيموجي).
+ */
+function serviceIconHtml(serviceId, name, size) {
+  size = size || 24;
+  const key = _iconKey(serviceId);
+  const meta = SERVICE_ICONS[key];
+
+  if (meta) {
+    const url = `https://cdn.simpleicons.org/${meta.svg}/${meta.color}`;
+    const alt = (name || serviceId || '').replace(/"/g, '&quot;');
+    return `<img src="${url}" alt="${alt}" width="${size}" height="${size}" loading="lazy"
+                 style="display:inline-block;object-fit:contain"
+                 onerror="this.style.display='none';this.nextElementSibling.style.display='inline-block'">
+            <span style="display:none;font-size:${Math.round(size * 0.85)}px;line-height:1">${_fallbackEmoji(serviceId)}</span>`;
+  }
+  return `<span style="font-size:${Math.round(size * 0.85)}px;line-height:1">${_fallbackEmoji(serviceId)}</span>`;
+}
+
+// ══════════════════════════════════════════════════════════════
+// 2) ترتيب حسب الشهرة
+// ══════════════════════════════════════════════════════════════
+const POPULARITY_ORDER = [
+  'whatsapp', 'telegram', 'instagram', 'facebook', 'tiktok',
+  'google', 'gmail', 'youtube', 'twitter', 'x', 'snapchat',
+  'discord', 'signal', 'viber', 'line', 'wechat',
+  'netflix', 'spotify', 'amazon', 'paypal', 'uber',
+  'apple', 'microsoft', 'steam', 'openai', 'chatgpt',
+  'linkedin', 'reddit', 'pinterest', 'threads',
+  'twitch', 'soundcloud', 'ebay', 'aliexpress', 'shopify',
+  'playstation', 'xbox', 'nintendo', 'epicgames', 'roblox', 'minecraft',
+  'binance', 'coinbase', 'airbnb', 'booking',
+  'github', 'dropbox', 'zoom', 'skype', 'yahoo', 'vk', 'ok',
+  'tinder', 'badoo', 'clubhouse', 'truthsocial', 'protonmail',
+  'gojek', 'grab', 'foodpanda', 'careem', 'zoho',
+];
+
+function serviceRank(id) {
+  const k = _iconKey(id);
+  const i = POPULARITY_ORDER.indexOf(k);
+  return i === -1 ? 999 : i;
+}
+
+function sortByPopularity(arr, getId) {
+  getId = getId || function (x) { return x.id; };
+  return [...(arr || [])].sort((a, b) => {
+    const ra = serviceRank(getId(a));
+    const rb = serviceRank(getId(b));
+    if (ra !== rb) return ra - rb;
+    // كسر التعادل أبجدياً
+    return String(getId(a)).localeCompare(String(getId(b)));
+  });
+}
+
+// ══════════════════════════════════════════════════════════════
+// 3) حالة التطبيق
+// ══════════════════════════════════════════════════════════════
+const SERVICES_PREVIEW = 4;
 let COUNTRIES = [];
 try {
   const el = document.getElementById('countries-data');
@@ -365,8 +548,24 @@ let selectedCountry = null;
 let selectedService = null;
 let currentPrice = 0;
 let currentCount = 0;
+let servicesExpanded = false;
 
-// ── اختيار الدولة ──
+// ══════════════════════════════════════════════════════════════
+// 4) تعبئة الأيقونات في الجدول وقسم الأكثر طلباً
+// ══════════════════════════════════════════════════════════════
+function hydrateServiceIcons(root) {
+  (root || document).querySelectorAll('[data-service-icon]').forEach(el => {
+    if (el.dataset.iconHydrated === '1') return;
+    const id = el.dataset.serviceIcon;
+    const name = el.dataset.serviceName || '';
+    el.innerHTML = serviceIconHtml(id, name, 22);
+    el.dataset.iconHydrated = '1';
+  });
+}
+
+// ══════════════════════════════════════════════════════════════
+// 5) اختيار الدولة
+// ══════════════════════════════════════════════════════════════
 function selectCountry(slug, btn) {
   document.querySelectorAll('.country-btn').forEach(b => {
     b.classList.remove('border-blue-500', 'bg-blue-50');
@@ -387,15 +586,21 @@ function selectCountry(slug, btn) {
 
   renderServices(selectedCountry ? selectedCountry.services : []);
 
-  document.getElementById('service-step').classList.remove('opacity-50','pointer-events-none');
-  document.getElementById('confirm-step').classList.add('opacity-50','pointer-events-none');
+  document.getElementById('service-step').classList.remove('opacity-50', 'pointer-events-none');
+  document.getElementById('confirm-step').classList.add('opacity-50', 'pointer-events-none');
 }
 
-// ── عرض الخدمات ──
+// ══════════════════════════════════════════════════════════════
+// 6) عرض الخدمات (مرتبة + عرض 4 + زر عرض المزيد)
+// ══════════════════════════════════════════════════════════════
 function renderServices(services) {
   const grid = document.getElementById('service-grid');
   const empty = document.getElementById('service-empty');
+  const moreWrap = document.getElementById('service-more-wrap');
   grid.innerHTML = '';
+  moreWrap.classList.add('hidden');
+  moreWrap.innerHTML = '';
+  servicesExpanded = false;
 
   if (!services || services.length === 0) {
     empty.classList.remove('hidden');
@@ -403,43 +608,77 @@ function renderServices(services) {
   }
   empty.classList.add('hidden');
 
-  services.forEach(s => {
+  const sorted = sortByPopularity(services, s => s.id);
+
+  sorted.forEach((s, idx) => {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.dataset.id = s.id;
+    btn.dataset.serviceIndex = idx;
     btn.className = 'service-btn flex flex-col items-center gap-1 p-3 rounded-xl border-2 border-slate-100 transition-all ' +
       (s.available ? 'hover:border-blue-400 hover:bg-blue-50' : 'opacity-40 cursor-not-allowed');
+    if (idx >= SERVICES_PREVIEW) btn.classList.add('hidden');
 
     if (s.available) {
-      btn.onclick = () => selectService(s.id, s.cost, s.count, btn);
+      btn.onclick = function () { selectService(s.id, s.cost, s.count, btn); };
     } else {
       btn.disabled = true;
     }
 
+    const iconEl = document.createElement('div');
+    iconEl.className = 'w-10 h-10 flex items-center justify-center';
+    iconEl.innerHTML = serviceIconHtml(s.id, s.name, 30);
+
     const priceHtml = s.available
       ? `<span class="text-[11px] font-bold text-blue-600">$${Number(s.cost).toFixed(2)}</span>`
       : `<span class="text-[10px] text-slate-400">غير متاح</span>`;
-
     const countHtml = s.available
-      ? `<span class="text-[9px] text-slate-400">${s.count} متاح</span>`
-      : '';
-
+      ? `<span class="text-[9px] text-slate-400">${s.count} متاح</span>` : '';
     const rateHtml = (s.available && s.rate)
-      ? `<span class="text-[9px] text-emerald-600">${Number(s.rate).toFixed(0)}% ✓</span>`
-      : '';
+      ? `<span class="text-[9px] text-emerald-600">${Number(s.rate).toFixed(0)}% ✓</span>` : '';
 
-    btn.innerHTML = `
-      <span class="text-2xl">${s.icon}</span>
-      <span class="text-xs font-bold text-slate-700">${s.name}</span>
-      ${priceHtml}
-      ${countHtml}
-      ${rateHtml}
-    `;
+    const nameEl = document.createElement('span');
+    nameEl.className = 'text-xs font-bold text-slate-700';
+    nameEl.textContent = s.name;
+
+    btn.appendChild(iconEl);
+    btn.appendChild(nameEl);
+    btn.insertAdjacentHTML('beforeend', priceHtml + countHtml + rateHtml);
     grid.appendChild(btn);
   });
+
+  // زر عرض المزيد
+  if (sorted.length > SERVICES_PREVIEW) {
+    moreWrap.classList.remove('hidden');
+    moreWrap.innerHTML = `
+      <button type="button" onclick="toggleServices(this)"
+              data-expanded="false"
+              class="text-xs font-bold text-blue-600 hover:text-blue-700 border border-blue-200 hover:border-blue-400 bg-white px-4 py-2 rounded-lg transition-colors inline-flex items-center gap-1">
+        <span class="label">عرض المزيد (${sorted.length - SERVICES_PREVIEW})</span>
+        <svg class="w-3.5 h-3.5 transition-transform duration-200 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+        </svg>
+      </button>`;
+  }
 }
 
-// ── اختيار الخدمة ──
+function toggleServices(btn) {
+  const expanded = btn.dataset.expanded === 'true';
+  const btns = document.querySelectorAll('.service-btn');
+  btns.forEach(el => {
+    const i = parseInt(el.dataset.serviceIndex, 10);
+    if (i >= SERVICES_PREVIEW) el.classList.toggle('hidden', expanded);
+  });
+  btn.dataset.expanded = expanded ? 'false' : 'true';
+  btn.querySelector('.label').textContent = expanded
+    ? `عرض المزيد (${btns.length - SERVICES_PREVIEW})`
+    : 'عرض أقل';
+  btn.querySelector('.chevron').style.transform = expanded ? '' : 'rotate(180deg)';
+}
+
+// ══════════════════════════════════════════════════════════════
+// 7) اختيار الخدمة
+// ══════════════════════════════════════════════════════════════
 function selectService(id, cost, count, btn) {
   document.querySelectorAll('.service-btn').forEach(b => {
     b.classList.remove('border-blue-500', 'bg-blue-50');
@@ -448,62 +687,97 @@ function selectService(id, cost, count, btn) {
   btn.classList.add('border-blue-500', 'bg-blue-50');
   btn.classList.remove('border-slate-100');
 
-  const svc = (selectedCountry?.services || []).find(s => s.id === id);
-  selectedService = { id, name: svc?.name || id };
+  const svc = (selectedCountry && selectedCountry.services || [])
+    .find(s => String(s.id) === String(id));
+  selectedService = { id: id, name: (svc && svc.name) || id };
   currentPrice = parseFloat(cost) || 0;
-  currentCount = parseInt(count) || 0;
+  currentCount = parseInt(count, 10) || 0;
 
-  document.getElementById('confirm-step').classList.remove('opacity-50','pointer-events-none');
+  document.getElementById('confirm-step').classList.remove('opacity-50', 'pointer-events-none');
   updateConfirm();
 }
 
-// ── تحديث التأكيد ──
+// ══════════════════════════════════════════════════════════════
+// 8) تحديث التأكيد
+// ══════════════════════════════════════════════════════════════
 function updateConfirm() {
-  const set = (id, v) => {
+  const set = function (id, v) {
     const el = document.getElementById(id);
     if (el) el.textContent = v;
   };
-  set('confirm-country', selectedCountry?.name || '—');
-  set('confirm-service', selectedService?.name || '—');
+  set('confirm-country', (selectedCountry && selectedCountry.name) || '—');
+  set('confirm-service', (selectedService && selectedService.name) || '—');
   set('confirm-count', currentCount ? `${currentCount} رقم` : '—');
   set('confirm-price', `$${currentPrice.toFixed(2)}`);
 }
 
-// ── شراء سريع من البطاقات ──
+// ══════════════════════════════════════════════════════════════
+// 9) عرض المزيد لقسم "الأكثر طلباً"
+// ══════════════════════════════════════════════════════════════
+function togglePopular(btn) {
+  const items = document.querySelectorAll('[data-popular-item]');
+  const expanded = btn.dataset.expanded === 'true';
+  items.forEach((el, i) => {
+    if (i >= 4) el.classList.toggle('hidden', expanded);
+  });
+  btn.dataset.expanded = expanded ? 'false' : 'true';
+  btn.querySelector('.label').textContent = expanded
+    ? `عرض المزيد (${items.length - 4})`
+    : 'عرض أقل';
+  btn.querySelector('.chevron').style.transform = expanded ? '' : 'rotate(180deg)';
+}
+
+// ══════════════════════════════════════════════════════════════
+// 10) شراء سريع من البطاقات
+// ══════════════════════════════════════════════════════════════
 function quickBuy(countrySlug, serviceId) {
-  const countryBtn = document.querySelector(`.country-btn[data-slug="${countrySlug}"]`);
+  const countryBtn = document.querySelector(`.country-btn[data-slug="${countrySlug}"]`)
+                  || document.querySelector(`.country-btn[data-code="${countrySlug}"]`);
   if (!countryBtn) {
     showAlert('الدولة غير موجودة في القائمة', 'error');
     return;
   }
-  selectCountry(countrySlug, countryBtn);
+  selectCountry(countryBtn.dataset.slug, countryBtn);
 
-  setTimeout(() => {
+  // انتظر إعادة الرسم
+  requestAnimationFrame(function () {
     const svcBtn = document.querySelector(`.service-btn[data-id="${serviceId}"]`);
     if (svcBtn && !svcBtn.disabled) {
-      const country = COUNTRIES.find(c => c.slug === countrySlug);
-      const svc = country?.services.find(s => s.id === serviceId);
-      selectService(serviceId, svc?.cost || 0, svc?.count || 0, svcBtn);
+      // إن كانت الخدمة خارج أول 4، افتح القائمة
+      const idx = parseInt(svcBtn.dataset.serviceIndex, 10);
+      if (idx >= SERVICES_PREVIEW && svcBtn.classList.contains('hidden')) {
+        const moreBtn = document.querySelector('#service-more-wrap button');
+        if (moreBtn) toggleServices(moreBtn);
+      }
+      const country = COUNTRIES.find(c => c.slug === countryBtn.dataset.slug || c.code === countryBtn.dataset.code);
+      const svc = country && (country.services || []).find(s => String(s.id) === String(serviceId));
+      selectService(serviceId, (svc && svc.cost) || 0, (svc && svc.count) || 0, svcBtn);
     }
-    document.getElementById('confirm-step')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }, 50);
+    const confirmEl = document.getElementById('confirm-step');
+    if (confirmEl) confirmEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
 }
 
-// ── تنبيه بسيط ──
-function showAlert(msg, type = 'info') {
+// ══════════════════════════════════════════════════════════════
+// 11) تنبيه بسيط
+// ══════════════════════════════════════════════════════════════
+function showAlert(msg, type) {
+  type = type || 'info';
   const colors = {
-    error: 'bg-red-100 border-red-300 text-red-800',
+    error:   'bg-red-100 border-red-300 text-red-800',
     success: 'bg-emerald-100 border-emerald-300 text-emerald-800',
-    info: 'bg-blue-100 border-blue-300 text-blue-800',
+    info:    'bg-blue-100 border-blue-300 text-blue-800',
   };
   const div = document.createElement('div');
-  div.className = `fixed top-4 left-1/2 -translate-x-1/2 z-50 border-2 rounded-xl px-6 py-3 text-sm font-bold shadow-lg ${colors[type] || colors.info}`;
+  div.className = 'fixed top-4 left-1/2 -translate-x-1/2 z-50 border-2 rounded-xl px-6 py-3 text-sm font-bold shadow-lg ' + (colors[type] || colors.info);
   div.textContent = msg;
   document.body.appendChild(div);
-  setTimeout(() => div.remove(), 5000);
+  setTimeout(function () { div.remove(); }, 5000);
 }
 
-// ── تأكيد الشراء من 5SIM ──
+// ══════════════════════════════════════════════════════════════
+// 12) تأكيد الشراء من 5SIM
+// ══════════════════════════════════════════════════════════════
 async function confirmPurchase() {
   if (!selectedCountry || !selectedService) return;
   const btn = document.getElementById('buy-btn');
@@ -514,7 +788,7 @@ async function confirmPurchase() {
   try {
     const r = await fetch('/api/v1/orders', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         country: selectedCountry.slug,
         service: selectedService.id,
@@ -524,8 +798,8 @@ async function confirmPurchase() {
 
     if (r.ok) {
       showAlert('✅ تم الشراء بنجاح — جارٍ التحويل...', 'success');
-      setTimeout(() => {
-        window.location.href = `/orders/${d.id}`;
+      setTimeout(function () {
+        window.location.href = '/orders/' + d.id;
       }, 800);
     } else {
       showAlert('❌ ' + (d.detail || 'فشل الشراء'), 'error');
@@ -539,7 +813,9 @@ async function confirmPurchase() {
   }
 }
 
-// ── تحديث الأسعار يدوياً ──
+// ══════════════════════════════════════════════════════════════
+// 13) تحديث الأسعار يدوياً
+// ══════════════════════════════════════════════════════════════
 async function refreshPrices(btn) {
   const old = btn.innerHTML;
   btn.disabled = true;
@@ -561,23 +837,37 @@ async function refreshPrices(btn) {
   }
 }
 
-// ── التحديد المسبق من query params ──
-document.addEventListener('DOMContentLoaded', () => {
-  const preCountry = "{{ preselected_country or '' }}";
-  const preService = "{{ preselected_service or '' }}";
+// ══════════════════════════════════════════════════════════════
+// 14) التهيئة عند التحميل
+// ══════════════════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', function () {
+  // 1) تعبئة الأيقونات
+  hydrateServiceIcons(document);
+
+  // 2) التحديد المسبق من query params (بأمان)
+  const preCountry = {{ (preselected_country or '') | tojson }};
+  const preService = {{ (preselected_service or '') | tojson }};
+
   if (preCountry) {
     const btn = document.querySelector(`.country-btn[data-slug="${preCountry}"]`)
-              || document.querySelector(`.country-btn[data-code="${preCountry}"]`);
-    if (btn) selectCountry(btn.dataset.slug, btn);
-    if (preService) {
-      setTimeout(() => {
-        const svcBtn = document.querySelector(`.service-btn[data-id="${preService}"]`);
-        if (svcBtn && !svcBtn.disabled) {
-          const c = COUNTRIES.find(x => x.slug === preCountry || x.code === preCountry);
-          const s = c?.services.find(x => x.id === preService);
-          selectService(preService, s?.cost || 0, s?.count || 0, svcBtn);
-        }
-      }, 60);
+             || document.querySelector(`.country-btn[data-code="${preCountry}"]`);
+    if (btn) {
+      selectCountry(btn.dataset.slug, btn);
+      if (preService) {
+        requestAnimationFrame(function () {
+          const svcBtn = document.querySelector(`.service-btn[data-id="${preService}"]`);
+          if (svcBtn && !svcBtn.disabled) {
+            const idx = parseInt(svcBtn.dataset.serviceIndex, 10);
+            if (idx >= SERVICES_PREVIEW && svcBtn.classList.contains('hidden')) {
+              const moreBtn = document.querySelector('#service-more-wrap button');
+              if (moreBtn) toggleServices(moreBtn);
+            }
+            const c = COUNTRIES.find(x => x.slug === btn.dataset.slug || x.code === btn.dataset.code);
+            const s = c && (c.services || []).find(x => String(x.id) === String(preService));
+            selectService(preService, (s && s.cost) || 0, (s && s.count) || 0, svcBtn);
+          }
+        });
+      }
     }
   }
 });
