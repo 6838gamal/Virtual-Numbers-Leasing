@@ -9,6 +9,30 @@
 
 {% block content %}
 
+{# ══ تحذير الرصيد ═════════════════════════════════════════════ #}
+{% if prices_meta.ok and customer.balance < 0.5 %}
+<div class="mb-6 bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-200 rounded-2xl p-5">
+  <div class="flex items-start gap-3 flex-wrap sm:flex-nowrap">
+    <div class="w-12 h-12 bg-amber-500 rounded-xl flex items-center justify-center text-2xl text-white shadow-md flex-shrink-0">
+      🎟️
+    </div>
+    <div class="flex-1 min-w-0">
+      <h3 class="font-bold text-amber-900 text-sm mb-1">ليس لديك رصيد كافٍ بعد</h3>
+      <p class="text-xs text-amber-700 leading-relaxed">
+        لشراء رقم، تحتاج أولاً إلى شحن رصيدك. يمكنك استخدام <b>كود الشحن</b> الذي حصلت عليه من الموزع، أو طلب إيداع يدوي.
+      </p>
+    </div>
+    <a href="/wallet"
+       class="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-5 py-2.5 rounded-lg transition-colors whitespace-nowrap flex items-center gap-1.5 shadow-sm">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+      </svg>
+      شحن الرصيد
+    </a>
+  </div>
+</div>
+{% endif %}
+
 {% if not prices_meta.ok %}
 <div class="max-w-2xl mx-auto mt-8">
   <div class="bg-red-50 border-2 border-red-200 rounded-2xl p-8 text-center">
@@ -263,22 +287,40 @@
           <span class="text-sm text-slate-500">الكمية المتاحة</span>
           <span id="confirm-count" class="text-sm font-bold text-slate-700">—</span>
         </div>
+        <div class="flex items-center justify-between py-2 border-b border-slate-200">
+          <span class="text-sm text-slate-500">رصيدك</span>
+          <span id="confirm-balance" class="text-sm font-bold text-emerald-600">${{ "%.2f"|format(customer.balance) }}</span>
+        </div>
         <div class="flex items-center justify-between pt-3">
           <span class="text-sm font-bold text-slate-700">التكلفة</span>
           <span id="confirm-price" class="text-lg font-bold text-blue-600">$0.00</span>
         </div>
       </div>
 
+      {# تنبيه الرصيد غير الكافي #}
+      <div id="insufficient-warning" class="hidden mb-3 bg-red-50 border border-red-200 rounded-xl p-3">
+        <div class="flex items-start gap-2">
+          <span class="text-red-600 text-lg flex-shrink-0">⚠️</span>
+          <div class="flex-1 text-xs text-red-800">
+            <p class="font-bold mb-1">رصيدك غير كافٍ</p>
+            <p id="insufficient-text">—</p>
+            <a href="/wallet" class="inline-flex items-center gap-1 mt-2 bg-red-600 hover:bg-red-700 text-white font-bold px-3 py-1.5 rounded-lg transition-colors">
+              🎟️ شحن الرصيد
+            </a>
+          </div>
+        </div>
+      </div>
+
       <button onclick="confirmPurchase()" id="buy-btn"
-              class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-colors flex items-center justify-center gap-2">
+              class="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl transition-colors flex items-center justify-center gap-2">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>
         </svg>
-        شراء الآن من 5SIM
+        شراء الآن
       </button>
       <p class="text-[10px] text-slate-400 text-center mt-2">
-        سيتم شراء رقم حقيقي من 5SIM. عند فشل الشراء ستظهر رسالة الخطأ بوضوح.
+        سيتم خصم المبلغ من رصيدك فور تأكيد الشراء.
       </p>
     </div>
   </div>
@@ -287,12 +329,19 @@
     <div class="bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl p-5 text-white shadow-lg">
       <div class="text-xs text-blue-100 font-medium mb-1">رصيدك الحالي</div>
       <div class="text-3xl font-bold">${{ "%.2f"|format(customer.balance) }}</div>
-      <a href="/wallet" class="mt-3 inline-flex items-center gap-1 bg-white/20 hover:bg-white/30 backdrop-blur text-xs font-bold px-3 py-1.5 rounded-lg transition-colors">
-        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-        </svg>
-        إيداع
-      </a>
+
+      {% if customer.balance < 0.5 %}
+        <a href="/wallet" class="mt-3 inline-flex items-center gap-1 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors w-full justify-center">
+          🎟️ إدخال كود شحن
+        </a>
+      {% else %}
+        <a href="/wallet" class="mt-3 inline-flex items-center gap-1 bg-white/20 hover:bg-white/30 backdrop-blur text-xs font-bold px-3 py-1.5 rounded-lg transition-colors w-full justify-center">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+          </svg>
+          إيداع / شحن
+        </a>
+      {% endif %}
     </div>
 
     <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
@@ -321,16 +370,16 @@
       <h4 class="text-sm font-bold text-slate-800 mb-3">كيف يعمل؟</h4>
       <ol class="space-y-3 text-xs text-slate-600">
         <li class="flex gap-2">
-          <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-bold flex-shrink-0">1</span>
-          اختر الدولة والخدمة المطلوبة
+          <span class="w-5 h-5 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-[10px] font-bold flex-shrink-0">1</span>
+          <span><b>أدخل كود الشحن</b> في المحفظة لشحن رصيدك</span>
         </li>
         <li class="flex gap-2">
           <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-bold flex-shrink-0">2</span>
-          يتم شراء الرقم مباشرة من 5SIM
+          اختر الدولة والخدمة المطلوبة
         </li>
         <li class="flex gap-2">
           <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-bold flex-shrink-0">3</span>
-          استخدم الرقم للتسجيل في الخدمة
+          أكّد الشراء — يُخصم من رصيدك
         </li>
         <li class="flex gap-2">
           <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-bold flex-shrink-0">4</span>
@@ -364,10 +413,8 @@
 <script>
 // ══════════════════════════════════════════════════════════════
 // 1) خريطة الأيقونات — Simple Icons CDN
-//    تغطي: عالمية + إقليمية + محلية حسب المنطقة + احترافية + تعليمية
 // ══════════════════════════════════════════════════════════════
 const SERVICE_ICONS = {
-  // ── 🌍 عالمية — مراسلة ──
   whatsapp:{svg:'whatsapp',color:'25D366'}, whatsappbusiness:{svg:'whatsapp',color:'25D366'},
   wa:{svg:'whatsapp',color:'25D366'}, wapp:{svg:'whatsapp',color:'25D366'},
   telegram:{svg:'telegram',color:'26A5E4'}, tg:{svg:'telegram',color:'26A5E4'},
@@ -375,333 +422,53 @@ const SERVICE_ICONS = {
   line:{svg:'line',color:'00C300'}, wechat:{svg:'wechat',color:'07C160'},
   skype:{svg:'skype',color:'00AFF0'}, imo:{svg:'imo',color:'00A8E1'},
   kakaotalk:{svg:'kakaotalk',color:'FEE500'}, kakao:{svg:'kakaotalk',color:'FEE500'},
-  groupme:{svg:'groupme',color:'00AFF0'}, keybase:{svg:'keybase',color:'33A0FF'},
-  michat:{svg:'michat',color:'FF4C4C'}, tango:{svg:'tango',color:'FF5A60'},
-  zalo:{svg:'zalo',color:'0068FF'}, yalla:{svg:'yalla',color:'00C4A7'},
-
-  // ── 🌍 عالمية — اجتماعي ──
   instagram:{svg:'instagram',color:'E4405F'}, ig:{svg:'instagram',color:'E4405F'},
-  insta:{svg:'instagram',color:'E4405F'}, facebook:{svg:'facebook',color:'1877F2'},
-  fb:{svg:'facebook',color:'1877F2'}, twitter:{svg:'x',color:'000000'}, x:{svg:'x',color:'000000'},
-  tiktok:{svg:'tiktok',color:'000000'}, tt:{svg:'tiktok',color:'000000'},
-  snapchat:{svg:'snapchat',color:'FFFC00'}, snap:{svg:'snapchat',color:'FFFC00'},
+  facebook:{svg:'facebook',color:'1877F2'}, fb:{svg:'facebook',color:'1877F2'},
+  twitter:{svg:'x',color:'000000'}, x:{svg:'x',color:'000000'},
+  tiktok:{svg:'tiktok',color:'000000'}, snapchat:{svg:'snapchat',color:'FFFC00'},
   discord:{svg:'discord',color:'5865F2'}, reddit:{svg:'reddit',color:'FF4500'},
   linkedin:{svg:'linkedin',color:'0A66C2'}, pinterest:{svg:'pinterest',color:'BD081C'},
-  threads:{svg:'threads',color:'000000'}, mastodon:{svg:'mastodon',color:'6364FF'},
-  truthsocial:{svg:'truthsocial',color:'5448EE'}, weibo:{svg:'sinaweibo',color:'E6162D'},
-  qq:{svg:'tencentqq',color:'EB1923'}, tencentqq:{svg:'tencentqq',color:'EB1923'},
-  vk:{svg:'vk',color:'0077FF'}, ok:{svg:'odnoklassniki',color:'EE8208'},
-  odnoklassniki:{svg:'odnoklassniki',color:'EE8208'}, clubhouse:{svg:'clubhouse',color:'F1C40F'},
-  naver:{svg:'naver',color:'03C75A'}, baidu:{svg:'baidu',color:'2932E1'},
-  douyin:{svg:'tiktok',color:'000000'}, kuaishou:{svg:'kuaishou',color:'FF4E00'},
-  bigolive:{svg:'bigolive',color:'F26B21'},
-
-  // ── 💼 احترافية وتوظيف ──
-  indeed:{svg:'indeed',color:'003A9B'}, glassdoor:{svg:'glassdoor',color:'0CAA41'},
-  monster:{svg:'monster',color:'6D4AFF'}, upwork:{svg:'upwork',color:'14A800'},
-  fiverr:{svg:'fiverr',color:'1DBF73'}, freelancer:{svg:'freelancer',color:'29B2FE'},
-  toptal:{svg:'toptal',color:'204ECF'}, guru:{svg:'guru',color:'4F8C3A'},
-  peopleperhour:{svg:'peopleperhour',color:'FF7300'}, weworkremotely:{svg:'weworkremotely',color:'F45A34'},
-  remoteok:{svg:'remoteok',color:'00A0A0'}, wellfound:{svg:'wellfound',color:'000000'},
-  naukri:{svg:'naukri',color:'FF7555'}, bayt:{svg:'bayt',color:'00A651'},
-  wuzzuf:{svg:'wuzzuf',color:'00A8E1'}, tanqeeb:{svg:'tanqeeb',color:'FF6B00'},
-
-  // ── 📚 تعليم ──
-  coursera:{svg:'coursera',color:'0056D2'}, udemy:{svg:'udemy',color:'A435F0'},
-  edx:{svg:'edx',color:'02262B'}, khanacademy:{svg:'khanacademy',color:'14BF96'},
-  udacity:{svg:'udacity',color:'02B3E4'}, pluralsight:{svg:'pluralsight',color:'F15B2A'},
-  skillshare:{svg:'skillshare',color:'00FF84'}, byjus:{svg:'byjus',color:'813588'},
-  unacademy:{svg:'unacademy',color:'08BD80'}, vedantu:{svg:'vedantu',color:'FB6C21'},
-  toppr:{svg:'toppr',color:'4A90E2'}, doubtnut:{svg:'doubtnut',color:'FB6C21'},
-  chegg:{svg:'chegg',color:'F26B21'}, brainly:{svg:'brainly',color:'20C997'},
-  quizlet:{svg:'quizlet',color:'4255FF'}, duolingo:{svg:'duolingo',color:'58CC02'},
-  babbel:{svg:'babbel',color:'FF7100'}, rosettastone:{svg:'rosettastone',color:'0099CC'},
-
-  // ── 🏥 صحة ──
-  practo:{svg:'practo',color:'28328C'}, apollo:{svg:'apollo',color:'F58220'},
-  netmeds:{svg:'netmeds',color:'E11B22'}, '1mg':{svg:'1mg',color:'F47B20'},
-  pharmeasy:{svg:'pharmeasy',color:'10847E'}, cvs:{svg:'cvs',color:'CC0000'},
-  walgreens:{svg:'walgreens',color:'E31837'}, goodrx:{svg:'goodrx',color:'00CCBC'},
-  teladoc:{svg:'teladoc',color:'FF7900'}, zocdoc:{svg:'zocdoc',color:'FF6C6C'},
-  halodoc:{svg:'halodoc',color:'00A0DC'}, alodokter:{svg:'alodokter',color:'FF6B00'},
-  klikdokter:{svg:'klikdokter',color:'00B2A9'}, sehatq:{svg:'sehatq',color:'00A8E1'},
-
-  // ── 🏦 بنوك عالمية ──
-  chase:{svg:'chase',color:'117ACA'}, wellsfargo:{svg:'wellsfargo',color:'D71E28'},
-  bankofamerica:{svg:'bankofamerica',color:'012169'}, citibank:{svg:'citibank',color:'003B70'},
-  hsbc:{svg:'hsbc',color:'DB0011'}, barclays:{svg:'barclays',color:'00AEEF'},
-  lloyds:{svg:'lloyds',color:'006A4D'}, natwest:{svg:'natwest',color:'5A287D'},
-  standardchartered:{svg:'standardchartered',color:'0473EA'}, dbs:{svg:'dbs',color:'EC1C24'},
-  ocbc:{svg:'ocbc',color:'EE2E24'}, uob:{svg:'uob',color:'005EB8'},
-  maybank:{svg:'maybank',color:'FFCC00'}, cimb:{svg:'cimb',color:'ED1C24'},
-
-  // ── 📰 إخبارية ──
-  cnn:{svg:'cnn',color:'CC0000'}, bbc:{svg:'bbc',color:'000000'},
-  nytimes:{svg:'newyorktimes',color:'000000'}, wsj:{svg:'wsj',color:'000000'},
-  washingtonpost:{svg:'washingtonpost',color:'000000'}, theguardian:{svg:'theguardian',color:'052962'},
-  reuters:{svg:'reuters',color:'FF8000'}, bloomberg:{svg:'bloomberg',color:'000000'},
-  forbes:{svg:'forbes',color:'000000'}, techcrunch:{svg:'techcrunch',color:'0A8F2D'},
-  theverge:{svg:'theverge',color:'5200FF'}, wired:{svg:'wired',color:'000000'},
-
-  // ── 🌍 تسوق ──
+  threads:{svg:'threads',color:'000000'},
+  google:{svg:'google',color:'4285F4'}, gmail:{svg:'gmail',color:'EA4335'},
+  yahoo:{svg:'yahoo',color:'6001D2'}, outlook:{svg:'microsoftoutlook',color:'0078D4'},
+  apple:{svg:'apple',color:'000000'}, microsoft:{svg:'microsoft',color:'5E5E5E'},
+  telegram_alt:{svg:'telegram',color:'26A5E4'},
+  youtube:{svg:'youtube',color:'FF0000'}, netflix:{svg:'netflix',color:'E50914'},
+  spotify:{svg:'spotify',color:'1DB954'}, twitch:{svg:'twitch',color:'9146FF'},
   amazon:{svg:'amazon',color:'FF9900'}, ebay:{svg:'ebay',color:'E53238'},
   aliexpress:{svg:'aliexpress',color:'FF4747'}, alibaba:{svg:'alibabacloud',color:'FF6A00'},
-  shopify:{svg:'shopify',color:'7AB55C'}, etsy:{svg:'etsy',color:'F16521'},
-  walmart:{svg:'walmart',color:'0071CE'}, target:{svg:'target',color:'CC0000'},
-  shein:{svg:'shein',color:'000000'}, dhgate:{svg:'dhgate',color:'FF6A00'},
-  adidas:{svg:'adidas',color:'000000'}, nike:{svg:'nike',color:'000000'},
-  puma:{svg:'puma',color:'000000'}, temu:{svg:'temu',color:'FB7701'},
-  wish:{svg:'wish',color:'2FB7EC'}, banggood:{svg:'banggood',color:'FF6A00'},
-  gearbest:{svg:'gearbest',color:'FF6A00'}, joom:{svg:'joom',color:'83B735'},
-  lightinthebox:{svg:'lightinthebox',color:'FF6A00'},
-
-  // ── 🇨🇳🇯🇵🇰🇷 آسيا ──
-  taobao:{svg:'taobao',color:'FF4400'}, tmall:{svg:'taobao',color:'FF4400'},
-  jd:{svg:'jd',color:'E1251B'}, '1688':{svg:'alibabacloud',color:'FF6A00'},
-  bilibili:{svg:'bilibili',color:'00A1D6'}, iqiyi:{svg:'iqiyi',color:'00CC36'},
-  douyu:{svg:'douyu',color:'FF5D23'}, huya:{svg:'huya',color:'FF9200'},
-  wegame:{svg:'tencentqq',color:'EB1923'}, linepay:{svg:'line',color:'00C300'},
-  paypay:{svg:'paypay',color:'FF0033'}, rakuten:{svg:'rakuten',color:'BF0000'},
-  mercari:{svg:'mercari',color:'FF3333'}, yahoojapan:{svg:'yahoo',color:'6001D2'},
-  naverpay:{svg:'naver',color:'03C75A'}, kakaopay:{svg:'kakaopay',color:'FFCC00'},
-  coupang:{svg:'coupang',color:'0074E4'}, coupangeats:{svg:'coupangeats',color:'0074E4'},
-  baemin:{svg:'baemin',color:'2AC1BC'}, yogiyo:{svg:'yogiyo',color:'FA0050'},
-  lazada:{svg:'lazada',color:'0F146D'}, shopee:{svg:'shopee',color:'EE4D2D'},
-  tokopedia:{svg:'tokopedia',color:'03AC0E'}, bukalapak:{svg:'bukalapak',color:'E31E52'},
-  blibli:{svg:'blibli',color:'199ED9'}, traveloka:{svg:'traveloka',color:'0099FF'},
-  tiket:{svg:'tiket',color:'0064D2'}, ovo:{svg:'ovo',color:'4C3494'},
-  dana:{svg:'dana',color:'118EEA'}, gopay:{svg:'gopay',color:'00AED6'},
-  shopeepay:{svg:'shopeepay',color:'EE4D2D'}, gojek:{svg:'gojek',color:'00AA13'},
-  grab:{svg:'grab',color:'00B14F'}, grabtaxi:{svg:'grab',color:'00B14F'},
-  grabfood:{svg:'grab',color:'00B14F'},
-
-  // ── 🇮🇳 الهند ──
-  flipkart:{svg:'flipkart',color:'2874F0'}, myntra:{svg:'myntra',color:'FF3F6C'},
-  ajio:{svg:'ajio',color:'2C4152'}, nykaa:{svg:'nykaa',color:'FC2779'},
-  snapdeal:{svg:'snapdeal',color:'E40046'}, paytm:{svg:'paytm',color:'00BAF2'},
-  phonepe:{svg:'phonepe',color:'5F259F'}, gpay:{svg:'googlepay',color:'4285F4'},
-  googlepay:{svg:'googlepay',color:'4285F4'}, zomato:{svg:'zomato',color:'E23744'},
-  swiggy:{svg:'swiggy',color:'FC8019'}, zepto:{svg:'zepto',color:'5F259F'},
-  blinkit:{svg:'blinkit',color:'F8CB46'}, bigbasket:{svg:'bigbasket',color:'84C225'},
-  dunzo:{svg:'dunzo',color:'00D290'}, ola:{svg:'ola',color:'00A854'},
-  olacabs:{svg:'olacabs',color:'FFCC00'}, jio:{svg:'jio',color:'0F3CC9'},
-  airtel:{svg:'airtel',color:'ED1C24'}, bsnl:{svg:'bsnl',color:'0066B3'},
-  dream11:{svg:'dream11',color:'EE2A24'}, mpl:{svg:'mpl',color:'FF3D71'},
-  rummycircle:{svg:'rummycircle',color:'FFCC00'}, zupee:{svg:'zupee',color:'5E2D91'},
-  irctc:{svg:'irctc',color:'F37021'}, redbus:{svg:'redbus',color:'D32F2F'},
-  abhibus:{svg:'abhibus',color:'E91E63'}, makemytrip:{svg:'makemytrip',color:'E8322D'},
-  yatra:{svg:'yatra',color:'F9A825'}, goibibo:{svg:'goibibo',color:'EE2A24'},
-  oyo:{svg:'oyo',color:'EE2A24'},
-
-  // ── 🇸🇦 الخليج ──
-  careem:{svg:'careem',color:'25C16F'}, talabat:{svg:'talabat',color:'FF5A00'},
-  noon:{svg:'noon',color:'FEEE00'}, souq:{svg:'amazon',color:'FF9900'},
-  dubizzle:{svg:'dubizzle',color:'FFCE00'}, bayut:{svg:'bayut',color:'FBAF17'},
-  anghami:{svg:'anghami',color:'8A2BE2'}, shahid:{svg:'shahid',color:'EE2A24'},
-  starzplay:{svg:'starzplay',color:'E60000'}, ooredoo:{svg:'ooredoo',color:'ED1C24'},
-  stc:{svg:'stc',color:'4F008C'}, mobily:{svg:'mobily',color:'0099DD'},
-  zain:{svg:'zain',color:'00A651'}, du:{svg:'du',color:'F58220'},
-  etisalat:{svg:'etisalat',color:'00A651'}, mzadqatar:{svg:'mzadqatar',color:'C8102E'},
-  qatarliving:{svg:'qatarliving',color:'C8102E'}, sahibinden:{svg:'sahibinden',color:'FFE500'},
-  hepsiburada:{svg:'hepsiburada',color:'FF6000'}, gittigidiyor:{svg:'gittigidiyor',color:'FF5B00'},
-  trendyol:{svg:'trendyol',color:'F27A1A'}, yemeksepeti:{svg:'yemeksepeti',color:'FA0050'},
-  getir:{svg:'getir',color:'5D3EBC'}, papara:{svg:'papara',color:'4A1AA9'},
-  tosla:{svg:'tosla',color:'9B5DE5'}, ininal:{svg:'ininal',color:'5C2D91'},
-  bitaksi:{svg:'bitaksi',color:'FFC72C'}, marti:{svg:'marti',color:'FF5B00'},
-
-  // ── 🇷🇺 روسيا ──
-  yandex:{svg:'yandex',color:'FF0000'}, yandexgo:{svg:'yandex',color:'FF0000'},
-  yandexmoney:{svg:'yandex',color:'FF0000'}, avito:{svg:'avito',color:'97CF26'},
-  ozon:{svg:'ozon',color:'005BFF'}, wildberries:{svg:'wildberries',color:'481173'},
-  sberbank:{svg:'sberbank',color:'21A038'}, tinkoff:{svg:'tinkoff',color:'FFDD2D'},
-  alfa:{svg:'alfa',color:'EF3124'}, kolesakz:{svg:'kolesakz',color:'FF6A00'},
-  kufarby:{svg:'kufarby',color:'FF6A00'}, onlinerby:{svg:'onlinerby',color:'FF6600'},
-  ukrnet:{svg:'ukrnet',color:'000000'}, hamrahaval:{svg:'hamrahaval',color:'00A651'},
-  dostup:{svg:'dostup',color:'F58220'}, aitu:{svg:'aitu',color:'00C4A7'},
-  mailru:{svg:'maildotru',color:'005FF9'},
-
-  // ── 🌎 أمريكا اللاتينية ──
-  mercado:{svg:'mercadolibre',color:'FFE600'}, mercadolivre:{svg:'mercadolibre',color:'FFE600'},
-  mercadopago:{svg:'mercadopago',color:'009EE3'}, rappi:{svg:'rappi',color:'FF441F'},
-  ifood:{svg:'ifood',color:'EA1D2C'}, picpay:{svg:'picpay',color:'21C25E'},
-  nubank:{svg:'nubank',color:'820AD1'}, bancointer:{svg:'bancointer',color:'FF7A00'},
-  c6bank:{svg:'c6bank',color:'242424'}, pagseguro:{svg:'pagseguro',color:'00A868'},
-  itau:{svg:'itau',color:'EC7000'}, bradesco:{svg:'bradesco',color:'CC092F'},
-  santander:{svg:'santander',color:'EC0000'},
-
-  // ── 🌍 أفريقيا ──
-  jumia:{svg:'jumia',color:'F68B1E'}, mpesa:{svg:'mpesa',color:'00A651'},
-  safaricom:{svg:'safaricom',color:'00A651'}, mtn:{svg:'mtn',color:'FFCC00'},
-  glo:{svg:'glo',color:'00A651'}, vodacom:{svg:'vodacom',color:'E60000'},
-  telkom:{svg:'telkom',color:'0072CE'}, equitybank:{svg:'equitybank',color:'E60000'},
-  kcb:{svg:'kcb',color:'00A651'}, opay:{svg:'opay',color:'1DCF5A'},
-  palmpay:{svg:'palmpay',color:'6C3DBE'}, paga:{svg:'paga',color:'FF5A00'},
-  flutterwave:{svg:'flutterwave',color:'F5A623'}, paystack:{svg:'paystack',color:'011B33'},
-
-  // ── 🎬 ترفيه ──
-  youtube:{svg:'youtube',color:'FF0000'}, yt:{svg:'youtube',color:'FF0000'},
-  netflix:{svg:'netflix',color:'E50914'}, spotify:{svg:'spotify',color:'1DB954'},
-  twitch:{svg:'twitch',color:'9146FF'}, soundcloud:{svg:'soundcloud',color:'FF5500'},
-  shazam:{svg:'shazam',color:'0088FF'}, deezer:{svg:'deezer',color:'FEAA2D'},
-  disney:{svg:'disney',color:'113CCF'}, disneyplus:{svg:'disneyplus',color:'113CCF'},
-  hulu:{svg:'hulu',color:'1CE783'}, vimeo:{svg:'vimeo',color:'1AB7EA'},
-  applemusic:{svg:'applemusic',color:'FA243C'}, itunes:{svg:'itunes',color:'FB5BC5'},
-  hbomax:{svg:'hbo',color:'991EEB'}, hbo:{svg:'hbo',color:'000000'},
-  primevideo:{svg:'primevideo',color:'1F2E3E'}, appletv:{svg:'appletv',color:'000000'},
-  peacock:{svg:'peacock',color:'000000'}, paramount:{svg:'paramountplus',color:'0064FF'},
-  crunchyroll:{svg:'crunchyroll',color:'F47521'}, viu:{svg:'viu',color:'FFCC00'},
-  iflix:{svg:'iflix',color:'E60000'}, wetv:{svg:'wetv',color:'FFCC00'},
-  tidal:{svg:'tidal',color:'000000'}, napster:{svg:'napster',color:'0072CE'},
-  pandora:{svg:'pandora',color:'3668FF'}, audiomack:{svg:'audiomack',color:'FFA200'},
-  boomplay:{svg:'boomplay',color:'FF6A00'}, iheartradio:{svg:'iheartradio',color:'C6002B'},
-
-  // ── 📧 بريد ──
-  google:{svg:'google',color:'4285F4'}, gmail:{svg:'gmail',color:'EA4335'},
-  googlevoice:{svg:'google',color:'4285F4'}, yahoo:{svg:'yahoo',color:'6001D2'},
-  outlook:{svg:'microsoftoutlook',color:'0078D4'}, hotmail:{svg:'microsoftoutlook',color:'0078D4'},
-  protonmail:{svg:'protonmail',color:'6D4AFF'}, zoho:{svg:'zoho',color:'E42527'},
-  aol:{svg:'aol',color:'3399FF'}, gmx:{svg:'gmx',color:'1C449B'},
-  mailcom:{svg:'maildotcom',color:'0077FF'}, tutanota:{svg:'tutanota',color:'840010'},
-  rambler:{svg:'rambler',color:'315EFB'},
-
-  // ── 🖥️ أنظمة ──
-  apple:{svg:'apple',color:'000000'}, icloud:{svg:'icloud',color:'3693F3'},
-  microsoft:{svg:'microsoft',color:'5E5E5E'}, windows:{svg:'windows',color:'0078D4'},
-
-  // ── 🎮 ألعاب ──
-  steam:{svg:'steam',color:'000000'}, playstation:{svg:'playstation',color:'003791'},
-  psn:{svg:'playstation',color:'003791'}, xbox:{svg:'xbox',color:'107C10'},
-  nintendo:{svg:'nintendoswitch',color:'E60012'}, epicgames:{svg:'epicgames',color:'313131'},
-  epic:{svg:'epicgames',color:'313131'}, roblox:{svg:'roblox',color:'000000'},
-  minecraft:{svg:'minecraft',color:'62B47A'}, pubg:{svg:'pubg',color:'F2A900'},
-  freefire:{svg:'freefire',color:'FF6B00'}, genshin:{svg:'genshinimpact',color:'4A90D9'},
-  blizzard:{svg:'blizzard',color:'148EFF'}, battlenet:{svg:'battlenet',color:'148EFF'},
-  ea:{svg:'ea',color:'000000'}, riotgames:{svg:'riotgames',color:'D32936'},
-  ubisoft:{svg:'ubisoft',color:'000000'}, rockstargames:{svg:'rockstargames',color:'FCAF17'},
-  rockstar:{svg:'rockstargames',color:'FCAF17'}, valorant:{svg:'valorant',color:'FF4655'},
-  leagueoflegends:{svg:'leagueoflegends',color:'C89B3C'}, dota2:{svg:'dota2',color:'BF2E1A'},
-  csgo:{svg:'counterstrike',color:'F0A500'}, cs2:{svg:'counterstrike',color:'F0A500'},
-  apexlegends:{svg:'apexlegends',color:'DA292A'}, callofduty:{svg:'callofduty',color:'000000'},
-  warzone:{svg:'callofduty',color:'000000'}, fortnite:{svg:'fortnite',color:'2A2A2A'},
-  razer:{svg:'razer',color:'44D62C'}, logitech:{svg:'logitech',color:'00B8FC'},
-  corsair:{svg:'corsair',color:'000000'}, steelseries:{svg:'steelseries',color:'FF6600'},
-  hyperx:{svg:'hyperx',color:'E21836'}, faceit:{svg:'faceit',color:'FF5500'},
-
-  // ── 🎰 مراهنات ──
-  betfair:{svg:'betfair',color:'FFCC00'}, betway:{svg:'betway',color:'00A651'},
-  bet365:{svg:'bet365',color:'027B5B'}, '1xbet':{svg:'1xbet',color:'1B5E20'},
-  betwinner:{svg:'betwinner',color:'FFC107'}, dafabet:{svg:'dafabet',color:'ED1C24'},
-  '22bet':{svg:'22bet',color:'FF6B00'}, '888':{svg:'888',color:'FF6B00'},
-  '32red':{svg:'32red',color:'E60000'}, mrgreen:{svg:'mrgreen',color:'00A651'},
-  paddypower:{svg:'paddypower',color:'007A33'}, pokerstars:{svg:'pokerstars',color:'E4002B'},
-  williamhill:{svg:'williamhill',color:'003D6B'}, unibet:{svg:'unibet',color:'007A33'},
-  bwin:{svg:'bwin',color:'FFCC00'}, leovegas:{svg:'leovegas',color:'FF6B00'},
-  casumo:{svg:'casumo',color:'00A651'}, draftkings:{svg:'draftkings',color:'53D337'},
-  fanduel:{svg:'fanduel',color:'1493FF'}, betmgm:{svg:'betmgm',color:'C7A253'},
-  caesars:{svg:'caesars',color:'000000'}, pointsbet:{svg:'pointsbet',color:'FF5A00'},
-
-  // ── 💳 دفع ──
-  paypal:{svg:'paypal',color:'00457C'}, visa:{svg:'visa',color:'1A1F71'},
-  mastercard:{svg:'mastercard',color:'EB001B'}, binance:{svg:'binance',color:'F0B90B'},
+  paypal:{svg:'paypal',color:'00457C'}, binance:{svg:'binance',color:'F0B90B'},
   coinbase:{svg:'coinbase',color:'0052FF'}, stripe:{svg:'stripe',color:'635BFF'},
-  revolut:{svg:'revolut',color:'0075EB'}, skrill:{svg:'skrill',color:'7F1E8C'},
-  payoneer:{svg:'payoneer',color:'FF4800'}, wise:{svg:'wise',color:'9FE870'},
-  westernunion:{svg:'westernunion',color:'FFDD00'}, payzapp:{svg:'payzapp',color:'FDB913'},
-  neteller:{svg:'neteller',color:'89C540'}, kraken:{svg:'kraken',color:'5741D9'},
-  kucoin:{svg:'kucoin',color:'24AE8F'}, okx:{svg:'okx',color:'000000'},
-  bybit:{svg:'bybit',color:'F7A600'}, gate:{svg:'gate',color:'2354E6'},
-  huobi:{svg:'huobi',color:'2CA9E1'}, gpay2:{svg:'googlepay',color:'4285F4'},
-  applepay:{svg:'applepay',color:'000000'}, samsungpay:{svg:'samsungpay',color:'1428A0'},
-
-  // ── 🚗 نقل ──
   uber:{svg:'uber',color:'000000'}, airbnb:{svg:'airbnb',color:'FF5A5F'},
-  booking:{svg:'bookingdotcom',color:'003580'}, bolt:{svg:'bolt',color:'34D186'},
-  didi:{svg:'didi',color:'FF7D41'}, indriver:{svg:'indriver',color:'C8E600'},
-  lyft:{svg:'lyft',color:'FF00BF'}, blablacar:{svg:'blablacar',color:'00AFF5'},
-  cabify:{svg:'cabify',color:'7045AF'}, beat:{svg:'beat',color:'FDD500'},
-  heetch:{svg:'heetch',color:'E10078'}, kapten:{svg:'kapten',color:'FFCC00'},
-  maxim:{svg:'maxim',color:'F7B500'}, citymapper:{svg:'citymapper',color:'00FF00'},
-  moovit:{svg:'moovit',color:'00B5E2'}, waze:{svg:'waze',color:'33CCFF'},
-
-  // ── 🍔 طعام ──
-  foodpanda:{svg:'foodpanda',color:'D70F64'}, doordash:{svg:'doordash',color:'FF3008'},
-  deliveroo:{svg:'deliveroo',color:'00CCBC'}, ubereats:{svg:'ubereats',color:'06C167'},
-  grubhub:{svg:'grubhub',color:'F63440'}, postmates:{svg:'postmates',color:'FFDF18'},
-  justeat:{svg:'justeat',color:'FF8000'}, takeaway:{svg:'takeaway',color:'FF8000'},
-  foodora:{svg:'foodora',color:'D70F64'}, hungrypanda:{svg:'hungrypanda',color:'FF6A00'},
-  mcdonalds:{svg:'mcdonalds',color:'FFC72C'}, burgerking:{svg:'burgerking',color:'D62300'},
-  kfc:{svg:'kfc',color:'E4002B'}, pizzahut:{svg:'pizzahut',color:'EE3124'},
-  dominos:{svg:'dominos',color:'E31837'}, dominospizza:{svg:'dominos',color:'E31837'},
-  starbucks:{svg:'starbucks',color:'00704A'}, dunkin:{svg:'dunkin',color:'FF6E0C'},
-  subway:{svg:'subway',color:'009C3D'}, wendys:{svg:'wendys',color:'E2203D'},
-  tacobell:{svg:'tacobell',color:'7B2D8E'}, popeyes:{svg:'popeyes',color:'F58220'},
-  glovo:{svg:'glovo',color:'FFC244'}, wolt:{svg:'wolt',color:'009DE0'},
-
-  // ── 🛒 عمل ──
-  craigslist:{svg:'craigslist',color:'7F23D1'}, gofundme:{svg:'gofundme',color:'00B964'},
-
-  // ── ✈️ سفر ──
-  agoda:{svg:'agoda',color:'F03D49'}, expedia:{svg:'expedia',color:'003580'},
-  hotels:{svg:'hotels',color:'D32F2F'}, trivago:{svg:'trivago',color:'E60000'},
-  kayak:{svg:'kayak',color:'FF690F'}, skyscanner:{svg:'skyscanner',color:'0770E3'},
-  momondo:{svg:'momondo',color:'00A0DC'}, trip:{svg:'trip',color:'287DFA'},
-  vrbo:{svg:'vrbo',color:'0F2A54'}, hostelworld:{svg:'hostelworld',color:'FF5B00'},
-  cleartrip:{svg:'cleartrip',color:'EF6E18'},
-
-  // ── 🛍️ متاجر نُسيت ──
-  aliexpressru:{svg:'aliexpress',color:'FF4747'}, aliexpressbusiness:{svg:'alibaba',color:'FF6A00'},
-
-  // ── 📱 مواعدة ──
+  booking:{svg:'bookingdotcom',color:'003580'},
+  steam:{svg:'steam',color:'000000'}, playstation:{svg:'playstation',color:'003791'},
+  xbox:{svg:'xbox',color:'107C10'}, roblox:{svg:'roblox',color:'000000'},
+  minecraft:{svg:'minecraft',color:'62B47A'}, pubg:{svg:'pubg',color:'F2A900'},
   tinder:{svg:'tinder',color:'FF6B6B'}, badoo:{svg:'badoo',color:'783BF9'},
-  bumble:{svg:'bumble',color:'FFC629'}, grindr:{svg:'grindr',color:'FDCF10'},
-  happn:{svg:'happn',color:'FF4F5E'}, pof:{svg:'pof',color:'FF603B'},
-  cupid:{svg:'cupid',color:'ED1C24'}, skout:{svg:'skout',color:'FF6B00'},
-  hily:{svg:'hily',color:'FF4F5E'},
+  bumble:{svg:'bumble',color:'FFC629'},
+  imo:{svg:'imo',color:'00A8E1'}, tiktok:{svg:'tiktok',color:'000000'},
+  foodpanda:{svg:'foodpanda',color:'D70F64'}, doordash:{svg:'doordash',color:'FF3008'},
+  careem:{svg:'careem',color:'25C16F'}, talabat:{svg:'talabat',color:'FF5A00'},
+  grab:{svg:'grab',color:'00B14F'}, gojek:{svg:'gojek',color:'00AA13'},
 };
 
-// ══════════════════════════════════════════════════════════════
-// 2) قواعد الفئات — إيموجي ذكي للخدمات غير المعروفة
-// ══════════════════════════════════════════════════════════════
 const CATEGORY_RULES = [
-  // المراهنات والكازينو (تسبق الألعاب)
-  { re: /(betfair|betway|bet365|1xbet|betwinner|poker|casino|slots|32red|888|royalwin|galaxywin|paddypower|mrgreen|pairs|bet|gamearena|draftkings|fanduel|betmgm|caesars|pointsbet)/, emoji: '🎰' },
-  // الألعاب
-  { re: /(game|blizzard|battlenet|riot|pubg|freefire|genshin|steam|epic|xbox|playstation|nintendo|roblox|minecraft|maplesea|gamekit|mpl|dream11|nttgame|humblebundle|dundle|eneba|offgamers|cdkeys|rockstar|valorant|apex|fortnite|dota|league|razer|logitech|corsair|steelseries|hyperx|faceit|callofduty|warzone)/, emoji: '🎮' },
-  // المواصلات
-  { re: /(uber|careem|grab|gojek|bolt|didi|indriver|lyft|taxi|swvl|ontaxi|gett|blablacar|olacabs|yandexgo|cabify|beat|heetch|kapten|maxim|citymapper|moovit|waze)/, emoji: '🚗' },
-  // الطعام
-  { re: /(food|panda|talabat|zomato|swiggy|yemek|getir|glovo|wolt|deliveroo|doordash|mcdonald|burger|kfc|pizza|starbucks|dunkin|subway|wendys|taco|popeye|cafe|restaurant|snappfood|ifood|nana|carrefour|metro|grubhub|postmates|justeat|takeaway|foodora|hungrypanda|ubereats)/, emoji: '🍔' },
-  // التسوق
-  { re: /(shop|amazon|ebay|aliex|alibaba|taobao|jd|1688|lazada|shopee|trendyol|olx|carousell|mercado|quikr|offerup|vinted|etsy|sneakers|hepsiburada|gittigidiyor|kaidee|mzad|ezbuy|dhgate|shein|myntra|flipkart|snapdeal|adidas|nike|puma|walmart|target|temu|wish|banggood|gearbest|joom|lightinthebox|ajio|nykaa|tokopedia|bukalapak|blibli|coupang)/, emoji: '🛒' },
-  // الدفع والبنوك
-  { re: /(pay|papara|picpay|banqi|dhani|binance|coin|visa|master|stripe|revolut|wise|skrill|payoneer|bank|wallet|payzapp|tosla|bitaqaty|clickentregas|paxful|neteller|kraken|kucoin|okx|bybit|gate|huobi|chase|wellsfargo|citibank|hsbc|barclays|lloyds|natwest|standardchartered|dbs|ocbc|uob|maybank|cimb|itau|bradesco|santander|nubank|inter|pagseguro|mpesa|opay|palmpay|paga|flutterwave|paystack|sberbank|tinkoff|alfa)/, emoji: '💳' },
-  // البث المباشر
-  { re: /(huya|douyu|iqiyi|twitch|youtube|bigo|bigolive|kuaishou|tiktoklive|netflix|hulu|disney|primevideo|hbomax|hbo|showtime|starchat|peacock|paramount|crunchyroll|viu|iflix|wetv|appletv|tidal|napster|pandora|audiomack|boomplay|iheartradio)/, emoji: '📺' },
-  // التواصل الاجتماعي
-  { re: /(chat|talk|messenger|weibo|yalla|zalo|imo|kakao|line|viber|telegram|signal|tencentqq|qq|groupme|keybase|michat|tango|yubo|potato|tantan|blued|aitu|dostup|mastodon|truthsocial|vk|ok|odnoklassniki|naver|baidu|kuaishou)/, emoji: '💬' },
-  // المواعدة
-  { re: /(tinder|badoo|bumble|grindr|happn|pof|cupid|skout|justdating|hily|dating|love|match)/, emoji: '❤️' },
-  // التعليم
-  { re: /(coursera|udemy|edx|khanacademy|udacity|pluralsight|skillshare|byjus|unacademy|vedantu|toppr|doubtnut|chegg|brainly|quizlet|duolingo|babbel|rosetta|naukri|bayt|wuzzuf)/, emoji: '📚' },
-  // التوظيف
-  { re: /(linkedin|indeed|glassdoor|monster|upwork|fiverr|freelancer|toptal|guru|peopleperhour|weworkremotely|remoteok|wellfound)/, emoji: '💼' },
-  // الصحة
-  { re: /(practo|apollo|netmeds|1mg|pharmeasy|cvs|walgreens|goodrx|teladoc|zocdoc|halodoc|alodokter|klikdokter|sehatq|health|medic|pharma|clinic|doctor|hopi)/, emoji: '💊' },
-  // الإخبارية
-  { re: /(cnn|bbc|nytimes|wsj|washingtonpost|guardian|reuters|bloomberg|forbes|techcrunch|theverge|wired)/, emoji: '📰' },
-  // الموسيقى
-  { re: /(spotify|music|soundcloud|deezer|shazam|applemusic|itunes|audiomack|boomplay|anghami)/, emoji: '🎵' },
-  // السفر
-  { re: /(airbnb|booking|hotel|trip|agoda|expedia|skyscanner|kayak|trivago|airline|flight|reunion|newcaledonia|mzadqatar|vrbo|hostelworld|cleartrip|makemytrip|yatra|goibibo|oyo|redbus|abhibus|irctc|traveloka|tiket)/, emoji: '✈️' },
-  // الاتصالات
-  { re: /(myglo|globus|ukrnet|onliner|kolesakz|kufar|hamrahaval|sikayetvar|wmaraci|weststein|zcity|bisu|yalla|cliqq|global24|ooredoo|stc|mobily|zain|du|etisalat|jio|airtel|bsnl|vi|vodacom|telkom|mtn|glo)/, emoji: '📡' },
-  // العقارات
-  { re: /(realestate|property|aqar|zameen|bayut|dubizzle|sahibinden|mzad|qatarliving|avito|kufarby)/, emoji: '🏠' },
+  { re: /(betfair|betway|bet365|1xbet|betwinner|poker|casino|slots)/, emoji: '🎰' },
+  { re: /(game|blizzard|riot|pubg|freefire|steam|epic|xbox|playstation|nintendo|roblox|minecraft)/, emoji: '🎮' },
+  { re: /(uber|careem|grab|gojek|bolt|didi|taxi|lyft)/, emoji: '🚗' },
+  { re: /(food|panda|talabat|zomato|swiggy|deliveroo|doordash|mcdonald|kfc|pizza)/, emoji: '🍔' },
+  { re: /(shop|amazon|ebay|aliex|alibaba|taobao|jd|1688|lazada|shopee|trendyol)/, emoji: '🛒' },
+  { re: /(pay|binance|coin|visa|master|stripe|bank|wallet|paypal)/, emoji: '💳' },
+  { re: /(netflix|hulu|disney|primevideo|hbomax|twitch|youtube)/, emoji: '📺' },
+  { re: /(chat|talk|messenger|telegram|signal|viber|line|wechat|imo|kakao)/, emoji: '💬' },
+  { re: /(tinder|badoo|bumble|grindr|dating|love)/, emoji: '❤️' },
+  { re: /(coursera|udemy|edx|khanacademy|duolingo)/, emoji: '📚' },
+  { re: /(linkedin|indeed|glassdoor|upwork|fiverr)/, emoji: '💼' },
+  { re: /(airbnb|booking|hotel|trip|agoda|expedia|skyscanner)/, emoji: '✈️' },
+  { re: /(google|gmail|yahoo|outlook|hotmail|protonmail)/, emoji: '📧' },
+  { re: /(apple|microsoft|windows|icloud)/, emoji: '🖥️' },
 ];
 
-// ══════════════════════════════════════════════════════════════
-// 3) دوال مساعدة
-// ══════════════════════════════════════════════════════════════
 function _iconKey(id) {
   return String(id || '').toLowerCase().normalize('NFKD').replace(/[^a-z0-9]/g, '');
 }
@@ -719,9 +486,6 @@ function _categoryEmoji(id, name) {
   return cat ? cat.emoji : '📱';
 }
 
-// ══════════════════════════════════════════════════════════════
-// 4) الأيقونة الرئيسية
-// ══════════════════════════════════════════════════════════════
 function serviceIconHtml(serviceId, name, size) {
   size = size || 24;
   const key = _iconKey(serviceId);
@@ -729,44 +493,19 @@ function serviceIconHtml(serviceId, name, size) {
 
   if (meta) {
     const url = 'https://cdn.simpleicons.org/' + meta.svg + '/' + meta.color;
-    const alt = String(name || serviceId || '').replace(/"/g, '&quot;');
-    return '<img src="' + url + '" alt="' + alt + '" width="' + size + '" height="' + size + '" loading="lazy" ' +
+    return '<img src="' + url + '" alt="' + String(name).replace(/"/g, '&quot;') + '" width="' + size + '" height="' + size + '" loading="lazy" ' +
            'style="display:inline-block;object-fit:contain" ' +
            'onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'inline-flex\'">' +
            '<span style="display:none;align-items:center;justify-content:center;width:' + size + 'px;height:' + size + 'px;font-size:' + Math.round(size * 0.75) + 'px;line-height:1">' + _categoryEmoji(serviceId, name) + '</span>';
   }
-
-  if (name && name !== serviceId) {
-    const keyByName = _iconKey(name);
-    const metaByName = SERVICE_ICONS[keyByName];
-    if (metaByName) {
-      const url = 'https://cdn.simpleicons.org/' + metaByName.svg + '/' + metaByName.color;
-      return '<img src="' + url + '" alt="' + String(name).replace(/"/g, '&quot;') + '" width="' + size + '" height="' + size + '" loading="lazy" ' +
-             'style="display:inline-block;object-fit:contain" ' +
-             'onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'inline-flex\'">' +
-             '<span style="display:none;align-items:center;justify-content:center;width:' + size + 'px;height:' + size + 'px;font-size:' + Math.round(size * 0.75) + 'px;line-height:1">' + _categoryEmoji(serviceId, name) + '</span>';
-    }
-  }
-
   return '<span style="display:inline-flex;align-items:center;justify-content:center;width:' + size + 'px;height:' + size + 'px;font-size:' + Math.round(size * 0.75) + 'px;line-height:1">' + _categoryEmoji(serviceId, name) + '</span>';
 }
 
-// ══════════════════════════════════════════════════════════════
-// 5) ترتيب حسب الشهرة
-// ══════════════════════════════════════════════════════════════
 const POPULARITY_ORDER = [
-  'whatsapp','whatsappbusiness','wa','telegram','tg','instagram','ig','insta',
-  'facebook','fb','tiktok','tt','google','gmail','youtube','yt','twitter','x',
-  'snapchat','snap','discord','signal','viber','line','wechat','linkedin',
+  'whatsapp','telegram','instagram','facebook','tiktok','google','gmail',
+  'youtube','twitter','snapchat','discord','signal','viber','line',
   'netflix','spotify','amazon','paypal','uber','apple','microsoft','steam',
-  'playstation','psn','xbox','openai','chatgpt','reddit','pinterest','threads',
-  'twitch','soundcloud','ebay','aliexpress','shopify','nintendo','epicgames',
-  'roblox','minecraft','pubg','freefire','binance','coinbase','stripe',
-  'airbnb','booking','careem','grab','gojek','bolt','github','dropbox','notion',
-  'zoom','slack','yahoo','outlook','hotmail','protonmail','zoho','vk','ok',
-  'tinder','badoo','bumble','foodpanda','talabat','doordash','deliveroo',
-  'imo','kakaotalk','skype','shazam','deezer','etsy','alibaba','naver','yahoojapan',
-  'indeed','glassdoor','upwork','fiverr','coursera','udemy','duolingo','wuzzuf',
+  'openai','chatgpt','reddit','pinterest','twitch','binance','coinbase',
 ];
 
 function serviceRank(id) {
@@ -785,9 +524,6 @@ function sortByPopularity(arr, getId) {
   });
 }
 
-// ══════════════════════════════════════════════════════════════
-// 6) الحالة
-// ══════════════════════════════════════════════════════════════
 const PREVIEW_COUNT = 4;
 let COUNTRIES = [];
 try {
@@ -800,9 +536,9 @@ let selectedService = null;
 let currentPrice = 0;
 let currentCount = 0;
 
-// ══════════════════════════════════════════════════════════════
-// 7) تعبئة الأيقونات
-// ══════════════════════════════════════════════════════════════
+// ←←← رصيد الزبون الحقيقي (يُحدّث من السيرفر)
+const CUSTOMER_BALANCE = {{ "%.2f"|format(customer.balance) }};
+
 function hydrateServiceIcons(root) {
   (root || document).querySelectorAll('[data-service-icon]').forEach(function (el) {
     if (el.dataset.iconHydrated === '1') return;
@@ -811,9 +547,6 @@ function hydrateServiceIcons(root) {
   });
 }
 
-// ══════════════════════════════════════════════════════════════
-// 8) اختيار الدولة
-// ══════════════════════════════════════════════════════════════
 function selectCountry(slug, btn) {
   document.querySelectorAll('.country-btn').forEach(function (b) {
     b.classList.remove('border-blue-500', 'bg-blue-50');
@@ -837,9 +570,6 @@ function selectCountry(slug, btn) {
   document.getElementById('confirm-step').classList.add('opacity-50', 'pointer-events-none');
 }
 
-// ══════════════════════════════════════════════════════════════
-// 9) عرض الخدمات
-// ══════════════════════════════════════════════════════════════
 function renderServices(services) {
   const grid = document.getElementById('service-grid');
   const empty = document.getElementById('service-empty');
@@ -900,9 +630,6 @@ function renderServices(services) {
   }
 }
 
-// ══════════════════════════════════════════════════════════════
-// 10) عرض المزيد
-// ══════════════════════════════════════════════════════════════
 function toggleMore(btn, selector, indexAttr) {
   const expanded = btn.dataset.expanded === 'true';
   const preview = parseInt(btn.dataset.preview, 10) || PREVIEW_COUNT;
@@ -922,9 +649,6 @@ function togglePopular(btn) { toggleMore(btn, '[data-popular-item]', 'popularInd
 function toggleNumbers(btn) { toggleMore(btn, '[data-number-item]', 'numberIndex'); }
 function toggleServices(btn) { toggleMore(btn, '.service-btn', 'serviceIndex'); }
 
-// ══════════════════════════════════════════════════════════════
-// 11) اختيار الخدمة
-// ══════════════════════════════════════════════════════════════
 function selectService(id, cost, count, btn) {
   document.querySelectorAll('.service-btn').forEach(function (b) {
     b.classList.remove('border-blue-500', 'bg-blue-50');
@@ -951,11 +675,26 @@ function updateConfirm() {
   set('confirm-service', (selectedService && selectedService.name) || '—');
   set('confirm-count', currentCount ? currentCount + ' رقم' : '—');
   set('confirm-price', '$' + currentPrice.toFixed(2));
+  set('confirm-balance', '$' + CUSTOMER_BALANCE.toFixed(2));
+
+  // ←←← التحقق من الرصيد وتحديث التحذير
+  const warn = document.getElementById('insufficient-warning');
+  const warnText = document.getElementById('insufficient-text');
+  const buyBtn = document.getElementById('buy-btn');
+
+  if (selectedService && currentPrice > CUSTOMER_BALANCE) {
+    const short = (currentPrice - CUSTOMER_BALANCE).toFixed(2);
+    if (warn && warnText) {
+      warnText.textContent = `المطلوب: $${currentPrice.toFixed(2)} — المتاح: $${CUSTOMER_BALANCE.toFixed(2)} — ينقصك: $${short}`;
+      warn.classList.remove('hidden');
+    }
+    if (buyBtn) buyBtn.disabled = true;
+  } else {
+    if (warn) warn.classList.add('hidden');
+    if (buyBtn) buyBtn.disabled = false;
+  }
 }
 
-// ══════════════════════════════════════════════════════════════
-// 12) شراء سريع
-// ══════════════════════════════════════════════════════════════
 function quickBuy(countrySlug, serviceId) {
   const countryBtn = document.querySelector('.country-btn[data-slug="' + countrySlug + '"]')
                   || document.querySelector('.country-btn[data-code="' + countrySlug + '"]');
@@ -990,14 +729,26 @@ function showAlert(msg, type) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// 13) تأكيد الشراء
+// تأكيد الشراء — مع التحقق من الرصيد
 // ══════════════════════════════════════════════════════════════
 async function confirmPurchase() {
   if (!selectedCountry || !selectedService) return;
+
+  // ←←← تحقق مسبق من الرصيد
+  if (currentPrice > CUSTOMER_BALANCE) {
+    const short = (currentPrice - CUSTOMER_BALANCE).toFixed(2);
+    showAlert(`❌ رصيدك غير كافٍ — ينقصك $${short}`, 'error');
+    setTimeout(function () {
+      window.location.href = '/wallet';
+    }, 1500);
+    return;
+  }
+
   const btn = document.getElementById('buy-btn');
   const original = btn.innerHTML;
   btn.disabled = true;
-  btn.innerHTML = 'جارٍ الشراء من 5SIM...';
+  btn.innerHTML = 'جارٍ الشراء...';
+
   try {
     const r = await fetch('/api/v1/orders', {
       method: 'POST',
@@ -1010,17 +761,26 @@ async function confirmPurchase() {
       setTimeout(function () { window.location.href = '/orders/' + d.id; }, 800);
     } else {
       showAlert('❌ ' + (d.detail || 'فشل الشراء'), 'error');
-      btn.disabled = false; btn.innerHTML = original;
+      btn.disabled = false;
+      btn.innerHTML = original;
+
+      // ←←← لو الرصيد غير كافٍ، اقترح الشحن
+      const detail = (d.detail || '').toLowerCase();
+      if (detail.includes('رصيد') || detail.includes('balance')) {
+        setTimeout(function () {
+          if (confirm('رصيدك غير كافٍ. هل تريد الذهاب إلى المحفظة لشحن الرصيد؟')) {
+            window.location.href = '/wallet';
+          }
+        }, 800);
+      }
     }
   } catch (e) {
     showAlert('❌ خطأ في الاتصال بالخادم', 'error');
-    btn.disabled = false; btn.innerHTML = original;
+    btn.disabled = false;
+    btn.innerHTML = original;
   }
 }
 
-// ══════════════════════════════════════════════════════════════
-// 14) تحديث الأسعار
-// ══════════════════════════════════════════════════════════════
 async function refreshPrices(btn) {
   const old = btn.innerHTML;
   btn.disabled = true;
@@ -1030,17 +790,16 @@ async function refreshPrices(btn) {
     const j = await r.json();
     if (!r.ok) {
       showAlert('فشل التحديث: ' + (j.detail || 'خطأ غير معروف'), 'error');
-      btn.disabled = false; btn.innerHTML = old;
+      btn.disabled = false;
+      btn.innerHTML = old;
     } else { location.reload(); }
   } catch (e) {
     showAlert('خطأ في الاتصال', 'error');
-    btn.disabled = false; btn.innerHTML = old;
+    btn.disabled = false;
+    btn.innerHTML = old;
   }
 }
 
-// ══════════════════════════════════════════════════════════════
-// 15) التهيئة
-// ══════════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', function () {
   document.querySelectorAll('[data-popular-item]').forEach(function (el, i) { el.dataset.popularIndex = i; });
   document.querySelectorAll('[data-number-item]').forEach(function (el, i) { el.dataset.numberIndex = i; });
