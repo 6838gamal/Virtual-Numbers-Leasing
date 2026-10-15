@@ -2,23 +2,13 @@
 Jamal Solutions — Virtual Numbers Platform
 Customer Portal (FastAPI + Jinja2 + SSE + Google OAuth + 5SIM)
 
-✅ 1.1.2 — إصلاح الجلسة بعد إعادة تشغيل السيرفر:
-- _get_customer_from_session يُعيد إنشاء الحساب من الجلسة عند فقده في STORE.
-- auth_guard يتحقق أن العميل موجود فعلاً (أو أُعيد إنشاؤه).
-- لا مزيد من {"detail":"غير مسجّل"} في الصفحات بعد redeploy.
-
-✅ 1.1.1 — إصلاحات بعد النشر الأول:
-- إعادة get_my_orders_by_status و get_my_top_services.
-- تمريرهما في سياق /dashboard.
-- إصلاح خطأ مطبعي في TicketCreate / PasswordChange.
-
-✅ 1.1.0 — قراءة خالصة من 5SIM (لا بيانات وهمية إطلاقًا):
-- كل الدول والخدمات والأسعار تُقرأ مباشرة من 5SIM.
-- الشراء الفعلي عبر /user/buy/activation.
-- فحص الطلب عبر /user/check واستيراد SMS.
-- إنهاء/إلغاء الطلب عبر /user/finish و /user/cancel.
-- الرصيد والتقييم من /user/profile.
-- مزامنة سجل الطلبات من /user/orders.
+✅ 1.2.0 — نظام الأكواد + محفظة المالك + هامش الربح:
+- Vouchers: توليد، تفعيل، إدارة كاملة.
+- Owner wallet: تتبع الأرباح والمحجوز لـ 5SIM.
+- FIVESIM_MARKUP_PERCENT: هامش ربح تلقائي على كل عملية.
+- Deposit requests: إيداع يدوي مع مراجعة الأدمن.
+- Admin endpoints: /api/v1/admin/*
+- Server-side validation: فحص الرصيد والسعر قبل الشراء.
 """
 from __future__ import annotations
 
@@ -105,6 +95,11 @@ SIM5_BASE = os.getenv("SIM5_BASE", "https://5sim.net/v1").rstrip("/")
 SIM5_API_KEY = os.getenv("SIM5_API_KEY", "").strip()
 SIM5_ENABLED = bool(SIM5_API_KEY)
 
+FIVESIM_MARKUP_PERCENT = float(os.getenv("FIVESIM_MARKUP_PERCENT", "40"))
+
+ADMIN_SECRET = os.getenv("ADMIN_SECRET", "").strip()
+VOUCHER_PREFIX = os.getenv("VOUCHER_PREFIX", "JS").strip().upper()
+
 _SIM5_CACHE: dict[str, dict] = {
     "prices": {"data": None, "at": 0.0},
     "countries": {"data": None, "at": 0.0},
@@ -188,63 +183,7 @@ async def _sim5_get(path: str, auth: bool = False, timeout: float = 25.0) -> Any
     raise Sim5Error(r.status_code, f"استجابة غير متوقعة من 5SIM: {r.text[:200]}", path)
 
 
-async def _sim5_post(path: str, body: dict, timeout: float = 25.0) -> Any:
-    """استدعاء POST إلى 5SIM."""
-    if not SIM5_ENABLED:
-        raise Sim5Error(503, "5SIM غير مفعّل", path)
-    url = f"{SIM5_BASE}{path}"
-    headers = {
-        "Accept": "application/json",
-        "Authorization": f"Bearer {SIM5_API_KEY}",
-        "Content-Type": "application/json",
-    }
-    try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            r = await client.post(url, headers=headers, json=body)
-    except httpx.TimeoutException:
-        raise Sim5Error(0, "انتهت مهلة الاتصال بـ 5SIM", path)
-    except httpx.RequestError as e:
-        raise Sim5Error(0, f"فشل الاتصال بـ 5SIM: {type(e).__name__}", path)
-
-    if r.status_code == 200:
-        try:
-            return r.json()
-        except Exception:
-            return {}
-    if r.status_code == 400:
-        raise Sim5Error(400, _sim5_explain_400(r.text), path)
-    if r.status_code == 401:
-        raise Sim5Error(401, "مفتاح 5SIM غير صالح", path)
-    raise Sim5Error(r.status_code, r.text[:200], path)
-
-
-async def _sim5_delete(path: str, body: dict, timeout: float = 25.0) -> Any:
-    """استدعاء DELETE إلى 5SIM."""
-    if not SIM5_ENABLED:
-        raise Sim5Error(503, "5SIM غير مفعّل", path)
-    url = f"{SIM5_BASE}{path}"
-    headers = {
-        "Accept": "application/json",
-        "Authorization": f"Bearer {SIM5_API_KEY}",
-        "Content-Type": "application/json",
-    }
-    try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            r = await client.request("DELETE", url, headers=headers, json=body)
-    except httpx.RequestError as e:
-        raise Sim5Error(0, f"فشل الاتصال بـ 5SIM: {type(e).__name__}", path)
-
-    if r.status_code == 200:
-        try:
-            return r.json()
-        except Exception:
-            return {}
-    if r.status_code == 400:
-        raise Sim5Error(400, _sim5_explain_400(r.text), path)
-    raise Sim5Error(r.status_code, r.text[:200], path)
-
-
-# ── دوال مساعدة للعرض فقط (ليست بيانات) ──
+# ── دوال مساعدة للعرض فقط ──
 def _iso_to_flag(iso: str) -> str:
     if not iso or len(iso) != 2:
         return "🏳️"
@@ -270,8 +209,15 @@ def _service_icon(slug: str) -> str:
     return _SERVICE_ICONS.get(slug.lower(), "📱")
 
 
+def _calculate_sale_price(fivesim_cost: float) -> float:
+    """سعر البيع = تكلفة 5SIM + هامش الربح."""
+    if fivesim_cost <= 0:
+        return 0.0
+    markup = fivesim_cost * (FIVESIM_MARKUP_PERCENT / 100.0)
+    return round(fivesim_cost + markup, 2)
+
+
 async def fetch_sim5_countries(force: bool = False) -> dict:
-    """GET /v1/guest/countries — قائمة الدول مع المشغلين."""
     now = time.time()
     cached = _SIM5_CACHE["countries"]
     if not force and cached["data"] and (now - cached["at"]) < 300:
@@ -287,7 +233,6 @@ async def fetch_sim5_countries(force: bool = False) -> dict:
 
 
 async def fetch_sim5_prices(force: bool = False) -> dict:
-    """GET /v1/guest/prices — كل الأسعار الحية (بدون توثيق)."""
     now = time.time()
     cached = _SIM5_CACHE["prices"]
     if not force and cached["data"] and (now - cached["at"]) < 60:
@@ -305,14 +250,7 @@ async def fetch_sim5_prices(force: bool = False) -> dict:
 async def build_live_catalog(force: bool = False) -> dict:
     """
     يبني كتالوج الدول والخدمات من 5SIM فقط.
-    يُرجع:
-      {
-        "ok": bool,
-        "countries": [...],
-        "error": str | None,
-        "error_code": int | None,
-        "fetched_at": ISO | None,
-      }
+    ✅ الأسعار المعروضة = سعر 5SIM + هامش الربح.
     """
     if not SIM5_ENABLED:
         return {
@@ -358,9 +296,10 @@ async def build_live_catalog(force: bool = False) -> dict:
                     continue
                 if count <= 0 or cost <= 0:
                     continue
-                if best is None or cost < best["cost"]:
+                if best is None or cost < best["fivesim_cost"]:
                     best = {
-                        "cost": cost,
+                        "fivesim_cost": cost,
+                        "cost": _calculate_sale_price(cost),
                         "count": count,
                         "rate": rate,
                         "operator": op_name,
@@ -371,6 +310,7 @@ async def build_live_catalog(force: bool = False) -> dict:
                 "name": product_slug,
                 "icon": _service_icon(product_slug),
                 "cost": best["cost"] if best else None,
+                "fivesim_cost": best["fivesim_cost"] if best else None,
                 "count": best["count"] if best else 0,
                 "rate": best["rate"] if best else None,
                 "operator": best["operator"] if best else None,
@@ -431,6 +371,7 @@ PROTECTED_PREFIXES = (
     "/support",
     "/profile",
     "/security",
+    "/admin-panel",
 )
 
 
@@ -458,7 +399,7 @@ _subscribers: set[asyncio.Queue] = set()
 
 
 # ══════════════════════════════════════════════════════════════
-# Request stats (diagnostics)
+# Request stats
 # ══════════════════════════════════════════════════════════════
 _REQUEST_STATS: dict[str, Any] = {
     "total": 0,
@@ -468,59 +409,20 @@ _REQUEST_STATS: dict[str, Any] = {
     "session_recovered": 0,
     "last_401": None,
     "last_401_path": None,
-    "last_401_ua": None,
-    "last_401_referer": None,
-    "last_expired": None,
-    "last_expired_path": None,
-    "last_recovered": None,
     "top_401_paths": {},
     "top_redirect_paths": {},
 }
 _401_LOCK = asyncio.Lock()
 
 
-async def _record_401(path: str, ua: str, referer: str) -> None:
-    async with _401_LOCK:
-        _REQUEST_STATS["protected_401"] += 1
-        _REQUEST_STATS["last_401"] = _now_iso()
-        _REQUEST_STATS["last_401_path"] = path
-        _REQUEST_STATS["last_401_ua"] = ua[:120]
-        _REQUEST_STATS["last_401_referer"] = referer[:120]
-        top = _REQUEST_STATS["top_401_paths"]
-        top[path] = top.get(path, 0) + 1
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
-async def _record_redirect(path: str) -> None:
-    async with _401_LOCK:
-        _REQUEST_STATS["protected_redirect"] += 1
-        top = _REQUEST_STATS["top_redirect_paths"]
-        top[path] = top.get(path, 0) + 1
-
-
-async def _record_expired(path: str) -> None:
-    async with _401_LOCK:
-        _REQUEST_STATS["session_expired"] += 1
-        _REQUEST_STATS["last_expired"] = _now_iso()
-        _REQUEST_STATS["last_expired_path"] = path
-
-
-async def _record_recovered(customer_id: int, email: str) -> None:
-    async with _401_LOCK:
-        _REQUEST_STATS["session_recovered"] += 1
-        _REQUEST_STATS["last_recovered"] = _now_iso()
-
-
-# ══════════════════════════════════════════════════════════════
-# Helpers
-# ══════════════════════════════════════════════════════════════
 def _fmt_uptime(seconds: float) -> str:
     h, r = divmod(int(seconds), 3600)
     m, s = divmod(r, 60)
     return f"{h}:{m:02d}:{s:02d}"
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 def _is_safe_next(next_url: str) -> bool:
@@ -635,13 +537,19 @@ async def lifespan(app: FastAPI):
 
     if SIM5_ENABLED:
         print(f"✅ 5SIM مفعّل — Base: {SIM5_BASE}")
+        print(f"✅ هامش الربح: {FIVESIM_MARKUP_PERCENT}%")
         try:
             profile = await _sim5_get("/user/profile", auth=True)
             print(f"✅ 5SIM profile: balance={profile.get('balance')} rating={profile.get('rating')}")
         except Sim5Error as e:
             print(f"⚠️  5SIM profile check failed: [{e.status}] {e.message}")
     else:
-        print("🔴 5SIM معطّل — SIM5_API_KEY غير مضبوط. لن تُعرض أي بيانات.")
+        print("🔴 5SIM معطّل — SIM5_API_KEY غير مضبوط.")
+
+    if ADMIN_SECRET:
+        print("✅ ADMIN_SECRET مضبوط — لوحة الأدمن مفعّلة.")
+    else:
+        print("🔴 تحذير: ADMIN_SECRET غير مضبوط — endpoints الأدمن معطّلة!")
 
     idle_days = SESSION_IDLE_TIMEOUT / 86400
     print(f"🔧 DEBUG={DEBUG} | Version={app.version} | Idle={idle_days:.1f}d")
@@ -663,7 +571,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Jamal Solutions — Customer Portal",
     description="Virtual Numbers Platform",
-    version="1.1.2",
+    version="1.2.0",
     lifespan=lifespan,
 )
 
@@ -672,7 +580,7 @@ if STATIC_DIR.exists():
 
 
 # ══════════════════════════════════════════════════════════════
-# In-memory store — لا بيانات تجريبية، تُملأ من OAuth ومن 5SIM فقط
+# In-memory store
 # ══════════════════════════════════════════════════════════════
 STORE: dict[str, Any] = {
     "customers": {},
@@ -683,6 +591,12 @@ STORE: dict[str, Any] = {
     "deposits": [],
     "tickets": [],
     "sessions": [],
+    "vouchers": [],
+    "owner_wallet": {
+        "total_profit": 0.0,
+        "total_revenue": 0.0,
+        "reserved_for_5sim": 0.0,
+    },
 }
 
 
@@ -690,11 +604,7 @@ STORE: dict[str, Any] = {
 # Customer helpers
 # ══════════════════════════════════════════════════════════════
 def _get_customer_from_session(request: Request) -> dict | None:
-    """
-    يرجع بيانات العميل من الجلسة.
-    ✅ إذا كان customer_id موجودًا في الجلسة لكن غير موجود في STORE
-    (بعد إعادة تشغيل السيرفر) → أعد إنشاء الحساب من بيانات الجلسة.
-    """
+    """يرجع العميل، أو يعيد إنشاؤه من الجلسة بعد restart."""
     try:
         cid = request.session.get("customer_id")
     except Exception:
@@ -703,20 +613,16 @@ def _get_customer_from_session(request: Request) -> dict | None:
     if not cid:
         return None
 
-    # موجود في STORE → أرجعه مباشرة
     if cid in STORE["customers"]:
         return STORE["customers"][cid]
 
-    # غير موجود → أعد إنشاءه من بيانات الجلسة
     email = request.session.get("email")
     name = request.session.get("name")
     picture = request.session.get("picture")
 
     if not email:
-        # لا توجد بيانات كافية في الجلسة → أعد None
         return None
 
-    # أعد إنشاء الحساب
     customer = {
         "id": cid,
         "name": name or email.split("@")[0],
@@ -740,7 +646,7 @@ def _get_customer_from_session(request: Request) -> dict | None:
         },
     }
     STORE["customers"][cid] = customer
-    print(f"♻️  أُعيد إنشاء العميل #{cid} ({email}) من الجلسة بعد إعادة التشغيل.")
+    print(f"♻️  أُعيد إنشاء العميل #{cid} ({email}) من الجلسة.")
     return customer
 
 
@@ -789,17 +695,7 @@ async def get_my_stats(customer_id: int) -> dict:
 
 
 async def get_my_orders_by_status(customer_id: int) -> dict:
-    """
-    يعيد قاموسًا: {"pending": N, "active": N, "completed": N, "expired": N, "cancelled": N}
-    متوافق مع statuses 5SIM الحقيقية.
-    """
-    buckets = {
-        "pending": 0,
-        "active": 0,
-        "completed": 0,
-        "expired": 0,
-        "cancelled": 0,
-    }
+    buckets = {"pending": 0, "active": 0, "completed": 0, "expired": 0, "cancelled": 0}
     for o in STORE["orders"]:
         if o["customer_id"] != customer_id:
             continue
@@ -818,22 +714,14 @@ async def get_my_orders_by_status(customer_id: int) -> dict:
 
 
 async def get_my_top_services(customer_id: int) -> list[dict]:
-    """
-    يعيد أكثر 5 خدمات استخدامًا للعميل (من STORE["numbers"]).
-    """
     counts: dict[str, int] = {}
     for n in STORE["numbers"]:
         if n["customer_id"] == customer_id:
             sid = n.get("service_id") or n.get("service") or ""
             counts[sid] = counts.get(sid, 0) + 1
 
-    rows = []
-    for sid, cnt in counts.items():
-        rows.append({
-            "name": sid,
-            "icon": _service_icon(sid),
-            "count": cnt,
-        })
+    rows = [{"name": sid, "icon": _service_icon(sid), "count": cnt}
+            for sid, cnt in counts.items()]
     rows.sort(key=lambda r: r["count"], reverse=True)
     return rows[:5]
 
@@ -849,6 +737,89 @@ async def get_my_recent_sms(customer_id: int, limit: int = 20) -> list[dict]:
 
 
 # ══════════════════════════════════════════════════════════════
+# Vouchers helpers
+# ══════════════════════════════════════════════════════════════
+def _gen_voucher_code(value: float) -> str:
+    """يولّد كوداً فريداً بصيغة JS-500-A1B2-C3D4"""
+    part1 = secrets.token_hex(2).upper()
+    part2 = secrets.token_hex(2).upper()
+    val_str = f"{value:g}".replace(".", "")
+    return f"{VOUCHER_PREFIX}-{val_str}-{part1}-{part2}"
+
+
+def _create_vouchers_batch(
+    count: int,
+    value: float,
+    expires_days: int = 30,
+    note: str = "",
+) -> list[dict]:
+    """يولّد دفعة أكواد جديدة."""
+    batch_id = f"batch_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
+    now = datetime.now(timezone.utc)
+    expires = now + timedelta(days=expires_days)
+    created: list[dict] = []
+
+    for _ in range(count):
+        while True:
+            code = _gen_voucher_code(value)
+            if not any(v["code"] == code for v in STORE["vouchers"]):
+                break
+
+        voucher = {
+            "id": len(STORE["vouchers"]) + 1,
+            "code": code,
+            "value": float(value),
+            "status": "unused",
+            "batch_id": batch_id,
+            "note": note,
+            "created_at": now.isoformat(),
+            "expires_at": expires.isoformat(),
+            "used_by": None,
+            "used_at": None,
+        }
+        STORE["vouchers"].append(voucher)
+        created.append(voucher)
+
+    return created
+
+
+def _validate_voucher(code: str) -> dict:
+    """يتحقق من صلاحية الكود ويرجعه."""
+    code = code.strip().upper()
+    v = next((v for v in STORE["vouchers"] if v["code"] == code), None)
+    if not v:
+        raise HTTPException(404, "كود غير موجود")
+
+    if v["status"] == "used":
+        raise HTTPException(400, "الكود مستخدم مسبقاً")
+    if v["status"] == "disabled":
+        raise HTTPException(400, "الكود معطّل")
+    if v["status"] == "expired":
+        raise HTTPException(400, "انتهت صلاحية الكود")
+
+    try:
+        exp = datetime.fromisoformat(v["expires_at"])
+        if exp.tzinfo is None:
+            exp = exp.replace(tzinfo=timezone.utc)
+        if datetime.now(timezone.utc) > exp:
+            v["status"] = "expired"
+            raise HTTPException(400, "انتهت صلاحية الكود")
+    except (ValueError, TypeError):
+        pass
+
+    return v# ══════════════════════════════════════════════════════════════
+# Admin helper
+# ══════════════════════════════════════════════════════════════
+def _check_admin(request: Request) -> None:
+    """يتحقق من صلاحية الأدمن (كلمة سر في الهيدر)."""
+    if not ADMIN_SECRET:
+        raise HTTPException(503, "ADMIN_SECRET غير مضبوط")
+    provided = request.headers.get("X-Admin-Secret", "")
+    if not secrets.compare_digest(provided, ADMIN_SECRET):
+        raise HTTPException(403, "غير مصرح")
+
+
+# ══════════════════════════════════════════════════════════════
 # Pydantic models
 # ══════════════════════════════════════════════════════════════
 class OrderCreate(BaseModel):
@@ -856,9 +827,21 @@ class OrderCreate(BaseModel):
     service: str
 
 
-class DepositCreate(BaseModel):
+class DepositRequestCreate(BaseModel):
     amount: float = Field(..., ge=5)
     method: str
+    reference: str
+
+
+class VoucherRedeem(BaseModel):
+    code: str
+
+
+class VoucherBatchCreate(BaseModel):
+    count: int = Field(..., ge=1, le=1000)
+    value: float = Field(..., ge=1)
+    expires_days: int = Field(30, ge=1, le=365)
+    note: str = ""
 
 
 class TicketCreate(BaseModel):
@@ -920,34 +903,26 @@ async def system_version():
                 "ok": True,
             })
         except Sim5Error as e:
-            sim5_info.update({
-                "ok": False,
-                "error": e.message,
-                "error_code": e.status,
-            })
+            sim5_info.update({"ok": False, "error": e.message, "error_code": e.status})
     return {
         "version": app.version,
-        "pure_sim5_read": True,
-        "has_live_catalog": True,
-        "has_real_purchase": True,
-        "has_check_order": True,
-        "has_cancel_finish": True,
-        "has_orders_by_status": True,
-        "has_top_services": True,
-        "has_session_recovery": True,
+        "features": {
+            "vouchers": True,
+            "owner_wallet": True,
+            "markup_percent": FIVESIM_MARKUP_PERCENT,
+            "deposit_requests": True,
+            "admin_endpoints": bool(ADMIN_SECRET),
+        },
         "sim5": sim5_info,
-        "debug": DEBUG,
         "oauth_enabled": OAUTH_ENABLED,
-        "secret_key_from_env": _SECRET_KEY_FROM_ENV,
-        "session_idle_timeout_seconds": SESSION_IDLE_TIMEOUT,
         "customers_in_store": len(STORE["customers"]),
+        "vouchers_in_store": len(STORE["vouchers"]),
         "uptime": _fmt_uptime(time.time() - START_TIME),
     }
 
 
 @app.get("/api/v1/system/sim5-profile")
 async def sim5_profile():
-    """الرصيد والتقييم الحقيقيان من 5SIM."""
     if not SIM5_ENABLED:
         raise HTTPException(503, "5SIM غير مفعّل — SIM5_API_KEY غير مضبوط")
     try:
@@ -961,43 +936,20 @@ async def sim5_profile():
         "rating": p.get("rating"),
         "email": p.get("email"),
         "vendor": p.get("vendor"),
-        "default_country": p.get("default_country"),
-        "default_operator": p.get("default_operator"),
     }
 
 
 @app.get("/api/v1/system/whoami")
 async def whoami(request: Request):
-    idle_seconds = None
-    try:
-        ls = request.session.get("_last_seen")
-        if ls:
-            last_seen = datetime.fromisoformat(ls)
-            if last_seen.tzinfo is None:
-                last_seen = last_seen.replace(tzinfo=timezone.utc)
-            idle_seconds = (datetime.now(timezone.utc) - last_seen).total_seconds()
-    except Exception:
-        pass
-
     cid = request.session.get("customer_id")
     customer_exists = cid in STORE["customers"] if cid else False
-
     return {
         "has_session": bool(request.session),
-        "session_keys": sorted(request.session.keys()),
         "customer_id": cid,
         "customer_in_store": customer_exists,
         "email": request.session.get("email"),
         "name": request.session.get("name"),
-        "last_seen": request.session.get("_last_seen"),
-        "idle_seconds": idle_seconds,
-        "idle_timeout_seconds": SESSION_IDLE_TIMEOUT,
-        "is_expired": _session_is_expired(request) if request.session else None,
-        "cookies_received": sorted(request.cookies.keys()),
-        "user_agent": request.headers.get("user-agent", "")[:120],
-        "host": request.headers.get("host", ""),
-        "client_host": request.client.host if request.client else None,
-        "customers_in_store_count": len(STORE["customers"]),
+        "customers_count": len(STORE["customers"]),
     }
 
 
@@ -1018,15 +970,12 @@ async def status_page(request: Request):
     ) or "<tr><td colspan=2>لا توجد بيانات بعد</td></tr>"
 
     sim5_status = "🔴 معطّل"
-    sim5_detail = "SIM5_API_KEY غير مضبوط"
     if SIM5_ENABLED:
         try:
             p = await _sim5_get("/user/profile", auth=True)
             sim5_status = f"✅ متصل — رصيد: {p.get('balance')} — تقييم: {p.get('rating')}"
-            sim5_detail = f"vendor: {p.get('vendor')}"
         except Sim5Error as e:
-            sim5_status = f"⚠️ خطأ [{e.status}]"
-            sim5_detail = e.message
+            sim5_status = f"⚠️ خطأ [{e.status}] {e.message}"
 
     html = f"""<!doctype html>
 <html lang="ar" dir="rtl">
@@ -1034,7 +983,7 @@ async def status_page(request: Request):
   <meta charset="utf-8">
   <title>حالة الخدمة — جمال سولوشنز</title>
   <style>
-    body {{ font-family: system-ui, sans-serif; padding: 2rem; background:#f8fafc; color:#1e293b; }}
+    body {{ font-family: system-ui; padding: 2rem; background:#f8fafc; color:#1e293b; }}
     .card {{ background:#fff; border-radius:12px; padding:1.5rem; box-shadow:0 1px 3px rgba(0,0,0,.08); max-width:720px; margin:auto 0 1rem; }}
     h1 {{ font-size:1.25rem; margin:0 0 1rem; }}
     table {{ width:100%; border-collapse:collapse; font-size:14px; }}
@@ -1054,17 +1003,15 @@ async def status_page(request: Request):
       <span>Fail ✗: <b class="bad">{KA_STATE['fail_count']}</b></span>
     </div>
     <div class="meta">
-      <span>عملاء في الذاكرة: <b>{len(STORE['customers'])}</b></span>
-      <span>جلسات مُستعادة: <b class="ok">{_REQUEST_STATS['session_recovered']}</b></span>
+      <span>عملاء: <b>{len(STORE['customers'])}</b></span>
+      <span>أكواد: <b>{len(STORE['vouchers'])}</b></span>
+      <span>هامش: <b>{FIVESIM_MARKUP_PERCENT}%</b></span>
     </div>
     <h1>🔌 5SIM</h1>
     <div class="meta"><span>{sim5_status}</span></div>
-    <div style="font-size:12px; color:#64748b;">{sim5_detail}</div>
     <h2 style="font-size:1rem;margin:1rem 0 .5rem;color:#475569;">آخر عمليات الفحص</h2>
-    <table>
-      <thead><tr><th align="right">الوقت</th><th align="right">الحالة</th></tr></thead>
-      <tbody>{rows}</tbody>
-    </table>
+    <table><thead><tr><th align="right">الوقت</th><th align="right">الحالة</th></tr></thead>
+    <tbody>{rows}</tbody></table>
   </div>
 </body>
 </html>"""
@@ -1087,7 +1034,6 @@ async def sse_events(request: Request):
     async def event_generator():
         elapsed = int(time.time() - START_TIME)
         KA_STATE["uptime"] = _fmt_uptime(elapsed)
-        KA_STATE["next_ping_in"] = max(0, KA_INTERVAL - (elapsed % KA_INTERVAL))
         yield {"event": "status", "data": json.dumps(KA_STATE, default=str)}
 
         try:
@@ -1099,10 +1045,6 @@ async def sse_events(request: Request):
                     yield payload
                 except asyncio.TimeoutError:
                     yield {"event": "heartbeat", "data": str(int(time.time()))}
-                    elapsed = int(time.time() - START_TIME)
-                    KA_STATE["uptime"] = _fmt_uptime(elapsed)
-                    KA_STATE["next_ping_in"] = max(0, KA_INTERVAL - (elapsed % KA_INTERVAL))
-                    yield {"event": "status", "data": json.dumps(KA_STATE, default=str)}
         finally:
             _subscribers.discard(queue)
 
@@ -1117,7 +1059,7 @@ async def me_stats(request: Request):
     customer = _get_customer_from_session(request)
     if not customer:
         return JSONResponse(
-            {"error": "session_expired", "detail": "انتهت الجلسة، يرجى تسجيل الدخول"},
+            {"error": "session_expired", "detail": "انتهت الجلسة"},
             status_code=401,
         )
     return {
@@ -1131,21 +1073,8 @@ async def me_stats(request: Request):
     }
 
 
-@app.get("/api/v1/me/session")
-async def me_session(request: Request):
-    cid = request.session.get("customer_id")
-    expired = _session_is_expired(request) if cid else False
-    return {
-        "authenticated": bool(cid) and not expired,
-        "customer_id": cid,
-        "customer_in_store": cid in STORE["customers"] if cid else False,
-        "expired": expired,
-        "idle_timeout_seconds": SESSION_IDLE_TIMEOUT,
-    }
-
-
 # ══════════════════════════════════════════════════════════════
-# API — Prices (5SIM فقط)
+# API — Prices
 # ══════════════════════════════════════════════════════════════
 @app.get("/api/v1/prices")
 async def api_prices(country: str | None = None):
@@ -1160,6 +1089,7 @@ async def api_prices(country: str | None = None):
     return {
         "ok": result["ok"],
         "source": "5sim",
+        "markup_percent": FIVESIM_MARKUP_PERCENT,
         "fetched_at": result["fetched_at"],
         "error": result["error"],
         "error_code": result["error_code"],
@@ -1178,10 +1108,7 @@ async def api_prices_refresh(request: Request):
         await fetch_sim5_prices(force=True)
     except Sim5Error as e:
         raise HTTPException(e.status or 503, e.message)
-    return {
-        "status": "refreshed",
-        "fetched_at": datetime.now(timezone.utc).isoformat(),
-    }
+    return {"status": "refreshed", "fetched_at": _now_iso()}
 
 
 # ══════════════════════════════════════════════════════════════
@@ -1193,7 +1120,6 @@ async def login_page(request: Request):
         if _session_is_expired(request):
             request.session.clear()
         else:
-            # تحقق من وجود العميل (أو أعد إنشاءه)
             customer = _get_customer_from_session(request)
             if customer is not None:
                 return RedirectResponse(url="/dashboard", status_code=303)
@@ -1215,7 +1141,6 @@ async def login_page(request: Request):
 async def auth_google(request: Request):
     if not OAUTH_ENABLED:
         return RedirectResponse(url="/?error=oauth_disabled", status_code=303)
-
     redirect_uri = str(request.url_for("auth_google_callback"))
     next_url = request.query_params.get("next", "")
     if next_url and _is_safe_next(next_url):
@@ -1296,19 +1221,8 @@ async def logout(request: Request):
     next_url = request.query_params.get("next", "/")
     if not _is_safe_next(next_url):
         next_url = "/"
-    also_google = request.query_params.get("google", "0") == "1"
     request.session.clear()
-    if OAUTH_ENABLED and also_google:
-        return RedirectResponse(url="https://accounts.google.com/Logout", status_code=303)
     return RedirectResponse(url=next_url, status_code=303)
-
-
-@app.get("/auth/logout")
-async def auth_logout(request: Request):
-    next_url = request.query_params.get("next", "/")
-    if not _is_safe_next(next_url):
-        next_url = "/"
-    return RedirectResponse(url=f"/logout?next={quote(next_url)}", status_code=303)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -1355,16 +1269,13 @@ async def buy_page(
                 "preselected_service": service,
                 "stats": stats,
                 "prices_meta": {
-                    "ok": False,
-                    "source": "5sim",
-                    "error": result["error"],
-                    "error_code": result["error_code"],
+                    "ok": False, "source": "5sim",
+                    "error": result["error"], "error_code": result["error_code"],
                     "fetched_at": None,
                 },
                 "popular_services": [],
                 "available_numbers": [],
             },
-            status_code=200,
         )
 
     countries = result["countries"]
@@ -1419,10 +1330,8 @@ async def buy_page(
             "preselected_service": service,
             "stats": stats,
             "prices_meta": {
-                "ok": True,
-                "source": "5sim",
-                "error": None,
-                "error_code": None,
+                "ok": True, "source": "5sim",
+                "error": None, "error_code": None,
                 "fetched_at": result["fetched_at"],
             },
             "popular_services": popular,
@@ -1531,7 +1440,7 @@ async def wallet_page(request: Request):
         name="wallet.html",
         context={
             "customer": customer,
-            "payment_methods": [],
+            "payment_methods": [],  # legacy — لم يعد مستخدماً
             "recent_deposits": deposits[:5],
             "stats": await get_my_stats(cid),
         },
@@ -1618,8 +1527,83 @@ async def security_page(request: Request):
     )
 
 
+@app.get("/admin-panel", response_class=HTMLResponse)
+async def admin_panel(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="admin.html",
+        context={},
+    )
+
+
 # ══════════════════════════════════════════════════════════════
-# API — Orders (شراء حقيقي من 5SIM)
+# API — Wallet: Voucher + Deposit Request
+# ══════════════════════════════════════════════════════════════
+@app.post("/api/v1/wallet/redeem-voucher")
+async def redeem_voucher(payload: VoucherRedeem, request: Request):
+    """الزبون يدخل الكود → يُضاف رصيد."""
+    customer = await get_current_customer(request)
+    cid = customer["id"]
+
+    voucher = _validate_voucher(payload.code)
+
+    now = datetime.now(timezone.utc)
+    voucher["status"] = "used"
+    voucher["used_by"] = cid
+    voucher["used_at"] = now.isoformat()
+
+    customer["balance"] += voucher["value"]
+
+    STORE["transactions"].append({
+        "id": len(STORE["transactions"]) + 1,
+        "customer_id": cid,
+        "type": "voucher",
+        "description": f"تفعيل كود {voucher['code']}",
+        "amount": voucher["value"],
+        "balance_after": customer["balance"],
+        "created_at": now.isoformat(),
+        "date": now.strftime("%Y-%m-%d %H:%M"),
+    })
+
+    STORE["owner_wallet"]["total_revenue"] += voucher["value"]
+
+    return {
+        "status": "success",
+        "value": voucher["value"],
+        "new_balance": customer["balance"],
+    }
+
+
+@app.post("/api/v1/wallet/deposit-request")
+async def create_deposit_request(
+    payload: DepositRequestCreate,
+    request: Request,
+):
+    """إنشاء طلب إيداع يدوي — ينتظر موافقة الأدمن."""
+    customer = await get_current_customer(request)
+
+    deposit = {
+        "id": len(STORE["deposits"]) + 1,
+        "customer_id": customer["id"],
+        "amount": payload.amount,
+        "method": payload.method,
+        "reference": payload.reference,
+        "status": "pending",
+        "created_at": _now_iso(),
+        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"),
+        "reviewed_at": None,
+    }
+    STORE["deposits"].append(deposit)
+
+    return {
+        "status": "pending",
+        "request_id": deposit["id"],
+        "message": "طلبك قيد المراجعة",
+    }
+
+
+# ══════════════════════════════════════════════════════════════
+# API — Orders (شراء حقيقي من 5SIM مع هامش الربح)
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/orders")
 async def create_order(payload: OrderCreate, request: Request):
@@ -1653,6 +1637,15 @@ async def create_order(payload: OrderCreate, request: Request):
     if not service.get("operator"):
         raise HTTPException(400, "لم يُحدد مشغل متاح لهذه الخدمة")
 
+    # ←←← السعر المتوقع (مع الهامش) — للتحقق المبدئي فقط
+    expected_price = float(service["cost"])
+    if customer["balance"] < expected_price:
+        raise HTTPException(
+            400,
+            f"رصيدك غير كافٍ. المطلوب: ${expected_price:.2f}، المتاح: ${customer['balance']:.2f}"
+        )
+
+    # ←←← الشراء من 5SIM
     try:
         sim5_order = await _sim5_get(
             f"/user/buy/activation/{country['slug']}/{service['operator']}/{service['id']}",
@@ -1663,6 +1656,23 @@ async def create_order(payload: OrderCreate, request: Request):
         raise HTTPException(
             status_code=400 if 400 <= e.status < 500 else 503,
             detail=f"فشل الشراء من 5SIM: {e.message}",
+        )
+
+    # ←←← السعر الفعلي من 5SIM
+    fivesim_cost = float(sim5_order.get("price", service["fivesim_cost"] or 0))
+    sale_price = _calculate_sale_price(fivesim_cost)
+    profit = round(sale_price - fivesim_cost, 4)
+
+    # ←←← تحقق أخير (بعد الشراء) — لو تغيّر السعر
+    if customer["balance"] < sale_price:
+        # رصيد الزبون لا يكفي — ألغِ الطلب من 5SIM
+        try:
+            await _sim5_get(f"/user/cancel/{sim5_order['id']}", auth=True)
+        except Exception:
+            pass
+        raise HTTPException(
+            400,
+            f"رصيدك غير كافٍ. المطلوب: ${sale_price:.2f}، المتاح: ${customer['balance']:.2f}"
         )
 
     now = datetime.now(timezone.utc)
@@ -1680,7 +1690,9 @@ async def create_order(payload: OrderCreate, request: Request):
         "service": service["name"],
         "service_id": service["id"],
         "operator": sim5_order.get("operator", service["operator"]),
-        "price": float(sim5_order.get("price", service["cost"] or 0)),
+        "price": sale_price,
+        "fivesim_cost": fivesim_cost,
+        "profit": profit,
         "status": sim5_order.get("status", "PENDING"),
         "expires": sim5_order.get("expires"),
         "created_at": sim5_order.get("created_at", now.isoformat()),
@@ -1699,19 +1711,26 @@ async def create_order(payload: OrderCreate, request: Request):
         "service": service["name"],
         "service_id": service["id"],
         "status": "active" if order["status"] in ("PENDING", "RECEIVED") else order["status"],
-        "price": order["price"],
+        "price": sale_price,
         "sms_count": 0,
         "expires": order["expires"],
         "created_at": order["created_at"],
     })
 
-    customer["balance"] -= order["price"]
+    # ←←← الخصم من رصيد الزبون
+    customer["balance"] -= sale_price
+
+    # ←←← تسجيل الربح
+    ow = STORE["owner_wallet"]
+    ow["total_profit"] += profit
+    ow["reserved_for_5sim"] += fivesim_cost
+
     STORE["transactions"].append({
         "id": len(STORE["transactions"]) + 1,
         "customer_id": cid,
         "type": "purchase",
         "description": f"شراء رقم {service['name']} — {country['name']}",
-        "amount": -order["price"],
+        "amount": -sale_price,
         "balance_after": customer["balance"],
         "created_at": now.isoformat(),
         "date": now.strftime("%Y-%m-%d %H:%M"),
@@ -1723,6 +1742,7 @@ async def create_order(payload: OrderCreate, request: Request):
         "phone": order["phone"],
         "status": order["status"],
         "expires": order["expires"],
+        "price": sale_price,
     }
 
 
@@ -1759,6 +1779,8 @@ async def sync_orders_from_sim5(request: Request, category: str = "activation"):
             "service_id": so.get("product", ""),
             "operator": so.get("operator"),
             "price": float(so.get("price", 0)),
+            "fivesim_cost": float(so.get("price", 0)),
+            "profit": 0.0,
             "status": so.get("status", ""),
             "expires": so.get("expires"),
             "created_at": so.get("created_at"),
@@ -1788,10 +1810,7 @@ async def check_order(order_id: int, request: Request):
     order["status"] = data.get("status", order["status"])
     order["expires"] = data.get("expires", order.get("expires"))
 
-    existing_keys = {
-        (s.get("order_id"), s.get("created_at"))
-        for s in STORE["sms"]
-    }
+    existing_keys = {(s.get("order_id"), s.get("created_at")) for s in STORE["sms"]}
     imported = 0
     for sms in (data.get("sms") or []):
         key = (order_id, sms.get("created_at"))
@@ -1861,8 +1880,15 @@ async def cancel_order(order_id: int, request: Request):
 
     order["status"] = data.get("status", "CANCELED")
 
+    # ←←← استرداد سعر البيع للزبون
     refund = order["price"]
     customer["balance"] += refund
+
+    # ←←← إرجاع الربح من محفظة المالك (لو كان مسجلاً)
+    ow = STORE["owner_wallet"]
+    ow["total_profit"] -= order.get("profit", 0.0)
+    ow["reserved_for_5sim"] -= order.get("fivesim_cost", 0.0)
+
     STORE["transactions"].append({
         "id": len(STORE["transactions"]) + 1,
         "customer_id": customer["id"],
@@ -1881,25 +1907,163 @@ async def cancel_order(order_id: int, request: Request):
     return {"ok": True, "status": order["status"], "refund": refund}
 
 
-@app.post("/api/v1/orders/{order_id}/ban")
-async def ban_order(order_id: int, request: Request):
-    customer = await get_current_customer(request)
-    order = next(
-        (o for o in STORE["orders"]
-         if o["id"] == order_id and o["customer_id"] == customer["id"]),
-        None,
+# ══════════════════════════════════════════════════════════════
+# API — Admin (vouchers + deposits + wallet)
+# ══════════════════════════════════════════════════════════════
+@app.post("/api/v1/admin/vouchers/generate")
+async def admin_generate_vouchers(payload: VoucherBatchCreate, request: Request):
+    _check_admin(request)
+    created = _create_vouchers_batch(
+        count=payload.count,
+        value=payload.value,
+        expires_days=payload.expires_days,
+        note=payload.note,
     )
-    if not order or not order.get("sim5_id"):
+    return {
+        "ok": True,
+        "count": len(created),
+        "batch_id": created[0]["batch_id"] if created else None,
+        "total_value": sum(v["value"] for v in created),
+        "codes": [v["code"] for v in created],
+    }
+
+
+@app.get("/api/v1/admin/vouchers")
+async def admin_list_vouchers(
+    request: Request,
+    status_filter: str | None = None,
+    batch_id: str | None = None,
+):
+    _check_admin(request)
+    vouchers = STORE["vouchers"]
+    if status_filter:
+        vouchers = [v for v in vouchers if v["status"] == status_filter]
+    if batch_id:
+        vouchers = [v for v in vouchers if v["batch_id"] == batch_id]
+
+    summary = {
+        "total": len(STORE["vouchers"]),
+        "unused": sum(1 for v in STORE["vouchers"] if v["status"] == "unused"),
+        "used": sum(1 for v in STORE["vouchers"] if v["status"] == "used"),
+        "expired": sum(1 for v in STORE["vouchers"] if v["status"] == "expired"),
+        "disabled": sum(1 for v in STORE["vouchers"] if v["status"] == "disabled"),
+        "total_value_unused": sum(v["value"] for v in STORE["vouchers"] if v["status"] == "unused"),
+        "total_value_used": sum(v["value"] for v in STORE["vouchers"] if v["status"] == "used"),
+    }
+
+    return {"summary": summary, "vouchers": vouchers}
+
+
+@app.post("/api/v1/admin/vouchers/{voucher_id}/disable")
+async def admin_disable_voucher(voucher_id: int, request: Request):
+    _check_admin(request)
+    v = next((v for v in STORE["vouchers"] if v["id"] == voucher_id), None)
+    if not v:
+        raise HTTPException(404, "الكود غير موجود")
+    if v["status"] == "used":
+        raise HTTPException(400, "لا يمكن تعطيل كود مستخدم")
+    v["status"] = "disabled"
+    return {"ok": True, "status": "disabled"}
+
+
+@app.get("/api/v1/admin/wallet")
+async def admin_owner_wallet(request: Request):
+    _check_admin(request)
+    ow = STORE["owner_wallet"]
+
+    sim5_info: dict[str, Any] = {}
+    if SIM5_ENABLED:
+        try:
+            p = await _sim5_get("/user/profile", auth=True)
+            sim5_info = {"balance": p.get("balance"), "frozen": p.get("frozen_balance")}
+        except Sim5Error as e:
+            sim5_info = {"error": e.message}
+
+    return {
+        "owner_wallet": ow,
+        "sim5": sim5_info,
+        "vouchers_summary": {
+            "unused_value": sum(v["value"] for v in STORE["vouchers"] if v["status"] == "unused"),
+        },
+        "markup_percent": FIVESIM_MARKUP_PERCENT,
+    }
+
+
+@app.get("/api/v1/admin/deposits")
+async def admin_list_deposits(
+    request: Request,
+    status_filter: str | None = None,
+):
+    _check_admin(request)
+    deposits = STORE["deposits"]
+    if status_filter:
+        deposits = [d for d in deposits if d["status"] == status_filter]
+    deposits_sorted = sorted(deposits, key=lambda d: d["created_at"], reverse=True)
+
+    # ادمج مع بيانات الزبون
+    out = []
+    for d in deposits_sorted:
+        cust = STORE["customers"].get(d["customer_id"])
+        out.append({
+            **d,
+            "customer_email": cust["email"] if cust else None,
+            "customer_name": cust["name"] if cust else None,
+        })
+
+    return {
+        "summary": {
+            "total": len(STORE["deposits"]),
+            "pending": sum(1 for d in STORE["deposits"] if d["status"] == "pending"),
+            "completed": sum(1 for d in STORE["deposits"] if d["status"] == "completed"),
+            "rejected": sum(1 for d in STORE["deposits"] if d["status"] == "rejected"),
+        },
+        "deposits": out,
+    }
+
+
+@app.post("/api/v1/admin/deposits/{deposit_id}/approve")
+async def admin_approve_deposit(deposit_id: int, request: Request):
+    _check_admin(request)
+    deposit = next((d for d in STORE["deposits"] if d["id"] == deposit_id), None)
+    if not deposit:
         raise HTTPException(404, "الطلب غير موجود")
-    try:
-        data = await _sim5_get(f"/user/ban/{order['sim5_id']}", auth=True)
-    except Sim5Error as e:
-        raise HTTPException(e.status or 503, e.message)
-    order["status"] = data.get("status", "BANNED")
-    for n in STORE["numbers"]:
-        if n.get("sim5_id") == order["sim5_id"]:
-            n["status"] = "banned"
-    return {"ok": True, "status": order["status"]}
+    if deposit["status"] != "pending":
+        raise HTTPException(400, "تمت مراجعة هذا الطلب مسبقاً")
+
+    customer = STORE["customers"].get(deposit["customer_id"])
+    if not customer:
+        raise HTTPException(404, "الزبون غير موجود")
+
+    deposit["status"] = "completed"
+    deposit["reviewed_at"] = _now_iso()
+    customer["balance"] += deposit["amount"]
+
+    STORE["transactions"].append({
+        "id": len(STORE["transactions"]) + 1,
+        "customer_id": customer["id"],
+        "type": "deposit",
+        "description": f"إيداع يدوي ({deposit['method']})",
+        "amount": deposit["amount"],
+        "balance_after": customer["balance"],
+        "created_at": _now_iso(),
+        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"),
+    })
+
+    STORE["owner_wallet"]["total_revenue"] += deposit["amount"]
+
+    return {"ok": True, "new_balance": customer["balance"]}
+
+
+@app.post("/api/v1/admin/deposits/{deposit_id}/reject")
+async def admin_reject_deposit(deposit_id: int, request: Request, reason: str = ""):
+    _check_admin(request)
+    deposit = next((d for d in STORE["deposits"] if d["id"] == deposit_id), None)
+    if not deposit:
+        raise HTTPException(404, "الطلب غير موجود")
+    deposit["status"] = "rejected"
+    deposit["reviewed_at"] = _now_iso()
+    deposit["reject_reason"] = reason
+    return {"ok": True, "status": "rejected"}
 
 
 # ══════════════════════════════════════════════════════════════
@@ -1913,41 +2077,6 @@ async def delete_sms(sms_id: int, request: Request):
             STORE["sms"].pop(i)
             return {"status": "deleted"}
     raise HTTPException(status_code=404, detail="الرسالة غير موجودة")
-
-
-# ══════════════════════════════════════════════════════════════
-# API — Wallet
-# ══════════════════════════════════════════════════════════════
-@app.post("/api/v1/wallet/deposit")
-async def deposit(payload: DepositCreate, request: Request):
-    customer = await get_current_customer(request)
-    cid = customer["id"]
-    now = datetime.now(timezone.utc)
-
-    deposit_id = len(STORE["deposits"]) + 1
-    STORE["deposits"].append({
-        "id": deposit_id,
-        "customer_id": cid,
-        "amount": payload.amount,
-        "method": payload.method,
-        "status": "completed",
-        "created_at": now.isoformat(),
-        "date": now.strftime("%Y-%m-%d %H:%M"),
-    })
-
-    customer["balance"] += payload.amount
-    STORE["transactions"].append({
-        "id": len(STORE["transactions"]) + 1,
-        "customer_id": cid,
-        "type": "deposit",
-        "description": f"إيداع رصيد ({payload.method})",
-        "amount": payload.amount,
-        "balance_after": customer["balance"],
-        "created_at": now.isoformat(),
-        "date": now.strftime("%Y-%m-%d %H:%M"),
-    })
-
-    return {"status": "completed", "checkout_url": "/wallet"}
 
 
 # ══════════════════════════════════════════════════════════════
@@ -2038,14 +2167,17 @@ async def end_session(session_id: str, request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# Middleware — Auth Guard (Sliding Session + Recovery)
+# Middleware — Auth Guard
 # ══════════════════════════════════════════════════════════════
 @app.middleware("http")
 async def auth_guard(request: Request, call_next):
     path = request.url.path
-    method = request.method
 
     if path == "/":
+        return await call_next(request)
+
+    # Admin endpoints تُحمى بـ X-Admin-Secret وليس بالجلسة
+    if path.startswith("/api/v1/admin/"):
         return await call_next(request)
 
     if any(
@@ -2070,15 +2202,12 @@ async def auth_guard(request: Request, call_next):
             request.session.clear()
             cid = None
             expired = True
-            await _record_expired(path)
     except Exception:
         cid = None
 
     if cid:
-        # ✅ تحقق أن العميل موجود فعلاً (أو أُعيد إنشاؤه من الجلسة)
         customer = _get_customer_from_session(request)
         if customer is None:
-            # لا توجد بيانات كافية في الجلسة → امسحها واعتبره غير مسجّل
             try:
                 request.session.clear()
             except Exception:
@@ -2092,11 +2221,7 @@ async def auth_guard(request: Request, call_next):
                 pass
             return await call_next(request)
 
-    ua = request.headers.get("user-agent", "NONE")[:120]
-    referer = request.headers.get("referer", "NONE")[:120]
-
     if is_api:
-        await _record_401(path, ua, referer)
         return JSONResponse(
             {
                 "detail": "انتهت الجلسة" if expired else "غير مسجّل",
@@ -2105,7 +2230,6 @@ async def auth_guard(request: Request, call_next):
             status_code=401,
         )
 
-    await _record_redirect(path)
     return RedirectResponse(url="/", status_code=303)
 
 
