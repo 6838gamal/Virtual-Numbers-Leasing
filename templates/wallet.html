@@ -2,7 +2,7 @@
 {% set active_page = "wallet" %}
 {% block title %}محفظتي — جمال سولوشنز{% endblock %}
 {% block page_title %}محفظتي{% endblock %}
-{% block page_subtitle %}إدارة رصيدك والإيداعات{% endblock %}
+{% block page_subtitle %}شحن الرصيد وإدارة الإيداعات{% endblock %}
 
 {% block content %}
 
@@ -18,17 +18,55 @@
   </div>
 </div>
 
-<!-- ══ Deposit methods ════════════════════════════════════════ -->
+<!-- ══ القسم 1: إدخال كود الشحن ═══════════════════════════════ -->
+<div class="bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-200 rounded-2xl p-6 mb-6">
+  <div class="flex items-center gap-3 mb-4">
+    <div class="w-12 h-12 bg-amber-500 rounded-xl flex items-center justify-center text-2xl text-white shadow-md">
+      🎟️
+    </div>
+    <div>
+      <h3 class="text-lg font-bold text-amber-900">استخدام كود الشحن</h3>
+      <p class="text-xs text-amber-700">أدخل الكود الذي حصلت عليه من الموزع أو من الإدارة</p>
+    </div>
+  </div>
+
+  <div class="flex flex-col sm:flex-row gap-3">
+    <input type="text" id="voucher-code"
+           placeholder="JS-500-A1B2-C3D4"
+           dir="ltr"
+           oninput="this.value = this.value.toUpperCase()"
+           onkeypress="if(event.key==='Enter') redeemVoucher()"
+           class="flex-1 px-4 py-3 rounded-xl border-2 border-amber-300 focus:border-amber-500 focus:ring-2 focus:ring-amber-100 outline-none text-lg font-bold tracking-wider text-center bg-white"
+           style="font-family: monospace;">
+    <button onclick="redeemVoucher()" id="redeem-btn"
+            class="bg-amber-600 hover:bg-amber-700 text-white font-bold px-8 py-3 rounded-xl transition-colors flex items-center justify-center gap-2 whitespace-nowrap">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+      </svg>
+      تفعيل الكود
+    </button>
+  </div>
+
+  <div id="voucher-result" class="mt-3 text-sm font-bold hidden"></div>
+</div>
+
+<!-- ══ القسم 2: طلب إيداع يدوي ════════════════════════════════ -->
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
   <div class="lg:col-span-2 space-y-4">
 
-    <!-- Amount selector -->
     <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-      <h3 class="text-base font-bold text-slate-800 mb-4">اختر مبلغ الإيداع</h3>
+      <div class="flex items-center gap-2 mb-4">
+        <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center text-blue-600 font-bold">2</div>
+        <h3 class="text-base font-bold text-slate-800">أو اطلب إيداعاً يدوياً</h3>
+      </div>
+      <p class="text-xs text-slate-500 mb-4">
+        حوّل المبلغ إلى أحد الحسابات أدناه، ثم ارفع إثبات التحويل. تتم المراجعة خلال دقائق.
+      </p>
 
+      <h4 class="text-sm font-bold text-slate-700 mb-3">اختر المبلغ</h4>
       <div class="grid grid-cols-3 sm:grid-cols-4 gap-2 mb-4">
-        {% for amt in [10, 20, 30, 40, 50, 60] %}
+        {% for amt in [5, 10, 20, 30, 50, 100] %}
         <button onclick="selectAmount({{ amt }}, this)"
                 data-amount="{{ amt }}"
                 class="amount-btn py-3 rounded-xl border-2 border-slate-100 hover:border-emerald-400 hover:bg-emerald-50 text-sm font-bold text-slate-700 transition-all">
@@ -38,65 +76,109 @@
       </div>
 
       <div class="mb-4">
-        <label class="text-xs font-bold text-slate-500 mb-1.5 block">أو أدخل مبلغًا مخصصًا</label>
+        <label class="text-xs font-bold text-slate-500 mb-1.5 block">أو أدخل مبلغاً مخصصاً</label>
         <div class="relative">
           <span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
-          <input type="number" id="custom-amount" min="10" step="1" placeholder="0.00"
+          <input type="number" id="custom-amount" min="5" step="1" placeholder="0.00"
                  oninput="customAmount()"
                  class="w-full pr-8 pl-4 py-3 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 outline-none text-lg font-bold">
         </div>
       </div>
     </div>
 
-    <!-- Payment method -->
+    <!-- Payment methods -->
     <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-      <h3 class="text-base font-bold text-slate-800 mb-4">طريقة الدفع</h3>
+      <h3 class="text-base font-bold text-slate-800 mb-4">اختر طريقة الدفع</h3>
 
-      <div class="space-y-2">
-        {% for pm in payment_methods %}
+      <div class="space-y-2" id="payment-methods">
+        <!-- USDT TRC20 -->
         <label class="payment-method flex items-center gap-3 p-4 rounded-xl border-2 border-slate-100 hover:border-emerald-400 cursor-pointer transition-all">
-          <input type="radio" name="payment_method" value="{{ pm.id }}" class="sr-only peer"
-                 onchange="selectPayment('{{ pm.id }}')">
-          <div class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-lg">
-            {{ pm.icon }}
-          </div>
+          <input type="radio" name="payment_method" value="usdt_trc20" class="sr-only"
+                 onchange="selectPayment('usdt_trc20')">
+          <div class="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center text-lg">💎</div>
           <div class="flex-1">
-            <div class="text-sm font-bold text-slate-700">{{ pm.name }}</div>
-            <div class="text-[10px] text-slate-400">{{ pm.description }}</div>
+            <div class="text-sm font-bold text-slate-700">USDT (TRC20)</div>
+            <div class="text-[10px] text-slate-400">الأسرع والأرخص — رسوم ~$1</div>
           </div>
-          <div class="w-5 h-5 rounded-full border-2 border-slate-200 peer-checked:border-emerald-500 peer-checked:bg-emerald-500 flex items-center justify-center">
-            <div class="w-2 h-2 rounded-full bg-white hidden peer-checked:block"></div>
+          <div class="radio-dot w-5 h-5 rounded-full border-2 border-slate-200 flex items-center justify-center">
+            <div class="w-2 h-2 rounded-full bg-white"></div>
           </div>
         </label>
-        {% endfor %}
+
+        <!-- USDT BEP20 -->
+        <label class="payment-method flex items-center gap-3 p-4 rounded-xl border-2 border-slate-100 hover:border-emerald-400 cursor-pointer transition-all">
+          <input type="radio" name="payment_method" value="usdt_bep20" class="sr-only"
+                 onchange="selectPayment('usdt_bep20')">
+          <div class="w-10 h-10 rounded-xl bg-yellow-100 flex items-center justify-center text-lg">🟡</div>
+          <div class="flex-1">
+            <div class="text-sm font-bold text-slate-700">USDT (BEP20)</div>
+            <div class="text-[10px] text-slate-400">Binance Smart Chain</div>
+          </div>
+          <div class="radio-dot w-5 h-5 rounded-full border-2 border-slate-200 flex items-center justify-center">
+            <div class="w-2 h-2 rounded-full bg-white"></div>
+          </div>
+        </label>
+
+        <!-- تحويل بنكي -->
+        <label class="payment-method flex items-center gap-3 p-4 rounded-xl border-2 border-slate-100 hover:border-emerald-400 cursor-pointer transition-all">
+          <input type="radio" name="payment_method" value="bank_transfer" class="sr-only"
+                 onchange="selectPayment('bank_transfer')">
+          <div class="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center text-lg">🏦</div>
+          <div class="flex-1">
+            <div class="text-sm font-bold text-slate-700">تحويل بنكي</div>
+            <div class="text-[10px] text-slate-400">حسب الدولة — تواصل مع الدعم</div>
+          </div>
+          <div class="radio-dot w-5 h-5 rounded-full border-2 border-slate-200 flex items-center justify-center">
+            <div class="w-2 h-2 rounded-full bg-white"></div>
+          </div>
+        </label>
+      </div>
+
+      <!-- تفاصيل وسيلة الدفع المختارة -->
+      <div id="payment-details" class="hidden mt-4 bg-slate-50 rounded-xl p-4 border border-slate-200">
+        <div class="text-xs font-bold text-slate-600 mb-2">تفاصيل التحويل:</div>
+        <div id="payment-info" class="text-xs text-slate-700 space-y-1" dir="ltr"></div>
+
+        <div class="mt-3">
+          <label class="text-xs font-bold text-slate-500 mb-1.5 block">رقم العملية / هاش التحويل</label>
+          <input type="text" id="transfer-reference" dir="ltr"
+                 placeholder="TX hash or reference number"
+                 class="w-full px-3 py-2 rounded-lg border border-slate-200 focus:border-emerald-500 outline-none text-sm">
+        </div>
       </div>
     </div>
 
     <!-- Submit -->
-    <button onclick="submitDeposit()" id="deposit-btn" disabled
+    <button onclick="submitDepositRequest()" id="deposit-btn" disabled
             class="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold py-4 rounded-2xl transition-colors flex items-center justify-center gap-2">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="M12 4v16m8-8H4"/>
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
       </svg>
-      إيداع <span id="btn-amount"></span>
+      إرسال طلب الإيداع <span id="btn-amount"></span>
     </button>
+
+    <p class="text-[11px] text-slate-400 text-center">
+      ⏱️ تتم المراجعة خلال دقائق إلى ساعة. ستُشعر عند إضافة الرصيد.
+    </p>
   </div>
 
   <!-- Sidebar -->
   <div class="space-y-4">
 
-    <!-- Recent top-ups -->
+    <!-- Recent deposits -->
     <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
-      <h4 class="text-sm font-bold text-slate-800 mb-3">آخر الإيداعات</h4>
+      <h4 class="text-sm font-bold text-slate-800 mb-3">آخر طلبات الإيداع</h4>
       {% if recent_deposits %}
       <div class="space-y-3">
         {% for d in recent_deposits %}
         <div class="flex items-center gap-3">
-          <div class="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-            </svg>
+          <div class="w-9 h-9 rounded-xl flex items-center justify-center
+            {% if d.status == 'completed' %}bg-emerald-50 text-emerald-600
+            {% elif d.status == 'pending' %}bg-amber-50 text-amber-600
+            {% else %}bg-red-50 text-red-600{% endif %}">
+            {% if d.status == 'completed' %}✓
+            {% elif d.status == 'pending' %}⏳
+            {% else %}✗{% endif %}
           </div>
           <div class="flex-1 min-w-0">
             <div class="text-xs font-bold text-slate-700">${{ "%.2f"|format(d.amount) }}</div>
@@ -104,14 +186,17 @@
           </div>
           <span class="text-[10px] font-bold px-2 py-0.5 rounded-full
             {% if d.status == 'completed' %}bg-emerald-50 text-emerald-700
-            {% else %}bg-amber-50 text-amber-700{% endif %}">
-            {{ d.status }}
+            {% elif d.status == 'pending' %}bg-amber-50 text-amber-700
+            {% else %}bg-red-50 text-red-700{% endif %}">
+            {% if d.status == 'completed' %}مكتمل
+            {% elif d.status == 'pending' %}قيد المراجعة
+            {% else %}مرفوض{% endif %}
           </span>
         </div>
         {% endfor %}
       </div>
       {% else %}
-      <p class="text-xs text-slate-400 text-center py-4">لا توجد إيداعات بعد</p>
+      <p class="text-xs text-slate-400 text-center py-4">لا توجد طلبات بعد</p>
       {% endif %}
       <a href="/transactions" class="block text-center text-xs text-blue-600 hover:text-blue-700 font-medium mt-4">
         عرض كل المعاملات ←
@@ -121,10 +206,10 @@
     <!-- Info -->
     <div class="bg-blue-50 border border-blue-200 rounded-2xl p-4">
       <div class="flex items-start gap-2">
-        <span class="text-lg">ℹ️</span>
+        <span class="text-lg">💡</span>
         <div class="text-xs text-blue-800">
-          <p class="font-bold mb-1">ملاحظة</p>
-          <p>يتم إضافة الرصيد خلال دقائق من تأكيد الدفع.</p>
+          <p class="font-bold mb-1">هل لديك كود؟</p>
+          <p>الأسرع هو استخدام كود الشحن في الأعلى — يُضاف الرصيد فوراً بدون انتظار.</p>
         </div>
       </div>
     </div>
@@ -135,8 +220,77 @@
 
 {% block scripts %}
 <script>
+// ══════════════════════════════════════════════════════════════
+// إدخال كود الشحن
+// ══════════════════════════════════════════════════════════════
+async function redeemVoucher() {
+  const input = document.getElementById('voucher-code');
+  const btn = document.getElementById('redeem-btn');
+  const result = document.getElementById('voucher-result');
+  const code = input.value.trim();
+
+  if (!code) {
+    result.className = 'mt-3 text-sm font-bold text-red-600';
+    result.textContent = '❌ الرجاء إدخال الكود';
+    result.classList.remove('hidden');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '⏳ جارٍ التحقق...';
+
+  try {
+    const r = await fetch('/api/v1/wallet/redeem-voucher', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ code }),
+    });
+    const d = await r.json();
+
+    if (r.ok) {
+      result.className = 'mt-3 text-sm font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-3';
+      result.innerHTML = `✅ تم إضافة <b>$${d.value.toFixed(2)}</b> إلى رصيدك! الرصيد الجديد: <b>$${d.new_balance.toFixed(2)}</b>`;
+      result.classList.remove('hidden');
+      setTimeout(() => location.reload(), 1800);
+    } else {
+      result.className = 'mt-3 text-sm font-bold text-red-700 bg-red-50 border border-red-200 rounded-lg p-3';
+      result.textContent = '❌ ' + (d.detail || 'كود غير صالح');
+      result.classList.remove('hidden');
+      btn.disabled = false;
+      btn.innerHTML = '🔓 تفعيل الكود';
+    }
+  } catch (e) {
+    result.className = 'mt-3 text-sm font-bold text-red-700 bg-red-50 border border-red-200 rounded-lg p-3';
+    result.textContent = '❌ خطأ في الاتصال بالخادم';
+    result.classList.remove('hidden');
+    btn.disabled = false;
+    btn.innerHTML = '🔓 تفعيل الكود';
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// طلب إيداع يدوي
+// ══════════════════════════════════════════════════════════════
 let selectedAmount = 0;
 let selectedPayment = null;
+
+const PAYMENT_INFO = {
+  usdt_trc20: {
+    network: 'TRON (TRC20)',
+    address: 'TY8xXXXXXXXXXXXXXXXXXXXXXXXXXX',  // ←←← ضع عنوانك هنا
+    note: 'أرسل USDT فقط على شبكة TRON'
+  },
+  usdt_bep20: {
+    network: 'BSC (BEP20)',
+    address: '0xXXXXXXXXXXXXXXXXXXXXXXXXXX',  // ←←← ضع عنوانك هنا
+    note: 'أرسل USDT فقط على شبكة BSC'
+  },
+  bank_transfer: {
+    network: 'حسب الدولة',
+    address: 'تواصل مع الدعم لتفاصيل الحساب',
+    note: 'سيتم تزويدك بالتفاصيل بعد اختيار الطريقة'
+  }
+};
 
 function selectAmount(amount, btn) {
   document.querySelectorAll('.amount-btn').forEach(b => {
@@ -164,39 +318,66 @@ function selectPayment(id) {
   selectedPayment = id;
   document.querySelectorAll('.payment-method').forEach(l => {
     l.classList.remove('border-emerald-500','bg-emerald-50');
+    l.querySelector('.radio-dot').classList.remove('border-emerald-500','bg-emerald-500');
   });
   event.currentTarget.closest('.payment-method').classList.add('border-emerald-500','bg-emerald-50');
+  event.currentTarget.closest('.payment-method').querySelector('.radio-dot').classList.add('border-emerald-500','bg-emerald-500');
+
+  // عرض تفاصيل الدفع
+  const info = PAYMENT_INFO[id];
+  if (info) {
+    document.getElementById('payment-details').classList.remove('hidden');
+    document.getElementById('payment-info').innerHTML = `
+      <div><span class="font-bold">الشبكة:</span> ${info.network}</div>
+      <div><span class="font-bold">العنوان:</span></div>
+      <div class="bg-white rounded p-2 font-mono text-[11px] break-all border border-slate-200">${info.address}</div>
+      <div class="text-amber-700 text-[11px] mt-1">⚠️ ${info.note}</div>
+    `;
+  }
   updateBtn();
 }
 
 function updateBtn() {
   const btn = document.getElementById('deposit-btn');
-  const ok = selectedAmount >= 10 && selectedPayment;
+  const ok = selectedAmount >= 5 && selectedPayment;
   btn.disabled = !ok;
   document.getElementById('btn-amount').textContent = ok ? `$${selectedAmount.toFixed(2)}` : '';
 }
 
-async function submitDeposit() {
+async function submitDepositRequest() {
+  const ref = document.getElementById('transfer-reference').value.trim();
+  if (!ref) {
+    alert('الرجاء إدخال رقم العملية أو هاش التحويل');
+    return;
+  }
+
   const btn = document.getElementById('deposit-btn');
   btn.disabled = true;
-  btn.innerHTML = 'جارٍ المعالجة...';
+  btn.innerHTML = '⏳ جارٍ الإرسال...';
 
   try {
-    const r = await fetch('/api/v1/wallet/deposit', {
+    const r = await fetch('/api/v1/wallet/deposit-request', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ amount: selectedAmount, method: selectedPayment }),
+      body: JSON.stringify({
+        amount: selectedAmount,
+        method: selectedPayment,
+        reference: ref,
+      }),
     });
     const d = await r.json();
-    if (r.ok && d.checkout_url) {
-      window.location.href = d.checkout_url;
-    } else {
-      alert(d.detail || 'فشل الإيداع');
+    if (r.ok) {
+      alert('✅ تم إرسال طلبك بنجاح! سيتم مراجعته خلال دقائق.');
       location.reload();
+    } else {
+      alert('❌ ' + (d.detail || 'فشل إرسال الطلب'));
+      btn.disabled = false;
+      btn.innerHTML = '📤 إرسال طلب الإيداع';
     }
   } catch (e) {
-    alert('خطأ في الاتصال');
-    location.reload();
+    alert('❌ خطأ في الاتصال');
+    btn.disabled = false;
+    btn.innerHTML = '📤 إرسال طلب الإيداع';
   }
 }
 </script>
