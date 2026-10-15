@@ -9,20 +9,15 @@
 
 {% block content %}
 
-{# ═══════════════════════════════════════════════════════════ #}
-{# حالة الفشل: لا بيانات وهمية — فقط رسالة واضحة              #}
-{# ═══════════════════════════════════════════════════════════ #}
 {% if not prices_meta.ok %}
 <div class="max-w-2xl mx-auto mt-8">
   <div class="bg-red-50 border-2 border-red-200 rounded-2xl p-8 text-center">
     <div class="text-5xl mb-4">⚠️</div>
     <h2 class="text-xl font-bold text-red-800 mb-3">تعذّر تحميل البيانات من 5SIM</h2>
     <p class="text-sm text-red-700 mb-2">{{ prices_meta.error or 'خطأ غير معروف' }}</p>
-
     {% if prices_meta.error_code %}
       <p class="text-xs text-red-500 mb-4" dir="ltr">HTTP {{ prices_meta.error_code }}</p>
     {% endif %}
-
     <div class="bg-white rounded-lg p-4 mt-4 text-right text-xs text-slate-600 space-y-1">
       <p class="font-bold text-slate-800 mb-2">ما الذي يمكن فعله؟</p>
       <p>• تأكد من ضبط <code class="bg-slate-100 px-1 rounded" dir="ltr">SIM5_API_KEY</code> في متغيرات البيئة.</p>
@@ -30,12 +25,10 @@
       <p>• تحقق من أن الخادم يستطيع الوصول إلى <code class="bg-slate-100 px-1 rounded" dir="ltr">5sim.net</code>.</p>
       <p>• إذا كنت متأكدًا من الإعداد، أعد المحاولة.</p>
     </div>
-
     <button onclick="refreshPrices(this)"
             class="mt-6 bg-red-600 hover:bg-red-700 text-white font-bold px-6 py-2.5 rounded-lg text-sm transition-colors">
       🔄 إعادة المحاولة
     </button>
-
     <div class="mt-4">
       <a href="/api/v1/system/sim5-profile" target="_blank"
          class="text-xs text-slate-500 hover:text-slate-700 underline">
@@ -45,10 +38,6 @@
   </div>
 </div>
 {% else %}
-
-{# ═══════════════════════════════════════════════════════════ #}
-{# حالة النجاح: كل البيانات من 5SIM                          #}
-{# ═══════════════════════════════════════════════════════════ #}
 
 <!-- ══ شريط مصدر الأسعار ══ -->
 <div class="mb-4 flex items-center justify-between gap-3 flex-wrap">
@@ -67,7 +56,7 @@
   </button>
 </div>
 
-<!-- ══ الأكثر طلباً ══ -->
+<!-- ══ الأكثر طلباً (4 + عرض المزيد) ══ -->
 {% if popular_services %}
 <div class="mb-6" id="popular-section">
   <div class="flex items-center justify-between mb-3">
@@ -88,7 +77,6 @@
       <span class="absolute top-2 left-2 bg-gradient-to-r from-orange-500 to-red-500 text-white text-[9px] font-bold px-2 py-0.5 rounded-full">
         {{ p.count }}+
       </span>
-
       <div class="flex flex-col items-center gap-1.5 pt-3">
         <div class="w-10 h-10 flex items-center justify-center group-hover:scale-110 transition-transform"
              data-service-icon="{{ p.service_id }}"
@@ -124,9 +112,9 @@
 </div>
 {% endif %}
 
-<!-- ══ الأرقام المتاحة الآن ══ -->
+<!-- ══ الأرقام المتاحة الآن (4 + عرض المزيد) ══ -->
 {% if available_numbers %}
-<div class="mb-6">
+<div class="mb-6" id="numbers-section">
   <div class="flex items-center justify-between mb-3">
     <div class="flex items-center gap-2">
       <div class="w-1.5 h-5 bg-gradient-to-b from-emerald-400 to-teal-500 rounded-full"></div>
@@ -156,7 +144,8 @@
         </thead>
         <tbody class="divide-y divide-slate-50">
           {% for n in available_numbers %}
-          <tr class="hover:bg-slate-50/60 transition-colors">
+          <tr class="hover:bg-slate-50/60 transition-colors {% if loop.index > 4 %}hidden{% endif %}"
+              data-number-item>
             <td class="px-4 py-3">
               <div class="flex items-center gap-2">
                 <span class="text-xl">{{ n.country_flag }}</span>
@@ -197,6 +186,20 @@
       </table>
     </div>
   </div>
+
+  {% if available_numbers|length > 4 %}
+  <div class="text-center mt-4">
+    <button type="button"
+            onclick="toggleNumbers(this)"
+            data-expanded="false"
+            class="text-xs font-bold text-blue-600 hover:text-blue-700 border border-blue-200 hover:border-blue-400 bg-white px-4 py-2 rounded-lg transition-colors inline-flex items-center gap-1">
+      <span class="label">عرض المزيد ({{ available_numbers|length - 4 }})</span>
+      <svg class="w-3.5 h-3.5 transition-transform duration-200 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+      </svg>
+    </button>
+  </div>
+  {% endif %}
 </div>
 {% endif %}
 
@@ -209,9 +212,7 @@
       <div class="flex items-center gap-3 mb-4">
         <div class="w-7 h-7 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center">1</div>
         <h3 class="text-base font-bold text-slate-800">اختر الدولة</h3>
-        <span class="text-[10px] text-slate-400">
-          {{ countries|length }} دولة متاحة من 5SIM
-        </span>
+        <span class="text-[10px] text-slate-400">{{ countries|length }} دولة متاحة من 5SIM</span>
       </div>
 
       <div class="grid grid-cols-2 sm:grid-cols-3 gap-3" id="country-grid">
@@ -240,13 +241,10 @@
         <div class="w-7 h-7 rounded-full bg-slate-300 text-white text-xs font-bold flex items-center justify-center">2</div>
         <h3 class="text-base font-bold text-slate-800">اختر الخدمة</h3>
       </div>
-
       <div class="grid grid-cols-2 sm:grid-cols-3 gap-3" id="service-grid"></div>
-
       <div id="service-empty" class="hidden text-center text-xs text-slate-400 py-6">
         لا توجد خدمات متاحة لهذه الدولة حالياً
       </div>
-
       <div id="service-more-wrap" class="hidden text-center mt-4"></div>
     </div>
 
@@ -256,7 +254,6 @@
         <div class="w-7 h-7 rounded-full bg-slate-300 text-white text-xs font-bold flex items-center justify-center">3</div>
         <h3 class="text-base font-bold text-slate-800">تأكيد الشراء</h3>
       </div>
-
       <div class="bg-slate-50 rounded-xl p-4 mb-4">
         <div class="flex items-center justify-between py-2 border-b border-slate-200">
           <span class="text-sm text-slate-500">الدولة</span>
@@ -275,7 +272,6 @@
           <span id="confirm-price" class="text-lg font-bold text-blue-600">$0.00</span>
         </div>
       </div>
-
       <button onclick="confirmPurchase()" id="buy-btn"
               class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-colors flex items-center justify-center gap-2">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -284,7 +280,6 @@
         </svg>
         شراء الآن من 5SIM
       </button>
-
       <p class="text-[10px] text-slate-400 text-center mt-2">
         سيتم شراء رقم حقيقي من 5SIM. عند فشل الشراء ستظهر رسالة الخطأ بوضوح.
       </p>
@@ -360,7 +355,6 @@
   </div>
 </div>
 
-<!-- بيانات الدول إلى JavaScript (من 5SIM) -->
 <script id="countries-data" type="application/json">
 {{ countries | tojson }}
 </script>
@@ -373,114 +367,185 @@
 {% block scripts %}
 <script>
 // ══════════════════════════════════════════════════════════════
-// 1) خريطة الأيقونات المعبّرة (Simple Icons CDN) + احتياطي إيموجي
+// 1) خريطة الأيقونات — تشمل كل صيغ 5SIM الممكنة (Aliases)
 // ══════════════════════════════════════════════════════════════
+// المفتاح = الصيغة الموحّدة (بعد التنظيف)
+// القيمة = { svg: اسم الأيقونة في Simple Icons, color: كود اللون }
 const SERVICE_ICONS = {
-  whatsapp:    { svg: 'whatsapp',        color: '25D366' },
-  telegram:    { svg: 'telegram',        color: '26A5E4' },
-  signal:      { svg: 'signal',          color: '3A76F0' },
-  viber:       { svg: 'viber',           color: '7360F2' },
-  line:        { svg: 'line',            color: '00C300' },
-  wechat:      { svg: 'wechat',          color: '07C160' },
-  instagram:   { svg: 'instagram',       color: 'E4405F' },
-  facebook:    { svg: 'facebook',        color: '1877F2' },
-  twitter:     { svg: 'x',               color: '000000' },
-  x:           { svg: 'x',               color: '000000' },
-  tiktok:      { svg: 'tiktok',          color: '000000' },
-  snapchat:    { svg: 'snapchat',        color: 'FFFC00' },
-  discord:     { svg: 'discord',         color: '5865F2' },
-  reddit:      { svg: 'reddit',          color: 'FF4500' },
-  linkedin:    { svg: 'linkedin',        color: '0A66C2' },
-  pinterest:   { svg: 'pinterest',       color: 'BD081C' },
-  threads:     { svg: 'threads',         color: '000000' },
-  amazon:      { svg: 'amazon',          color: 'FF9900' },
-  ebay:        { svg: 'ebay',            color: 'E53238' },
-  aliexpress:  { svg: 'aliexpress',      color: 'FF4747' },
-  shopify:     { svg: 'shopify',         color: '7AB55C' },
-  youtube:     { svg: 'youtube',         color: 'FF0000' },
-  netflix:     { svg: 'netflix',         color: 'E50914' },
-  spotify:     { svg: 'spotify',         color: '1DB954' },
-  twitch:      { svg: 'twitch',          color: '9146FF' },
-  soundcloud:  { svg: 'soundcloud',      color: 'FF5500' },
-  google:      { svg: 'google',          color: '4285F4' },
-  gmail:       { svg: 'gmail',           color: 'EA4335' },
-  apple:       { svg: 'apple',           color: '000000' },
-  microsoft:   { svg: 'microsoft',       color: '5E5E5E' },
-  steam:       { svg: 'steam',           color: '000000' },
-  playstation: { svg: 'playstation',     color: '003791' },
-  xbox:        { svg: 'xbox',            color: '107C10' },
-  nintendo:    { svg: 'nintendoswitch',  color: 'E60012' },
-  epicgames:   { svg: 'epicgames',       color: '313131' },
-  roblox:      { svg: 'roblox',          color: '000000' },
-  minecraft:   { svg: 'minecraft',       color: '62B47A' },
-  paypal:      { svg: 'paypal',          color: '00457C' },
-  visa:        { svg: 'visa',            color: '1A1F71' },
-  mastercard:  { svg: 'mastercard',      color: 'EB001B' },
-  binance:     { svg: 'binance',         color: 'F0B90B' },
-  coinbase:    { svg: 'coinbase',        color: '0052FF' },
-  uber:        { svg: 'uber',            color: '000000' },
-  airbnb:      { svg: 'airbnb',          color: 'FF5A5F' },
-  booking:     { svg: 'bookingdotcom',   color: '003580' },
-  openai:      { svg: 'openai',          color: '412991' },
-  chatgpt:     { svg: 'openai',          color: '10A37F' },
-  github:      { svg: 'github',          color: '181717' },
-  dropbox:     { svg: 'dropbox',         color: '0061FF' },
-  twitter2:    { svg: 'twitter',         color: '1DA1F2' },
-  ok:          { svg: 'odnoklassniki',   color: 'EE8208' },
-  vk:          { svg: 'vk',              color: '0077FF' },
-  yahoo:       { svg: 'yahoo',           color: '6001D2' },
-  zoom:        { svg: 'zoom',            color: '2D8CFF' },
-  skype:       { svg: 'skype',           color: '00AFF0' },
-  tinder:      { svg: 'tinder',          color: 'FF6B6B' },
-  badoo:       { svg: 'badoo',           color: '783BF9' },
-  clubhouse:   { svg: 'clubhouse',       color: 'F1C40F' },
-  truthsocial: { svg: 'truthsocial',     color: '5448EE' },
-  protonmail:  { svg: 'protonmail',      color: '6D4AFF' },
-  zoho:        { svg: 'zoho',            color: 'E42527' },
-  gojek:       { svg: 'gojek',           color: '00AA13' },
-  grab:        { svg: 'grab',            color: '00B14F' },
-  foodpanda:   { svg: 'foodpanda',       color: 'D70F64' },
-  careem:      { svg: 'careem',          color: '25C16F' },
+  // ── مراسلة ──
+  whatsapp:        { svg: 'whatsapp',        color: '25D366' },
+  whatsappbusiness:{ svg: 'whatsapp',        color: '25D366' },
+  wa:              { svg: 'whatsapp',        color: '25D366' },
+  wapp:            { svg: 'whatsapp',        color: '25D366' },
+  whatsapp2:       { svg: 'whatsapp',        color: '25D366' },
+  telegram:        { svg: 'telegram',        color: '26A5E4' },
+  tg:              { svg: 'telegram',        color: '26A5E4' },
+  signal:          { svg: 'signal',          color: '3A76F0' },
+  viber:           { svg: 'viber',           color: '7360F2' },
+  line:            { svg: 'line',            color: '00C300' },
+  wechat:          { svg: 'wechat',          color: '07C160' },
+  skype:           { svg: 'skype',           color: '00AFF0' },
+  imo:             { svg: 'imo',             color: '00A8E1' },
+  kakaotalk:       { svg: 'kakaotalk',       color: 'FEE500' },
+
+  // ── تواصل اجتماعي ──
+  instagram:       { svg: 'instagram',       color: 'E4405F' },
+  ig:              { svg: 'instagram',       color: 'E4405F' },
+  insta:           { svg: 'instagram',       color: 'E4405F' },
+  facebook:        { svg: 'facebook',        color: '1877F2' },
+  fb:              { svg: 'facebook',        color: '1877F2' },
+  twitter:         { svg: 'x',               color: '000000' },
+  x:               { svg: 'x',               color: '000000' },
+  tiktok:          { svg: 'tiktok',          color: '000000' },
+  tt:              { svg: 'tiktok',          color: '000000' },
+  snapchat:        { svg: 'snapchat',        color: 'FFFC00' },
+  snap:            { svg: 'snapchat',        color: 'FFFC00' },
+  discord:         { svg: 'discord',         color: '5865F2' },
+  reddit:          { svg: 'reddit',          color: 'FF4500' },
+  linkedin:        { svg: 'linkedin',        color: '0A66C2' },
+  pinterest:       { svg: 'pinterest',       color: 'BD081C' },
+  threads:         { svg: 'threads',         color: '000000' },
+  vk:              { svg: 'vk',              color: '0077FF' },
+  ok:              { svg: 'odnoklassniki',   color: 'EE8208' },
+  odnoklassniki:   { svg: 'odnoklassniki',   color: 'EE8208' },
+  clubhouse:       { svg: 'clubhouse',       color: 'F1C40F' },
+  truthsocial:     { svg: 'truthsocial',     color: '5448EE' },
+
+  // ── تسوق ──
+  amazon:          { svg: 'amazon',          color: 'FF9900' },
+  ebay:            { svg: 'ebay',            color: 'E53238' },
+  aliexpress:      { svg: 'aliexpress',      color: 'FF4747' },
+  alibaba:         { svg: 'alibabacloud',    color: 'FF6A00' },
+  shopify:         { svg: 'shopify',         color: '7AB55C' },
+  etsy:            { svg: 'etsy',            color: 'F16521' },
+
+  // ── ترفيه وبث ──
+  youtube:         { svg: 'youtube',         color: 'FF0000' },
+  yt:              { svg: 'youtube',         color: 'FF0000' },
+  netflix:         { svg: 'netflix',         color: 'E50914' },
+  spotify:         { svg: 'spotify',         color: '1DB954' },
+  twitch:          { svg: 'twitch',          color: '9146FF' },
+  soundcloud:      { svg: 'soundcloud',      color: 'FF5500' },
+  shazam:          { svg: 'shazam',          color: '0088FF' },
+  deezer:          { svg: 'deezer',          color: 'FEAA2D' },
+
+  // ── Google / بريد ──
+  google:          { svg: 'google',          color: '4285F4' },
+  gmail:           { svg: 'gmail',           color: 'EA4335' },
+  googlevoice:     { svg: 'google',          color: '4285F4' },
+  yahoo:           { svg: 'yahoo',           color: '6001D2' },
+  outlook:         { svg: 'microsoftoutlook',color: '0078D4' },
+  hotmail:         { svg: 'microsoftoutlook',color: '0078D4' },
+  protonmail:      { svg: 'protonmail',      color: '6D4AFF' },
+  zoho:            { svg: 'zoho',            color: 'E42527' },
+  mailru:          { svg: 'maildotru',       color: '005FF9' },
+  yandex:          { svg: 'yandex',          color: 'FF0000' },
+
+  // ── أنظمة وأجهزة ──
+  apple:           { svg: 'apple',           color: '000000' },
+  icloud:          { svg: 'icloud',          color: '3693F3' },
+  microsoft:       { svg: 'microsoft',       color: '5E5E5E' },
+  windows:         { svg: 'windows',         color: '0078D4' },
+
+  // ── ألعاب ──
+  steam:           { svg: 'steam',           color: '000000' },
+  playstation:     { svg: 'playstation',     color: '003791' },
+  psn:             { svg: 'playstation',     color: '003791' },
+  xbox:            { svg: 'xbox',            color: '107C10' },
+  nintendo:        { svg: 'nintendoswitch',  color: 'E60012' },
+  epicgames:       { svg: 'epicgames',       color: '313131' },
+  epic:            { svg: 'epicgames',       color: '313131' },
+  roblox:          { svg: 'roblox',          color: '000000' },
+  minecraft:       { svg: 'minecraft',       color: '62B47A' },
+  pubg:            { svg: 'pubg',            color: 'F2A900' },
+  freefire:        { svg: 'freefire',        color: 'FF6B00' },
+  genshin:         { svg: 'genshinimpact',   color: '4A90D9' },
+
+  // ── دفع وبنوك ──
+  paypal:          { svg: 'paypal',          color: '00457C' },
+  visa:            { svg: 'visa',            color: '1A1F71' },
+  mastercard:      { svg: 'mastercard',      color: 'EB001B' },
+  binance:         { svg: 'binance',         color: 'F0B90B' },
+  coinbase:        { svg: 'coinbase',        color: '0052FF' },
+  stripe:          { svg: 'stripe',          color: '635BFF' },
+  revolut:         { svg: 'revolut',         color: '0075EB' },
+  skrill:          { svg: 'skrill',          color: '7F1E8C' },
+
+  // ── مواصلات وحجوزات ──
+  uber:            { svg: 'uber',            color: '000000' },
+  airbnb:          { svg: 'airbnb',          color: 'FF5A5F' },
+  booking:         { svg: 'bookingdotcom',   color: '003580' },
+  careem:          { svg: 'careem',          color: '25C16F' },
+  grab:            { svg: 'grab',            color: '00B14F' },
+  gojek:           { svg: 'gojek',           color: '00AA13' },
+  bolt:            { svg: 'bolt',            color: '34D186' },
+
+  // ── طعام ──
+  foodpanda:       { svg: 'foodpanda',       color: 'D70F64' },
+  doordash:        { svg: 'doordash',        color: 'FF3008' },
+  deliveroo:       { svg: 'deliveroo',       color: '00CCBC' },
+  talabat:         { svg: 'talabat',         color: 'FF5A00' },
+
+  // ── AI وأدوات ──
+  openai:          { svg: 'openai',          color: '412991' },
+  chatgpt:         { svg: 'openai',          color: '10A37F' },
+  gpt:             { svg: 'openai',          color: '10A37F' },
+  github:          { svg: 'github',          color: '181717' },
+  dropbox:         { svg: 'dropbox',         color: '0061FF' },
+  notion:          { svg: 'notion',          color: '000000' },
+  zoom:            { svg: 'zoom',            color: '2D8CFF' },
+  slack:           { svg: 'slack',           color: '4A154B' },
+
+  // ── مواعدة ──
+  tinder:          { svg: 'tinder',          color: 'FF6B6B' },
+  badoo:           { svg: 'badoo',           color: '783BF9' },
+  bumble:          { svg: 'bumble',          color: 'FFC629' },
 };
 
 function _iconKey(id) {
-  return String(id || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  // نحوّل لأحرف صغيرة، نزيل الرموز والمسافات والشرطات
+  // "WhatsApp Business" → "whatsappbusiness"
+  // "whats-app" → "whatsapp"
+  return String(id || '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[^a-z0-9]/g, '');
 }
 
 function _fallbackEmoji(id) {
   const k = _iconKey(id);
-  if (/whats|wapp/.test(k)) return '💬';
-  if (/telegram|tg/.test(k)) return '✈️';
+  if (/whats|wapp|^wa$/.test(k)) return '💬';
+  if (/telegram|^tg$/.test(k)) return '✈️';
   if (/signal/.test(k)) return '🔒';
   if (/viber/.test(k)) return '📞';
-  if (/insta|ig/.test(k)) return '📷';
-  if (/face|fb/.test(k)) return '👍';
-  if (/tiktok/.test(k)) return '🎵';
+  if (/insta|^ig$/.test(k)) return '📷';
+  if (/face|^fb$/.test(k)) return '👍';
+  if (/tiktok|^tt$/.test(k)) return '🎵';
   if (/snap/.test(k)) return '👻';
   if (/discord/.test(k)) return '🎮';
-  if (/youtube|yt/.test(k)) return '▶️';
+  if (/youtube|^yt$/.test(k)) return '▶️';
   if (/netflix/.test(k)) return '🎬';
   if (/spotify/.test(k)) return '🎧';
   if (/twitch/.test(k)) return '🟣';
   if (/google|gmail/.test(k)) return '🔍';
-  if (/apple/.test(k)) return '🍎';
-  if (/microsoft|outlook/.test(k)) return '🪟';
+  if (/apple|icloud/.test(k)) return '🍎';
+  if (/microsoft|outlook|hotmail/.test(k)) return '🪟';
   if (/steam/.test(k)) return '🎮';
   if (/playstation|psn/.test(k)) return '🎮';
   if (/xbox/.test(k)) return '🎮';
-  if (/paypal|visa|master|binance|coin|pay/.test(k)) return '💳';
-  if (/uber|careem|grab|gojek/.test(k)) return '🚗';
-  if (/amazon|ebay|aliex|shop/.test(k)) return '🛒';
+  if (/nintendo/.test(k)) return '🎮';
+  if (/paypal|visa|master|binance|coin|pay|stripe/.test(k)) return '💳';
+  if (/uber|careem|grab|gojek|bolt/.test(k)) return '🚗';
+  if (/amazon|ebay|aliex|shop|etsy/.test(k)) return '🛒';
   if (/openai|chatgpt|gpt/.test(k)) return '🤖';
   if (/github/.test(k)) return '🐙';
-  if (/tinder|badoo/.test(k)) return '❤️';
+  if (/tinder|badoo|bumble/.test(k)) return '❤️';
   if (/twitter|^x$/.test(k)) return '🐦';
+  if (/foodpanda|talabat|doordash|deliveroo/.test(k)) return '🍔';
+  if (/airbnb|booking/.test(k)) return '🏨';
   return '📱';
 }
 
-/**
- * يُرجع HTML لأيقونة الخدمة (img من CDN + احتياطي إيموجي).
- */
 function serviceIconHtml(serviceId, name, size) {
   size = size || 24;
   const key = _iconKey(serviceId);
@@ -488,12 +553,26 @@ function serviceIconHtml(serviceId, name, size) {
 
   if (meta) {
     const url = `https://cdn.simpleicons.org/${meta.svg}/${meta.color}`;
-    const alt = (name || serviceId || '').replace(/"/g, '&quot;');
+    const alt = String(name || serviceId || '').replace(/"/g, '&quot;');
     return `<img src="${url}" alt="${alt}" width="${size}" height="${size}" loading="lazy"
                  style="display:inline-block;object-fit:contain"
                  onerror="this.style.display='none';this.nextElementSibling.style.display='inline-block'">
             <span style="display:none;font-size:${Math.round(size * 0.85)}px;line-height:1">${_fallbackEmoji(serviceId)}</span>`;
   }
+
+  // لو ما لقيناه، جرّب نبحث باسم الخدمة (name) بدل الـ id
+  if (name && name !== serviceId) {
+    const keyByName = _iconKey(name);
+    const metaByName = SERVICE_ICONS[keyByName];
+    if (metaByName) {
+      const url = `https://cdn.simpleicons.org/${metaByName.svg}/${metaByName.color}`;
+      return `<img src="${url}" alt="${name}" width="${size}" height="${size}" loading="lazy"
+                   style="display:inline-block;object-fit:contain"
+                   onerror="this.style.display='none';this.nextElementSibling.style.display='inline-block'">
+              <span style="display:none;font-size:${Math.round(size * 0.85)}px;line-height:1">${_fallbackEmoji(name)}</span>`;
+    }
+  }
+
   return `<span style="font-size:${Math.round(size * 0.85)}px;line-height:1">${_fallbackEmoji(serviceId)}</span>`;
 }
 
@@ -501,24 +580,39 @@ function serviceIconHtml(serviceId, name, size) {
 // 2) ترتيب حسب الشهرة
 // ══════════════════════════════════════════════════════════════
 const POPULARITY_ORDER = [
-  'whatsapp', 'telegram', 'instagram', 'facebook', 'tiktok',
-  'google', 'gmail', 'youtube', 'twitter', 'x', 'snapchat',
-  'discord', 'signal', 'viber', 'line', 'wechat',
-  'netflix', 'spotify', 'amazon', 'paypal', 'uber',
-  'apple', 'microsoft', 'steam', 'openai', 'chatgpt',
+  'whatsapp', 'whatsappbusiness', 'wa',
+  'telegram', 'tg',
+  'instagram', 'ig', 'insta',
+  'facebook', 'fb',
+  'tiktok', 'tt',
+  'google', 'gmail',
+  'youtube', 'yt',
+  'twitter', 'x',
+  'snapchat', 'snap',
+  'discord',
+  'signal', 'viber', 'line', 'wechat',
+  'netflix', 'spotify',
+  'amazon', 'paypal', 'uber',
+  'apple', 'icloud', 'microsoft',
+  'steam', 'playstation', 'psn', 'xbox',
+  'openai', 'chatgpt',
   'linkedin', 'reddit', 'pinterest', 'threads',
   'twitch', 'soundcloud', 'ebay', 'aliexpress', 'shopify',
-  'playstation', 'xbox', 'nintendo', 'epicgames', 'roblox', 'minecraft',
-  'binance', 'coinbase', 'airbnb', 'booking',
-  'github', 'dropbox', 'zoom', 'skype', 'yahoo', 'vk', 'ok',
-  'tinder', 'badoo', 'clubhouse', 'truthsocial', 'protonmail',
-  'gojek', 'grab', 'foodpanda', 'careem', 'zoho',
+  'nintendo', 'epicgames', 'roblox', 'minecraft', 'pubg', 'freefire',
+  'binance', 'coinbase', 'stripe', 'revolut', 'skrill',
+  'airbnb', 'booking', 'careem', 'grab', 'gojek', 'bolt',
+  'github', 'dropbox', 'notion', 'zoom', 'slack',
+  'yahoo', 'outlook', 'hotmail', 'protonmail', 'zoho', 'mailru', 'yandex',
+  'vk', 'ok', 'odnoklassniki', 'clubhouse', 'truthsocial',
+  'tinder', 'badoo', 'bumble',
+  'foodpanda', 'talabat', 'doordash', 'deliveroo',
+  'imo', 'kakaotalk', 'skype', 'shazam', 'deezer', 'etsy', 'alibaba',
 ];
 
 function serviceRank(id) {
   const k = _iconKey(id);
   const i = POPULARITY_ORDER.indexOf(k);
-  return i === -1 ? 999 : i;
+  return i === -1 ? 9999 : i;
 }
 
 function sortByPopularity(arr, getId) {
@@ -527,7 +621,6 @@ function sortByPopularity(arr, getId) {
     const ra = serviceRank(getId(a));
     const rb = serviceRank(getId(b));
     if (ra !== rb) return ra - rb;
-    // كسر التعادل أبجدياً
     return String(getId(a)).localeCompare(String(getId(b)));
   });
 }
@@ -535,7 +628,7 @@ function sortByPopularity(arr, getId) {
 // ══════════════════════════════════════════════════════════════
 // 3) حالة التطبيق
 // ══════════════════════════════════════════════════════════════
-const SERVICES_PREVIEW = 4;
+const PREVIEW_COUNT = 4;
 let COUNTRIES = [];
 try {
   const el = document.getElementById('countries-data');
@@ -548,10 +641,9 @@ let selectedCountry = null;
 let selectedService = null;
 let currentPrice = 0;
 let currentCount = 0;
-let servicesExpanded = false;
 
 // ══════════════════════════════════════════════════════════════
-// 4) تعبئة الأيقونات في الجدول وقسم الأكثر طلباً
+// 4) تعبئة الأيقونات
 // ══════════════════════════════════════════════════════════════
 function hydrateServiceIcons(root) {
   (root || document).querySelectorAll('[data-service-icon]').forEach(el => {
@@ -583,7 +675,6 @@ function selectCountry(slug, btn) {
   currentPrice = 0;
   currentCount = 0;
   updateConfirm();
-
   renderServices(selectedCountry ? selectedCountry.services : []);
 
   document.getElementById('service-step').classList.remove('opacity-50', 'pointer-events-none');
@@ -591,7 +682,7 @@ function selectCountry(slug, btn) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// 6) عرض الخدمات (مرتبة + عرض 4 + زر عرض المزيد)
+// 6) عرض الخدمات (4 + عرض المزيد)
 // ══════════════════════════════════════════════════════════════
 function renderServices(services) {
   const grid = document.getElementById('service-grid');
@@ -600,7 +691,6 @@ function renderServices(services) {
   grid.innerHTML = '';
   moreWrap.classList.add('hidden');
   moreWrap.innerHTML = '';
-  servicesExpanded = false;
 
   if (!services || services.length === 0) {
     empty.classList.remove('hidden');
@@ -617,13 +707,10 @@ function renderServices(services) {
     btn.dataset.serviceIndex = idx;
     btn.className = 'service-btn flex flex-col items-center gap-1 p-3 rounded-xl border-2 border-slate-100 transition-all ' +
       (s.available ? 'hover:border-blue-400 hover:bg-blue-50' : 'opacity-40 cursor-not-allowed');
-    if (idx >= SERVICES_PREVIEW) btn.classList.add('hidden');
+    if (idx >= PREVIEW_COUNT) btn.classList.add('hidden');
 
-    if (s.available) {
-      btn.onclick = function () { selectService(s.id, s.cost, s.count, btn); };
-    } else {
-      btn.disabled = true;
-    }
+    if (s.available) btn.onclick = function () { selectService(s.id, s.cost, s.count, btn); };
+    else btn.disabled = true;
 
     const iconEl = document.createElement('div');
     iconEl.className = 'w-10 h-10 flex items-center justify-center';
@@ -632,8 +719,7 @@ function renderServices(services) {
     const priceHtml = s.available
       ? `<span class="text-[11px] font-bold text-blue-600">$${Number(s.cost).toFixed(2)}</span>`
       : `<span class="text-[10px] text-slate-400">غير متاح</span>`;
-    const countHtml = s.available
-      ? `<span class="text-[9px] text-slate-400">${s.count} متاح</span>` : '';
+    const countHtml = s.available ? `<span class="text-[9px] text-slate-400">${s.count} متاح</span>` : '';
     const rateHtml = (s.available && s.rate)
       ? `<span class="text-[9px] text-emerald-600">${Number(s.rate).toFixed(0)}% ✓</span>` : '';
 
@@ -647,14 +733,13 @@ function renderServices(services) {
     grid.appendChild(btn);
   });
 
-  // زر عرض المزيد
-  if (sorted.length > SERVICES_PREVIEW) {
+  if (sorted.length > PREVIEW_COUNT) {
     moreWrap.classList.remove('hidden');
     moreWrap.innerHTML = `
-      <button type="button" onclick="toggleServices(this)"
-              data-expanded="false"
+      <button type="button" onclick="toggleMore(this, '.service-btn', 'serviceIndex')"
+              data-expanded="false" data-preview="${PREVIEW_COUNT}"
               class="text-xs font-bold text-blue-600 hover:text-blue-700 border border-blue-200 hover:border-blue-400 bg-white px-4 py-2 rounded-lg transition-colors inline-flex items-center gap-1">
-        <span class="label">عرض المزيد (${sorted.length - SERVICES_PREVIEW})</span>
+        <span class="label">عرض المزيد (${sorted.length - PREVIEW_COUNT})</span>
         <svg class="w-3.5 h-3.5 transition-transform duration-200 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
         </svg>
@@ -662,22 +747,36 @@ function renderServices(services) {
   }
 }
 
-function toggleServices(btn) {
+// ══════════════════════════════════════════════════════════════
+// 7) زر "عرض المزيد" — عام لكل الأقسام
+// ══════════════════════════════════════════════════════════════
+function toggleMore(btn, selector, indexAttr) {
   const expanded = btn.dataset.expanded === 'true';
-  const btns = document.querySelectorAll('.service-btn');
-  btns.forEach(el => {
-    const i = parseInt(el.dataset.serviceIndex, 10);
-    if (i >= SERVICES_PREVIEW) el.classList.toggle('hidden', expanded);
+  const preview = parseInt(btn.dataset.preview, 10) || PREVIEW_COUNT;
+  const items = document.querySelectorAll(selector);
+  items.forEach(el => {
+    const i = parseInt(el.dataset[indexAttr], 10);
+    if (isNaN(i)) return;
+    if (i >= preview) el.classList.toggle('hidden', expanded);
   });
   btn.dataset.expanded = expanded ? 'false' : 'true';
-  btn.querySelector('.label').textContent = expanded
-    ? `عرض المزيد (${btns.length - SERVICES_PREVIEW})`
-    : 'عرض أقل';
-  btn.querySelector('.chevron').style.transform = expanded ? '' : 'rotate(180deg)';
+  const label = btn.querySelector('.label');
+  const chev = btn.querySelector('.chevron');
+  if (label) {
+    label.textContent = expanded
+      ? `عرض المزيد (${items.length - preview})`
+      : 'عرض أقل';
+  }
+  if (chev) chev.style.transform = expanded ? '' : 'rotate(180deg)';
 }
 
+// ─── Helper للأقسام المختلفة ───
+function togglePopular(btn) { toggleMore(btn, '[data-popular-item]', 'popularIndex'); }
+function toggleNumbers(btn) { toggleMore(btn, '[data-number-item]', 'numberIndex'); }
+function toggleServices(btn) { toggleMore(btn, '.service-btn', 'serviceIndex'); }
+
 // ══════════════════════════════════════════════════════════════
-// 7) اختيار الخدمة
+// 8) اختيار الخدمة
 // ══════════════════════════════════════════════════════════════
 function selectService(id, cost, count, btn) {
   document.querySelectorAll('.service-btn').forEach(b => {
@@ -687,7 +786,7 @@ function selectService(id, cost, count, btn) {
   btn.classList.add('border-blue-500', 'bg-blue-50');
   btn.classList.remove('border-slate-100');
 
-  const svc = (selectedCountry && selectedCountry.services || [])
+  const svc = ((selectedCountry && selectedCountry.services) || [])
     .find(s => String(s.id) === String(id));
   selectedService = { id: id, name: (svc && svc.name) || id };
   currentPrice = parseFloat(cost) || 0;
@@ -697,9 +796,6 @@ function selectService(id, cost, count, btn) {
   updateConfirm();
 }
 
-// ══════════════════════════════════════════════════════════════
-// 8) تحديث التأكيد
-// ══════════════════════════════════════════════════════════════
 function updateConfirm() {
   const set = function (id, v) {
     const el = document.getElementById(id);
@@ -712,55 +808,31 @@ function updateConfirm() {
 }
 
 // ══════════════════════════════════════════════════════════════
-// 9) عرض المزيد لقسم "الأكثر طلباً"
-// ══════════════════════════════════════════════════════════════
-function togglePopular(btn) {
-  const items = document.querySelectorAll('[data-popular-item]');
-  const expanded = btn.dataset.expanded === 'true';
-  items.forEach((el, i) => {
-    if (i >= 4) el.classList.toggle('hidden', expanded);
-  });
-  btn.dataset.expanded = expanded ? 'false' : 'true';
-  btn.querySelector('.label').textContent = expanded
-    ? `عرض المزيد (${items.length - 4})`
-    : 'عرض أقل';
-  btn.querySelector('.chevron').style.transform = expanded ? '' : 'rotate(180deg)';
-}
-
-// ══════════════════════════════════════════════════════════════
-// 10) شراء سريع من البطاقات
+// 9) شراء سريع
 // ══════════════════════════════════════════════════════════════
 function quickBuy(countrySlug, serviceId) {
   const countryBtn = document.querySelector(`.country-btn[data-slug="${countrySlug}"]`)
                   || document.querySelector(`.country-btn[data-code="${countrySlug}"]`);
-  if (!countryBtn) {
-    showAlert('الدولة غير موجودة في القائمة', 'error');
-    return;
-  }
+  if (!countryBtn) { showAlert('الدولة غير موجودة في القائمة', 'error'); return; }
   selectCountry(countryBtn.dataset.slug, countryBtn);
 
-  // انتظر إعادة الرسم
   requestAnimationFrame(function () {
     const svcBtn = document.querySelector(`.service-btn[data-id="${serviceId}"]`);
     if (svcBtn && !svcBtn.disabled) {
-      // إن كانت الخدمة خارج أول 4، افتح القائمة
       const idx = parseInt(svcBtn.dataset.serviceIndex, 10);
-      if (idx >= SERVICES_PREVIEW && svcBtn.classList.contains('hidden')) {
+      if (idx >= PREVIEW_COUNT && svcBtn.classList.contains('hidden')) {
         const moreBtn = document.querySelector('#service-more-wrap button');
         if (moreBtn) toggleServices(moreBtn);
       }
-      const country = COUNTRIES.find(c => c.slug === countryBtn.dataset.slug || c.code === countryBtn.dataset.code);
-      const svc = country && (country.services || []).find(s => String(s.id) === String(serviceId));
-      selectService(serviceId, (svc && svc.cost) || 0, (svc && svc.count) || 0, svcBtn);
+      const c = COUNTRIES.find(x => x.slug === countryBtn.dataset.slug || x.code === countryBtn.dataset.code);
+      const s = c && (c.services || []).find(x => String(x.id) === String(serviceId));
+      selectService(serviceId, (s && s.cost) || 0, (s && s.count) || 0, svcBtn);
     }
     const confirmEl = document.getElementById('confirm-step');
     if (confirmEl) confirmEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
 }
 
-// ══════════════════════════════════════════════════════════════
-// 11) تنبيه بسيط
-// ══════════════════════════════════════════════════════════════
 function showAlert(msg, type) {
   type = type || 'info';
   const colors = {
@@ -775,32 +847,22 @@ function showAlert(msg, type) {
   setTimeout(function () { div.remove(); }, 5000);
 }
 
-// ══════════════════════════════════════════════════════════════
-// 12) تأكيد الشراء من 5SIM
-// ══════════════════════════════════════════════════════════════
 async function confirmPurchase() {
   if (!selectedCountry || !selectedService) return;
   const btn = document.getElementById('buy-btn');
   const original = btn.innerHTML;
   btn.disabled = true;
   btn.innerHTML = 'جارٍ الشراء من 5SIM...';
-
   try {
     const r = await fetch('/api/v1/orders', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        country: selectedCountry.slug,
-        service: selectedService.id,
-      }),
+      body: JSON.stringify({ country: selectedCountry.slug, service: selectedService.id }),
     });
     const d = await r.json();
-
     if (r.ok) {
       showAlert('✅ تم الشراء بنجاح — جارٍ التحويل...', 'success');
-      setTimeout(function () {
-        window.location.href = '/orders/' + d.id;
-      }, 800);
+      setTimeout(function () { window.location.href = '/orders/' + d.id; }, 800);
     } else {
       showAlert('❌ ' + (d.detail || 'فشل الشراء'), 'error');
       btn.disabled = false;
@@ -813,9 +875,6 @@ async function confirmPurchase() {
   }
 }
 
-// ══════════════════════════════════════════════════════════════
-// 13) تحديث الأسعار يدوياً
-// ══════════════════════════════════════════════════════════════
 async function refreshPrices(btn) {
   const old = btn.innerHTML;
   btn.disabled = true;
@@ -838,16 +897,23 @@ async function refreshPrices(btn) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// 14) التهيئة عند التحميل
+// 10) التهيئة
 // ══════════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', function () {
-  // 1) تعبئة الأيقونات
+  // 1) أضف data-index للعناصر الثابتة في HTML
+  document.querySelectorAll('[data-popular-item]').forEach((el, i) => {
+    el.dataset.popularIndex = i;
+  });
+  document.querySelectorAll('[data-number-item]').forEach((el, i) => {
+    el.dataset.numberIndex = i;
+  });
+
+  // 2) عبّئ الأيقونات
   hydrateServiceIcons(document);
 
-  // 2) التحديد المسبق من query params (بأمان)
+  // 3) التحديد المسبق
   const preCountry = {{ (preselected_country or '') | tojson }};
   const preService = {{ (preselected_service or '') | tojson }};
-
   if (preCountry) {
     const btn = document.querySelector(`.country-btn[data-slug="${preCountry}"]`)
              || document.querySelector(`.country-btn[data-code="${preCountry}"]`);
@@ -858,7 +924,7 @@ document.addEventListener('DOMContentLoaded', function () {
           const svcBtn = document.querySelector(`.service-btn[data-id="${preService}"]`);
           if (svcBtn && !svcBtn.disabled) {
             const idx = parseInt(svcBtn.dataset.serviceIndex, 10);
-            if (idx >= SERVICES_PREVIEW && svcBtn.classList.contains('hidden')) {
+            if (idx >= PREVIEW_COUNT && svcBtn.classList.contains('hidden')) {
               const moreBtn = document.querySelector('#service-more-wrap button');
               if (moreBtn) toggleServices(moreBtn);
             }
