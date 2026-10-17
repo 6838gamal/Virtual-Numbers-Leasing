@@ -2,10 +2,11 @@
 Jamal Solutions — Virtual Numbers Platform
 Customer Portal (FastAPI + Jinja2 + SSE + 5SIM + Access-Code Login)
 
-✅ 1.3.0 — تسجيل دخول بالكود:
+✅ 1.4.0 — شاشة واحدة موحّدة (/buy) + تسجيل دخول بالكود:
+- كل شيء في /buy?tab=... (شراء، أرقامي، طلبات، وارد، محفظة، معاملات، دعم، حساب)
+- إعادة توجيه كل المسارات القديمة إلى /buy تلقائياً.
 - Access Codes: توليد، تفعيل، إدارة كاملة عبر endpoints إدارية.
 - إزالة OAuth (Google) بالكامل.
-- رصيد ترحيبي اختياري لكل كود.
 """
 from __future__ import annotations
 
@@ -342,8 +343,8 @@ PUBLIC_PATHS = (
 )
 
 PROTECTED_PREFIXES = (
-    "/dashboard",
     "/buy",
+    "/dashboard",
     "/catalog",
     "/my-numbers",
     "/orders",
@@ -513,6 +514,7 @@ async def lifespan(app: FastAPI):
         print("🔴 تحذير: SECRET_KEY غير مضبوط في متغيرات البيئة!")
 
     print("✅ تسجيل الدخول بالكود مفعّل (Access Codes).")
+    print("✅ الشاشة الموحّدة /buy?tab=... مفعّلة.")
 
     if SIM5_ENABLED:
         print(f"✅ 5SIM مفعّل — Base: {SIM5_BASE}")
@@ -550,7 +552,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Jamal Solutions — Customer Portal",
     description="Virtual Numbers Platform",
-    version="1.3.0",
+    version="1.4.0",
     lifespan=lifespan,
 )
 
@@ -816,9 +818,7 @@ def _create_access_code(
     while True:
         code = _gen_access_code()
         if not any(c["code"] == code for c in STORE["access_codes"]):
-            break
-
-    now = datetime.now(timezone.utc)
+            break    now = datetime.now(timezone.utc)
     record = {
         "id": len(STORE["access_codes"]) + 1,
         "code": code,
@@ -997,6 +997,7 @@ async def system_version():
             "admin_endpoints": bool(ADMIN_SECRET),
             "login_method": "access_code",
             "access_codes": True,
+            "single_screen_buy": True,
         },
         "sim5": sim5_info,
         "customers_in_store": len(STORE["customers"]),
@@ -1208,7 +1209,7 @@ async def login_page(request: Request):
         else:
             customer = _get_customer_from_session(request)
             if customer is not None:
-                return RedirectResponse(url="/dashboard", status_code=303)
+                return RedirectResponse(url="/buy", status_code=303)
             else:
                 request.session.clear()
 
@@ -1216,7 +1217,7 @@ async def login_page(request: Request):
         request=request,
         name="login.html",
         context={
-            "next": request.query_params.get("next", "/dashboard"),
+            "next": request.query_params.get("next", "/buy"),
             "error": request.query_params.get("error"),
         },
     )
@@ -1231,13 +1232,11 @@ async def login_with_code(payload: AccessCodeLogin, request: Request):
     """
     record = _validate_access_code(payload.code)
 
-    # هل استُخدم هذا الكود سابقاً بواسطة عميل موجود؟
     customer = None
     if record["used_by"]:
         prev_id = record["used_by"][-1]
         customer = STORE["customers"].get(prev_id)
 
-    # إن لم يوجد عميل سابق → ننشئ واحداً
     if customer is None:
         new_id = max(STORE["customers"].keys(), default=0) + 1
         email = record.get("preset_email") or f"user{new_id}@jamal.local"
@@ -1267,7 +1266,6 @@ async def login_with_code(payload: AccessCodeLogin, request: Request):
         }
         STORE["customers"][new_id] = customer
 
-        # لو كان للكود رصيد مبدئي — سجّله كإيداع ترحيبي
         if customer["balance"] > 0:
             STORE["transactions"].append({
                 "id": len(STORE["transactions"]) + 1,
@@ -1280,19 +1278,17 @@ async def login_with_code(payload: AccessCodeLogin, request: Request):
                 "date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"),
             })
 
-    # افتح الجلسة
     request.session["customer_id"] = customer["id"]
     request.session["email"] = customer["email"]
     request.session["name"] = customer["name"]
     request.session["logged_in_at"] = _now_iso()
     request.session["_last_seen"] = _now_iso()
 
-    # سجّل الاستخدام
     _consume_access_code(record, customer["id"])
 
     return {
         "ok": True,
-        "redirect": "/dashboard",
+        "redirect": "/buy",
         "customer": {
             "id": customer["id"],
             "name": customer["name"],
@@ -1313,234 +1309,81 @@ async def logout(request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# Page routes (protected)
+# ⭐ الشاشة الوحيدة: /buy — كل التبويبات
 # ══════════════════════════════════════════════════════════════
-@app.get("/dashboard", response_class=HTMLResponse)
-async def dashboard(request: Request):
-    customer = await get_current_customer(request)
-    cid = customer["id"]
-    return templates.TemplateResponse(
-        request=request,
-        name="dashboard.html",
-        context={
-            "customer": customer,
-            "stats": await get_my_stats(cid),
-            "my_numbers": await get_my_numbers(cid),
-            "recent_sms": await get_my_recent_sms(cid, limit=5),
-            "orders_by_status": await get_my_orders_by_status(cid),
-            "top_services": await get_my_top_services(cid),
-        },
-    )
-
-
 @app.get("/buy", response_class=HTMLResponse)
 async def buy_page(
     request: Request,
+    tab: str = "buy",
     country: str | None = None,
     service: str | None = None,
+    number: str | None = None,
 ):
+    """
+    الشاشة الوحيدة للعميل. كل شيء يُدار هنا عبر تبويبات:
+      tab = buy | numbers | orders | inbox | wallet | transactions | support | profile
+    """
     customer = await get_current_customer(request)
     cid = customer["id"]
-
-    result = await build_live_catalog()
     stats = await get_my_stats(cid)
 
-    if not result["ok"]:
-        return templates.TemplateResponse(
-            request=request,
-            name="buy.html",
-            context={
-                "customer": customer,
-                "countries": [],
-                "preselected_country": country,
-                "preselected_service": service,
-                "stats": stats,
-                "prices_meta": {
-                    "ok": False, "source": "5sim",
-                    "error": result["error"], "error_code": result["error_code"],
-                    "fetched_at": None,
-                },
-                "popular_services": [],
-                "available_numbers": [],
-            },
-        )
+    valid_tabs = {"buy", "numbers", "orders", "inbox", "wallet",
+                  "transactions", "support", "profile"}
+    if tab not in valid_tabs:
+        tab = "buy"
 
-    countries = result["countries"]
+    # ── الكتالوج
+    result = await build_live_catalog()
+    countries = result["countries"] if result["ok"] else []
 
     popular: list[dict] = []
-    for c in countries:
-        for s in c["services"]:
-            if s["available"]:
-                popular.append({
-                    "country_slug": c["slug"],
-                    "country_code": c["code"],
-                    "country_name": c["name"],
-                    "country_flag": c["flag"],
-                    "service_id": s["id"],
-                    "service_name": s["name"],
-                    "service_icon": s["icon"],
-                    "price": s["cost"],
-                    "count": s["count"],
-                })
-    popular.sort(key=lambda x: x["price"])
-    popular = popular[:6]
-
     available: list[dict] = []
-    for c in countries:
-        for s in c["services"]:
-            if s["available"]:
-                available.append({
-                    "country_slug": c["slug"],
-                    "country_code": c["code"],
-                    "country_name": c["name"],
-                    "country_flag": c["flag"],
-                    "service_id": s["id"],
-                    "service_name": s["name"],
-                    "service_icon": s["icon"],
-                    "count": s["count"],
-                    "rate": s["rate"],
-                    "price": s["cost"],
-                })
-    available.sort(key=lambda x: x["price"])
-    available = available[:12]
+    if result["ok"]:
+        for c in countries:
+            for s in c["services"]:
+                if s["available"]:
+                    row = {
+                        "country_slug": c["slug"],
+                        "country_code": c["code"],
+                        "country_name": c["name"],
+                        "country_flag": c["flag"],
+                        "service_id": s["id"],
+                        "service_name": s["name"],
+                        "service_icon": s["icon"],
+                        "price": s["cost"],
+                        "count": s["count"],
+                        "rate": s["rate"],
+                    }
+                    available.append(row)
+                    popular.append(row)
+        popular.sort(key=lambda x: x["price"])
+        popular = popular[:6]
+        available.sort(key=lambda x: x["price"])
+        available = available[:24]
 
     stats["countries_count"] = len(countries)
     stats["services_count"] = sum(c["services_count"] for c in countries)
 
-    return templates.TemplateResponse(
-        request=request,
-        name="buy.html",
-        context={
-            "customer": customer,
-            "countries": countries,
-            "preselected_country": country,
-            "preselected_service": service,
-            "stats": stats,
-            "prices_meta": {
-                "ok": True, "source": "5sim",
-                "error": None, "error_code": None,
-                "fetched_at": result["fetched_at"],
-            },
-            "popular_services": popular,
-            "available_numbers": available,
-        },
-    )
+    # ── أرقامي
+    my_numbers = await get_my_numbers(cid)
 
-
-@app.get("/catalog", response_class=HTMLResponse)
-async def catalog_page(request: Request):
-    customer = await get_current_customer(request)
-    result = await build_live_catalog()
-    return templates.TemplateResponse(
-        request=request,
-        name="catalog.html",
-        context={
-            "customer": customer,
-            "countries": result["countries"],
-            "catalog_ok": result["ok"],
-            "catalog_error": result["error"],
-            "stats": await get_my_stats(customer["id"]),
-        },
-    )
-
-
-@app.get("/my-numbers", response_class=HTMLResponse)
-async def my_numbers_page(request: Request):
-    customer = await get_current_customer(request)
-    cid = customer["id"]
-    return templates.TemplateResponse(
-        request=request,
-        name="my_numbers.html",
-        context={
-            "customer": customer,
-            "stats": await get_my_stats(cid),
-            "my_numbers": await get_my_numbers(cid),
-        },
-    )
-
-
-@app.get("/orders", response_class=HTMLResponse)
-async def orders_page(request: Request):
-    customer = await get_current_customer(request)
-    cid = customer["id"]
+    # ── الطلبات
     orders = [o for o in STORE["orders"] if o["customer_id"] == cid]
     orders.sort(key=lambda o: o["created_at"], reverse=True)
-    return templates.TemplateResponse(
-        request=request,
-        name="orders.html",
-        context={
-            "customer": customer,
-            "orders": orders,
-            "stats": await get_my_stats(cid),
-        },
-    )
+    orders_by_status = await get_my_orders_by_status(cid)
 
-
-@app.get("/orders/{order_id}", response_class=HTMLResponse)
-async def order_detail_page(request: Request, order_id: int):
-    customer = await get_current_customer(request)
-    order = next(
-        (o for o in STORE["orders"]
-         if o["id"] == order_id and o["customer_id"] == customer["id"]),
-        None,
-    )
-    if not order:
-        raise HTTPException(status_code=404, detail="الطلب غير موجود")
-    return templates.TemplateResponse(
-        request=request,
-        name="orders.html",
-        context={
-            "customer": customer,
-            "orders": [order],
-            "stats": await get_my_stats(customer["id"]),
-        },
-    )
-
-
-@app.get("/inbox", response_class=HTMLResponse)
-async def inbox_page(request: Request, number: str | None = None):
-    customer = await get_current_customer(request)
-    cid = customer["id"]
+    # ── الوارد
     sms_list = await get_my_recent_sms(cid, limit=100)
     if number:
         sms_list = [s for s in sms_list if s["phone"] == number]
-    return templates.TemplateResponse(
-        request=request,
-        name="inbox.html",
-        context={
-            "customer": customer,
-            "my_numbers": await get_my_numbers(cid),
-            "recent_sms": sms_list,
-            "stats": await get_my_stats(cid),
-        },
-    )
 
-
-@app.get("/wallet", response_class=HTMLResponse)
-async def wallet_page(request: Request):
-    customer = await get_current_customer(request)
-    cid = customer["id"]
+    # ── المحفظة
     deposits = [d for d in STORE["deposits"] if d["customer_id"] == cid]
     deposits.sort(key=lambda d: d["created_at"], reverse=True)
-    return templates.TemplateResponse(
-        request=request,
-        name="wallet.html",
-        context={
-            "customer": customer,
-            "payment_methods": [],
-            "recent_deposits": deposits[:5],
-            "stats": await get_my_stats(cid),
-        },
-    )
 
-
-@app.get("/transactions", response_class=HTMLResponse)
-async def transactions_page(request: Request):
-    customer = await get_current_customer(request)
-    cid = customer["id"]
+    # ── المعاملات
     txs = [t for t in STORE["transactions"] if t["customer_id"] == cid]
     txs.sort(key=lambda t: t["created_at"], reverse=True)
-
     total_deposits = sum(t["amount"] for t in txs if t["type"] == "deposit")
     total_spent = sum(-t["amount"] for t in txs if t["type"] == "purchase")
     month_start = datetime.now(timezone.utc).date().replace(day=1)
@@ -1550,11 +1393,45 @@ async def transactions_page(request: Request):
         and datetime.fromisoformat(t["created_at"]).date() >= month_start
     )
 
+    # ── الدعم
+    tickets = [t for t in STORE["tickets"] if t["customer_id"] == cid]
+    tickets.sort(key=lambda t: t["created_at"], reverse=True)
+
     return templates.TemplateResponse(
         request=request,
-        name="transactions.html",
+        name="buy.html",
         context={
             "customer": customer,
+            "stats": stats,
+            "active_tab": tab,
+
+            # شراء
+            "countries": countries,
+            "preselected_country": country,
+            "preselected_service": service,
+            "popular_services": popular,
+            "available_numbers": available,
+            "prices_meta": {
+                "ok": result["ok"], "source": "5sim",
+                "error": result["error"], "error_code": result["error_code"],
+                "fetched_at": result["fetched_at"],
+            },
+
+            # أرقامي
+            "my_numbers": my_numbers,
+
+            # الطلبات
+            "orders": orders,
+            "orders_by_status": orders_by_status,
+
+            # الوارد
+            "recent_sms": sms_list,
+            "sms_filter_number": number,
+
+            # المحفظة
+            "recent_deposits": deposits,
+
+            # المعاملات
             "transactions": txs,
             "summary": {
                 "total_deposits": total_deposits,
@@ -1562,56 +1439,85 @@ async def transactions_page(request: Request):
                 "count": len(txs),
                 "this_month": this_month,
             },
-            "stats": await get_my_stats(cid),
-        },
-    )
 
-
-@app.get("/support", response_class=HTMLResponse)
-async def support_page(request: Request):
-    customer = await get_current_customer(request)
-    cid = customer["id"]
-    tickets = [t for t in STORE["tickets"] if t["customer_id"] == cid]
-    tickets.sort(key=lambda t: t["created_at"], reverse=True)
-    return templates.TemplateResponse(
-        request=request,
-        name="support.html",
-        context={
-            "customer": customer,
+            # الدعم
             "tickets": tickets,
             "faqs": [],
-            "stats": await get_my_stats(cid),
         },
     )
 
 
-@app.get("/profile", response_class=HTMLResponse)
-async def profile_page(request: Request):
-    customer = await get_current_customer(request)
-    result = await build_live_catalog()
-    return templates.TemplateResponse(
-        request=request,
-        name="profile.html",
-        context={
-            "customer": customer,
-            "stats": await get_my_stats(customer["id"]),
-            "countries": result["countries"],
-        },
-    )
+# ══════════════════════════════════════════════════════════════
+# Redirect old page routes → /buy?tab=...
+# ══════════════════════════════════════════════════════════════
+def _redirect_to_buy(tab: str):
+    return RedirectResponse(url=f"/buy?tab={tab}", status_code=303)
 
 
-@app.get("/security", response_class=HTMLResponse)
-async def security_page(request: Request):
-    customer = await get_current_customer(request)
-    return templates.TemplateResponse(
-        request=request,
-        name="security.html",
-        context={
-            "customer": customer,
-            "sessions": STORE["sessions"],
-            "stats": await get_my_stats(customer["id"]),
-        },
-    )
+@app.get("/dashboard")
+async def dashboard_redirect(request: Request):
+    await get_current_customer(request)
+    return _redirect_to_buy("buy")
+
+
+@app.get("/catalog")
+async def catalog_redirect(request: Request):
+    await get_current_customer(request)
+    return _redirect_to_buy("buy")
+
+
+@app.get("/my-numbers")
+async def my_numbers_redirect(request: Request):
+    await get_current_customer(request)
+    return _redirect_to_buy("numbers")
+
+
+@app.get("/orders")
+async def orders_redirect(request: Request):
+    await get_current_customer(request)
+    return _redirect_to_buy("orders")
+
+
+@app.get("/orders/{order_id}")
+async def order_detail_redirect(order_id: int, request: Request):
+    await get_current_customer(request)
+    return _redirect_to_buy("orders")
+
+
+@app.get("/inbox")
+async def inbox_redirect(request: Request):
+    await get_current_customer(request)
+    return _redirect_to_buy("inbox")
+
+
+@app.get("/wallet")
+async def wallet_redirect(request: Request):
+    await get_current_customer(request)
+    return _redirect_to_buy("wallet")
+
+
+@app.get("/transactions")
+async def transactions_redirect(request: Request):
+    await get_current_customer(request)
+    return _redirect_to_buy("transactions")
+
+
+@app.get("/support")
+async def support_redirect(request: Request):
+    await get_current_customer(request)
+    return _redirect_to_buy("support")
+
+
+@app.get("/profile")
+async def profile_redirect(request: Request):
+    await get_current_customer(request)
+    return _redirect_to_buy("profile")
+
+
+@app.get("/security")
+async def security_redirect(request: Request):
+    await get_current_customer(request)
+    return _redirect_to_buy("profile")
 
 
 @app.get("/admin-panel", response_class=HTMLResponse)
@@ -2317,7 +2223,6 @@ async def auth_guard(request: Request, call_next):
     if path == "/":
         return await call_next(request)
 
-    # Admin endpoints تُحمى بـ X-Admin-Secret وليس بالجلسة
     if path.startswith("/api/v1/admin/"):
         return await call_next(request)
 
