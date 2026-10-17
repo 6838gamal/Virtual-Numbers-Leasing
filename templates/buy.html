@@ -1,836 +1,971 @@
-{% extends "base.html" %}
-{% set active_page = "buy" %}
-{% block title %}شراء رقم جديد — جمال سولوشنز{% endblock %}
-{% block page_title %}شراء رقم جديد{% endblock %}
-{% block page_subtitle %}
-  {% if prices_meta.ok %}اختر الدولة والخدمة لبدء الشراء
-  {% else %}تعذّر تحميل البيانات من 5SIM{% endif %}
-{% endblock %}
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>شراء رقم — جمال سولوشنز</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --bg:#0b1220; --panel:#131c31; --panel-2:#1a2540;
+      --line:rgba(148,163,184,0.15); --accent:#38bdf8; --accent-2:#a78bfa;
+      --green:#34d399; --red:#f87171;
+    }
+    html, body {
+      margin:0; padding:0; background:#f8fafc; color:#1e293b;
+      font-family:'Segoe UI', system-ui, sans-serif; min-height:100vh;
+    }
 
-{% block content %}
+    /* ═════ HUD top ═════ */
+    .hud-top {
+      position:fixed; top:0; left:0; right:0; z-index:40;
+      background:linear-gradient(180deg, rgba(11,18,32,0.97), rgba(11,18,32,0.88));
+      backdrop-filter:blur(14px);
+      border-bottom:1px solid var(--line);
+      padding:8px 14px;
+    }
+    .hud-chip {
+      display:inline-flex; align-items:center; gap:5px;
+      padding:6px 10px; border-radius:10px;
+      background:rgba(19,28,49,0.85); border:1px solid var(--line);
+      font-size:11px; font-weight:700; color:#cbd5e1;
+      transition:all .15s; white-space:nowrap; cursor:pointer;
+    }
+    .hud-chip:hover { border-color:var(--accent); background:rgba(56,189,248,0.08); }
+    .hud-chip .val { color:var(--accent); font-variant-numeric:tabular-nums; }
+    .hud-chip .ico {
+      width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center;
+      border-radius:5px; background:rgba(56,189,248,0.15); font-size:12px;
+    }
 
-{# ══ تحذير الرصيد ═════════════════════════════════════════════ #}
-{% if prices_meta.ok and customer.balance < 0.5 %}
-<div class="mb-6 bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-200 rounded-2xl p-5">
-  <div class="flex items-start gap-3 flex-wrap sm:flex-nowrap">
-    <div class="w-12 h-12 bg-amber-500 rounded-xl flex items-center justify-center text-2xl text-white shadow-md flex-shrink-0">
-      🎟️
-    </div>
-    <div class="flex-1 min-w-0">
-      <h3 class="font-bold text-amber-900 text-sm mb-1">ليس لديك رصيد كافٍ بعد</h3>
-      <p class="text-xs text-amber-700 leading-relaxed">
-        لشراء رقم، تحتاج أولاً إلى شحن رصيدك. يمكنك استخدام <b>كود الشحن</b> الذي حصلت عليه من الموزع، أو طلب إيداع يدوي.
-      </p>
-    </div>
-    <a href="/wallet"
-       class="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-5 py-2.5 rounded-lg transition-colors whitespace-nowrap flex items-center gap-1.5 shadow-sm">
-      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-      </svg>
-      شحن الرصيد
-    </a>
-  </div>
-</div>
-{% endif %}
+    /* Main */
+    .main-area {
+      padding-top:68px; padding-bottom:24px;
+      min-height:100vh;
+    }
 
-{% if not prices_meta.ok %}
-<div class="max-w-2xl mx-auto mt-8">
-  <div class="bg-red-50 border-2 border-red-200 rounded-2xl p-8 text-center">
-    <div class="text-5xl mb-4">⚠️</div>
-    <h2 class="text-xl font-bold text-red-800 mb-3">تعذّر تحميل البيانات من 5SIM</h2>
-    <p class="text-sm text-red-700 mb-2">{{ prices_meta.error or 'خطأ غير معروف' }}</p>
-    {% if prices_meta.error_code %}
-      <p class="text-xs text-red-500 mb-4" dir="ltr">HTTP {{ prices_meta.error_code }}</p>
-    {% endif %}
-    <div class="bg-white rounded-lg p-4 mt-4 text-right text-xs text-slate-600 space-y-1">
-      <p class="font-bold text-slate-800 mb-2">ما الذي يمكن فعله؟</p>
-      <p>• تأكد من ضبط <code class="bg-slate-100 px-1 rounded" dir="ltr">SIM5_API_KEY</code> في متغيرات البيئة.</p>
-      <p>• تحقق من أن المفتاح صالح على <a href="https://5sim.net" target="_blank" class="text-blue-600 underline">5sim.net</a>.</p>
-      <p>• تحقق من أن الخادم يستطيع الوصول إلى <code class="bg-slate-100 px-1 rounded" dir="ltr">5sim.net</code>.</p>
-      <p>• إذا كنت متأكدًا من الإعداد، أعد المحاولة.</p>
-    </div>
-    <button onclick="refreshPrices(this)"
-            class="mt-6 bg-red-600 hover:bg-red-700 text-white font-bold px-6 py-2.5 rounded-lg text-sm transition-colors">
-      🔄 إعادة المحاولة
-    </button>
-    <div class="mt-4">
-      <a href="/api/v1/system/sim5-profile" target="_blank"
-         class="text-xs text-slate-500 hover:text-slate-700 underline">
-        فحص حالة 5SIM مباشرة
+    /* Modals */
+    .modal-overlay {
+      position:fixed; inset:0; background:rgba(15,23,42,0.7);
+      backdrop-filter:blur(6px); z-index:100;
+      display:none; align-items:center; justify-content:center;
+      padding:16px; animation:fadeIn .2s;
+    }
+    .modal-overlay.open { display:flex; }
+    @keyframes fadeIn { from{opacity:0;} to{opacity:1;} }
+    .modal-box {
+      background:#fff; border:1px solid #e2e8f0;
+      border-radius:20px; width:100%; max-width:560px;
+      max-height:88vh; overflow-y:auto;
+      animation:modalIn .25s cubic-bezier(.2,.9,.3,1.1);
+    }
+    @keyframes modalIn {
+      from { transform:translateY(20px) scale(0.97); opacity:0; }
+      to   { transform:none; opacity:1; }
+    }
+
+    .glass {
+      width:100%; background:#f8fafc;
+      border:1px solid #e2e8f0; border-radius:12px;
+      padding:10px 12px; color:#1e293b; font-size:13px;
+      font-family:inherit; transition:all .15s;
+    }
+    .glass:focus { outline:none; border-color:#38bdf8; background:#fff; box-shadow:0 0 0 3px rgba(56,189,248,0.15); }
+
+    .pill {
+      display:inline-flex; align-items:center; gap:4px;
+      padding:3px 8px; border-radius:8px;
+      font-size:10px; font-weight:700;
+    }
+    .pill.green { background:#d1fae5; color:#047857; }
+    .pill.red   { background:#fee2e2; color:#b91c1c; }
+    .pill.accent{ background:#dbeafe; color:#1e40af; }
+
+    .hidden { display:none !important; }
+  </style>
+</head>
+<body>
+
+  <!-- ═══════════════ HUD TOP ═══════════════ -->
+  <div class="hud-top">
+    <div class="max-w-5xl mx-auto flex items-center gap-2 flex-wrap">
+
+      <div class="font-black text-sm tracking-tight bg-gradient-to-l from-sky-400 to-violet-400 bg-clip-text text-transparent mr-1">
+        JAMAL
+      </div>
+
+      <button onclick="openModal('walletModal')" class="hud-chip" title="المحفظة">
+        <span class="ico">💳</span>
+        <span class="hidden sm:inline">الرصيد</span>
+        <span class="val" id="hudBalance">${{ '%.2f' % customer.balance }}</span>
+      </button>
+
+      <button onclick="openModal('numbersModal')" class="hud-chip" title="أرقامي">
+        <span class="ico">📱</span>
+        <span class="val" id="hudNumbers">{{ stats.active_numbers }}</span>
+      </button>
+
+      <button onclick="openModal('inboxModal')" class="hud-chip relative" title="الرسائل">
+        <span class="ico">📨</span>
+        <span class="val" id="hudSms">{{ stats.my_sms }}</span>
+        {% if stats.unread_sms %}
+        <span class="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center border-2 border-slate-900">{{ stats.unread_sms }}</span>
+        {% endif %}
+      </button>
+
+      <div class="flex-1"></div>
+
+      <button onclick="openModal('txModal')" class="hud-chip" title="السجل">
+        <span class="ico">📊</span>
+        <span class="hidden sm:inline">السجل</span>
+      </button>
+
+      <button onclick="openModal('supportModal')" class="hud-chip" title="الدعم">
+        <span class="ico">🎧</span>
+      </button>
+
+      <button onclick="openModal('profileModal')" class="hud-chip" title="الحساب">
+        <span class="w-6 h-6 rounded-full bg-gradient-to-br from-sky-500 to-violet-500 text-white flex items-center justify-center font-bold text-[10px]">{{ customer.initials }}</span>
+      </button>
+
+      <a href="/logout" class="hud-chip !bg-red-500/10 !border-red-500/30 text-red-400 hover:!bg-red-500/20" title="خروج">
+        <span class="ico !bg-red-500/20">⏻</span>
       </a>
     </div>
   </div>
-</div>
-{% else %}
 
-<div class="mb-4 flex items-center justify-between gap-3 flex-wrap">
-  <div class="flex items-center gap-2 flex-wrap">
-    <span class="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold px-2.5 py-1 rounded-full">
-      <span class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
-      أسعار حية من 5SIM
-    </span>
-    {% if prices_meta.fetched_at %}
-      <span class="text-[10px] text-slate-400" dir="ltr">{{ prices_meta.fetched_at }}</span>
-    {% endif %}
-  </div>
-  <button type="button" onclick="refreshPrices(this)"
-          class="text-[11px] font-bold text-blue-600 hover:text-blue-700 border border-blue-200 hover:border-blue-400 bg-white px-3 py-1 rounded-lg transition-colors">
-    🔄 تحديث الأسعار
-  </button>
-</div>
+  <!-- ═══════════════ STAGE — محتوى الشراء (هو الشاشة الرئيسية) ═══════════════ -->
+  <main class="main-area">
+    <div class="max-w-5xl mx-auto px-3 md:px-5">
 
-{% if popular_services %}
-<div class="mb-6" id="popular-section">
-  <div class="flex items-center justify-between mb-3">
-    <div class="flex items-center gap-2">
-      <div class="w-1.5 h-5 bg-gradient-to-b from-orange-400 to-red-500 rounded-full"></div>
-      <h3 class="text-base font-bold text-slate-800">الأكثر طلباً 🔥</h3>
-    </div>
-    <a href="/catalog" class="text-xs text-blue-600 hover:text-blue-700 font-bold">عرض الكل ←</a>
-  </div>
+      {# ══ تحذير الرصيد ══ #}
+      {% if prices_meta.ok and customer.balance < 0.5 %}
+      <div class="mb-6 bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-200 rounded-2xl p-5">
+        <div class="flex items-start gap-3 flex-wrap sm:nowrap">
+          <div class="w-12 h-12 bg-amber-500 rounded-xl flex items-center justify-center text-2xl text-white shadow-md flex-shrink-0">🎟️</div>
+          <div class="flex-1 min-w-0">
+            <h3 class="font-bold text-amber-900 text-sm mb-1">ليس لديك رصيد كافٍ بعد</h3>
+            <p class="text-xs text-amber-700 leading-relaxed">
+              اشحن رصيدك باستخدام كود الشحن أو طلب إيداع يدوي.
+            </p>
+          </div>
+          <button onclick="openModal('walletModal')"
+                  class="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-5 py-2.5 rounded-lg transition-colors whitespace-nowrap flex items-center gap-1.5 shadow-sm">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            شحن الرصيد
+          </button>
+        </div>
+      </div>
+      {% endif %}
 
-  <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3" id="popular-grid">
-    {% for p in popular_services %}
-    <button type="button"
-            data-popular-item
-            data-service-id="{{ p.service_id }}"
-            onclick="quickBuy('{{ p.country_slug }}', '{{ p.service_id }}')"
-            class="group relative bg-white rounded-2xl shadow-sm border border-slate-100 hover:border-blue-400 hover:shadow-md transition-all p-3 text-right overflow-hidden {% if loop.index > 4 %}hidden{% endif %}">
-      <span class="absolute top-2 left-2 bg-gradient-to-r from-orange-500 to-red-500 text-white text-[9px] font-bold px-2 py-0.5 rounded-full">
-        {{ p.count }}+
-      </span>
-      <div class="flex flex-col items-center gap-1.5 pt-3">
-        <div class="w-10 h-10 flex items-center justify-center group-hover:scale-110 transition-transform"
-             data-service-icon="{{ p.service_id }}"
-             data-service-name="{{ p.service_name }}"></div>
-        <div class="text-center">
-          <div class="text-xs font-bold text-slate-700 truncate">{{ p.service_name }}</div>
-          <div class="text-[10px] text-slate-400 flex items-center justify-center gap-1 mt-0.5">
-            <span>{{ p.country_flag }}</span>
-            <span>{{ p.country_name }}</span>
+      {% if not prices_meta.ok %}
+      <div class="max-w-2xl mx-auto mt-8">
+        <div class="bg-red-50 border-2 border-red-200 rounded-2xl p-8 text-center">
+          <div class="text-5xl mb-4">⚠️</div>
+          <h2 class="text-xl font-bold text-red-800 mb-3">تعذّر تحميل البيانات من 5SIM</h2>
+          <p class="text-sm text-red-700 mb-2">{{ prices_meta.error or 'خطأ غير معروف' }}</p>
+          {% if prices_meta.error_code %}
+            <p class="text-xs text-red-500 mb-4" dir="ltr">HTTP {{ prices_meta.error_code }}</p>
+          {% endif %}
+          <button onclick="refreshPrices(this)"
+                  class="mt-6 bg-red-600 hover:bg-red-700 text-white font-bold px-6 py-2.5 rounded-lg text-sm transition-colors">
+            🔄 إعادة المحاولة
+          </button>
+        </div>
+      </div>
+      {% else %}
+
+      <div class="mb-4 flex items-center justify-between gap-3 flex-wrap">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold px-2.5 py-1 rounded-full">
+            <span class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+            أسعار حية من 5SIM
+          </span>
+        </div>
+        <button type="button" onclick="refreshPrices(this)"
+                class="text-[11px] font-bold text-blue-600 hover:text-blue-700 border border-blue-200 hover:border-blue-400 bg-white px-3 py-1 rounded-lg transition-colors">
+          🔄 تحديث الأسعار
+        </button>
+      </div>
+
+      {% if popular_services %}
+      <div class="mb-6" id="popular-section">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <div class="w-1.5 h-5 bg-gradient-to-b from-orange-400 to-red-500 rounded-full"></div>
+            <h3 class="text-base font-bold text-slate-800">الأكثر طلباً 🔥</h3>
           </div>
         </div>
-        <div class="mt-1 bg-blue-50 group-hover:bg-blue-100 rounded-lg px-2 py-1 transition-colors">
-          <span class="text-xs font-bold text-blue-600">${{ "%.2f"|format(p.price) }}</span>
-        </div>
-      </div>
-    </button>
-    {% endfor %}
-  </div>
 
-  {% if popular_services|length > 4 %}
-  <div class="text-center mt-4">
-    <button type="button"
-            onclick="togglePopular(this)"
-            data-expanded="false"
-            data-preview="4"
-            class="text-xs font-bold text-blue-600 hover:text-blue-700 border border-blue-200 hover:border-blue-400 bg-white px-4 py-2 rounded-lg transition-colors inline-flex items-center gap-1">
-      <span class="label">عرض المزيد ({{ popular_services|length - 4 }})</span>
-      <svg class="w-3.5 h-3.5 transition-transform duration-200 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-      </svg>
-    </button>
-  </div>
-  {% endif %}
-</div>
-{% endif %}
-
-{% if available_numbers %}
-<div class="mb-6" id="numbers-section">
-  <div class="flex items-center justify-between mb-3">
-    <div class="flex items-center gap-2">
-      <div class="w-1.5 h-5 bg-gradient-to-b from-emerald-400 to-teal-500 rounded-full"></div>
-      <h3 class="text-base font-bold text-slate-800">الأرقام المتاحة الآن</h3>
-      <span class="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
-        {{ available_numbers|length }} عرض
-      </span>
-    </div>
-    <div class="flex items-center gap-1 text-[10px] text-slate-400">
-      <span class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
-      تحديث مباشر من 5SIM
-    </div>
-  </div>
-
-  <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-    <div class="overflow-x-auto">
-      <table class="w-full text-right">
-        <thead class="bg-slate-50 border-b border-slate-100">
-          <tr class="text-[11px] text-slate-500 font-bold">
-            <th class="px-4 py-3">الدولة</th>
-            <th class="px-4 py-3">الخدمة</th>
-            <th class="px-4 py-3">الكمية المتاحة</th>
-            <th class="px-4 py-3">نسبة التسليم</th>
-            <th class="px-4 py-3">السعر</th>
-            <th class="px-4 py-3"></th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-slate-50">
-          {% for n in available_numbers %}
-          <tr class="hover:bg-slate-50/60 transition-colors {% if loop.index > 4 %}hidden{% endif %}"
-              data-number-item>
-            <td class="px-4 py-3">
-              <div class="flex items-center gap-2">
-                <span class="text-xl">{{ n.country_flag }}</span>
-                <span class="text-xs font-bold text-slate-700">{{ n.country_name }}</span>
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3" id="popular-grid">
+          {% for p in popular_services %}
+          <button type="button"
+                  data-popular-item
+                  data-service-id="{{ p.service_id }}"
+                  onclick="quickBuy('{{ p.country_slug }}', '{{ p.service_id }}')"
+                  class="group relative bg-white rounded-2xl shadow-sm border border-slate-100 hover:border-blue-400 hover:shadow-md transition-all p-3 text-right overflow-hidden {% if loop.index > 4 %}hidden{% endif %}">
+            <span class="absolute top-2 left-2 bg-gradient-to-r from-orange-500 to-red-500 text-white text-[9px] font-bold px-2 py-0.5 rounded-full">
+              {{ p.count }}+
+            </span>
+            <div class="flex flex-col items-center gap-1.5 pt-3">
+              <div class="w-10 h-10 flex items-center justify-center group-hover:scale-110 transition-transform"
+                   data-service-icon="{{ p.service_id }}"
+                   data-service-name="{{ p.service_name }}"></div>
+              <div class="text-center">
+                <div class="text-xs font-bold text-slate-700 truncate">{{ p.service_name }}</div>
+                <div class="text-[10px] text-slate-400 flex items-center justify-center gap-1 mt-0.5">
+                  <span>{{ p.country_flag }}</span>
+                  <span>{{ p.country_name }}</span>
+                </div>
               </div>
-            </td>
-            <td class="px-4 py-3">
-              <div class="flex items-center gap-1.5">
-                <span class="inline-flex items-center justify-center w-6 h-6"
-                      data-service-icon="{{ n.service_id }}"
-                      data-service-name="{{ n.service_name }}"></span>
-                <span class="text-xs text-slate-600">{{ n.service_name }}</span>
+              <div class="mt-1 bg-blue-50 group-hover:bg-blue-100 rounded-lg px-2 py-1 transition-colors">
+                <span class="text-xs font-bold text-blue-600">${{ "%.2f"|format(p.price) }}</span>
               </div>
-            </td>
-            <td class="px-4 py-3">
-              <span class="text-xs font-bold text-emerald-600">{{ n.count }}</span>
-              <span class="text-[10px] text-slate-400">رقم</span>
-            </td>
-            <td class="px-4 py-3">
-              {% if n.rate %}
-                <span class="text-[11px] text-emerald-600 font-bold">{{ "%.0f"|format(n.rate) }}%</span>
-              {% else %}
-                <span class="text-[10px] text-slate-300">—</span>
-              {% endif %}
-            </td>
-            <td class="px-4 py-3">
-              <span class="text-sm font-bold text-blue-600">${{ "%.2f"|format(n.price) }}</span>
-            </td>
-            <td class="px-4 py-3">
-              <button onclick="quickBuy('{{ n.country_slug }}', '{{ n.service_id }}')"
-                      class="text-[11px] font-bold text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg transition-colors">
-                شراء
-              </button>
-            </td>
-          </tr>
+            </div>
+          </button>
           {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
+        </div>
 
-  {% if available_numbers|length > 4 %}
-  <div class="text-center mt-4">
-    <button type="button"
-            onclick="toggleNumbers(this)"
-            data-expanded="false"
-            data-preview="4"
-            class="text-xs font-bold text-blue-600 hover:text-blue-700 border border-blue-200 hover:border-blue-400 bg-white px-4 py-2 rounded-lg transition-colors inline-flex items-center gap-1">
-      <span class="label">عرض المزيد ({{ available_numbers|length - 4 }})</span>
-      <svg class="w-3.5 h-3.5 transition-transform duration-200 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-      </svg>
-    </button>
-  </div>
-  {% endif %}
-</div>
-{% endif %}
-
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-  <div class="lg:col-span-2 space-y-4">
-
-    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-      <div class="flex items-center gap-3 mb-4">
-        <div class="w-7 h-7 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center">1</div>
-        <h3 class="text-base font-bold text-slate-800">اختر الدولة</h3>
-        <span class="text-[10px] text-slate-400">{{ countries|length }} دولة متاحة من 5SIM</span>
+        {% if popular_services|length > 4 %}
+        <div class="text-center mt-4">
+          <button type="button"
+                  onclick="togglePopular(this)"
+                  data-expanded="false"
+                  data-preview="4"
+                  class="text-xs font-bold text-blue-600 hover:text-blue-700 border border-blue-200 hover:border-blue-400 bg-white px-4 py-2 rounded-lg transition-colors inline-flex items-center gap-1">
+            <span class="label">عرض المزيد ({{ popular_services|length - 4 }})</span>
+            <svg class="w-3.5 h-3.5 transition-transform duration-200 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </button>
+        </div>
+        {% endif %}
       </div>
+      {% endif %}
 
-      <div class="grid grid-cols-2 sm:grid-cols-3 gap-3" id="country-grid">
-        {% for c in countries %}
-        <button type="button"
-                onclick="selectCountry('{{ c.slug }}', this)"
-                data-slug="{{ c.slug }}"
-                data-code="{{ c.code }}"
-                class="country-btn flex items-center gap-2 p-3 rounded-xl border-2 border-slate-100 hover:border-blue-400 hover:bg-blue-50 transition-all text-right">
-          <span class="text-2xl">{{ c.flag }}</span>
-          <div class="flex-1 min-w-0">
-            <div class="text-sm font-bold text-slate-700 truncate">{{ c.name }}</div>
-            <div class="text-[10px] text-slate-400">
-              {% if c.min_price %}${{ "%.2f"|format(c.min_price) }}{% else %}—{% endif %}
-              · {{ c.services_count }} خدمة
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="lg:col-span-2 space-y-4">
+
+          <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-7 h-7 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center">1</div>
+              <h3 class="text-base font-bold text-slate-800">اختر الدولة</h3>
+              <span class="text-[10px] text-slate-400">{{ countries|length }} دولة متاحة من 5SIM</span>
+            </div>
+
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3" id="country-grid">
+              {% for c in countries %}
+              <button type="button"
+                      onclick="selectCountry('{{ c.slug }}', this)"
+                      data-slug="{{ c.slug }}"
+                      data-code="{{ c.code }}"
+                      class="country-btn flex items-center gap-2 p-3 rounded-xl border-2 border-slate-100 hover:border-blue-400 hover:bg-blue-50 transition-all text-right">
+                <span class="text-2xl">{{ c.flag }}</span>
+                <div class="flex-1 min-w-0">
+                  <div class="text-sm font-bold text-slate-700 truncate">{{ c.name }}</div>
+                  <div class="text-[10px] text-slate-400">
+                    {% if c.min_price %}${{ "%.2f"|format(c.min_price) }}{% else %}—{% endif %}
+                    · {{ c.services_count }} خدمة
+                  </div>
+                </div>
+              </button>
+              {% endfor %}
             </div>
           </div>
-        </button>
-        {% endfor %}
-      </div>
-    </div>
 
-    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 opacity-50 pointer-events-none" id="service-step">
-      <div class="flex items-center gap-3 mb-4">
-        <div class="w-7 h-7 rounded-full bg-slate-300 text-white text-xs font-bold flex items-center justify-center">2</div>
-        <h3 class="text-base font-bold text-slate-800">اختر الخدمة</h3>
-      </div>
-      <div class="grid grid-cols-2 sm:grid-cols-3 gap-3" id="service-grid"></div>
-      <div id="service-empty" class="hidden text-center text-xs text-slate-400 py-6">
-        لا توجد خدمات متاحة لهذه الدولة حالياً
-      </div>
-      <div id="service-more-wrap" class="hidden text-center mt-4"></div>
-    </div>
+          <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 opacity-50 pointer-events-none" id="service-step">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-7 h-7 rounded-full bg-slate-300 text-white text-xs font-bold flex items-center justify-center">2</div>
+              <h3 class="text-base font-bold text-slate-800">اختر الخدمة</h3>
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3" id="service-grid"></div>
+            <div id="service-empty" class="hidden text-center text-xs text-slate-400 py-6">
+              لا توجد خدمات متاحة لهذه الدولة حالياً
+            </div>
+            <div id="service-more-wrap" class="hidden text-center mt-4"></div>
+          </div>
 
-    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 opacity-50 pointer-events-none" id="confirm-step">
-      <div class="flex items-center gap-3 mb-4">
-        <div class="w-7 h-7 rounded-full bg-slate-300 text-white text-xs font-bold flex items-center justify-center">3</div>
-        <h3 class="text-base font-bold text-slate-800">تأكيد الشراء</h3>
-      </div>
+          <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 opacity-50 pointer-events-none" id="confirm-step">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-7 h-7 rounded-full bg-slate-300 text-white text-xs font-bold flex items-center justify-center">3</div>
+              <h3 class="text-base font-bold text-slate-800">تأكيد الشراء</h3>
+            </div>
 
-      <div class="bg-slate-50 rounded-xl p-4 mb-4">
-        <div class="flex items-center justify-between py-2 border-b border-slate-200">
-          <span class="text-sm text-slate-500">الدولة</span>
-          <span id="confirm-country" class="text-sm font-bold text-slate-700">—</span>
-        </div>
-        <div class="flex items-center justify-between py-2 border-b border-slate-200">
-          <span class="text-sm text-slate-500">الخدمة</span>
-          <span id="confirm-service" class="text-sm font-bold text-slate-700">—</span>
-        </div>
-        <div class="flex items-center justify-between py-2 border-b border-slate-200">
-          <span class="text-sm text-slate-500">الكمية المتاحة</span>
-          <span id="confirm-count" class="text-sm font-bold text-slate-700">—</span>
-        </div>
-        <div class="flex items-center justify-between py-2 border-b border-slate-200">
-          <span class="text-sm text-slate-500">رصيدك</span>
-          <span id="confirm-balance" class="text-sm font-bold text-emerald-600">${{ "%.2f"|format(customer.balance) }}</span>
-        </div>
-        <div class="flex items-center justify-between pt-3">
-          <span class="text-sm font-bold text-slate-700">التكلفة</span>
-          <span id="confirm-price" class="text-lg font-bold text-blue-600">$0.00</span>
-        </div>
-      </div>
+            <div class="bg-slate-50 rounded-xl p-4 mb-4">
+              <div class="flex items-center justify-between py-2 border-b border-slate-200">
+                <span class="text-sm text-slate-500">الدولة</span>
+                <span id="confirm-country" class="text-sm font-bold text-slate-700">—</span>
+              </div>
+              <div class="flex items-center justify-between py-2 border-b border-slate-200">
+                <span class="text-sm text-slate-500">الخدمة</span>
+                <span id="confirm-service" class="text-sm font-bold text-slate-700">—</span>
+              </div>
+              <div class="flex items-center justify-between py-2 border-b border-slate-200">
+                <span class="text-sm text-slate-500">الكمية المتاحة</span>
+                <span id="confirm-count" class="text-sm font-bold text-slate-700">—</span>
+              </div>
+              <div class="flex items-center justify-between py-2 border-b border-slate-200">
+                <span class="text-sm text-slate-500">رصيدك</span>
+                <span id="confirm-balance" class="text-sm font-bold text-emerald-600">${{ "%.2f"|format(customer.balance) }}</span>
+              </div>
+              <div class="flex items-center justify-between pt-3">
+                <span class="text-sm font-bold text-slate-700">التكلفة</span>
+                <span id="confirm-price" class="text-lg font-bold text-blue-600">$0.00</span>
+              </div>
+            </div>
 
-      {# تنبيه الرصيد غير الكافي #}
-      <div id="insufficient-warning" class="hidden mb-3 bg-red-50 border border-red-200 rounded-xl p-3">
-        <div class="flex items-start gap-2">
-          <span class="text-red-600 text-lg flex-shrink-0">⚠️</span>
-          <div class="flex-1 text-xs text-red-800">
-            <p class="font-bold mb-1">رصيدك غير كافٍ</p>
-            <p id="insufficient-text">—</p>
-            <a href="/wallet" class="inline-flex items-center gap-1 mt-2 bg-red-600 hover:bg-red-700 text-white font-bold px-3 py-1.5 rounded-lg transition-colors">
-              🎟️ شحن الرصيد
-            </a>
+            <div id="insufficient-warning" class="hidden mb-3 bg-red-50 border border-red-200 rounded-xl p-3">
+              <div class="flex items-start gap-2">
+                <span class="text-red-600 text-lg flex-shrink-0">⚠️</span>
+                <div class="flex-1 text-xs text-red-800">
+                  <p class="font-bold mb-1">رصيدك غير كافٍ</p>
+                  <p id="insufficient-text">—</p>
+                  <button onclick="openModal('walletModal')"
+                          class="inline-flex items-center gap-1 mt-2 bg-red-600 hover:bg-red-700 text-white font-bold px-3 py-1.5 rounded-lg transition-colors">
+                    🎟️ شحن الرصيد
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <button onclick="confirmPurchase()" id="buy-btn"
+                    class="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl transition-colors flex items-center justify-center gap-2">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>
+              </svg>
+              شراء الآن
+            </button>
+            <p class="text-[10px] text-slate-400 text-center mt-2">
+              سيتم خصم المبلغ من رصيدك فور تأكيد الشراء.
+            </p>
+          </div>
+        </div>
+
+        <div class="space-y-4">
+          <div class="bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl p-5 text-white shadow-lg">
+            <div class="text-xs text-blue-100 font-medium mb-1">رصيدك الحالي</div>
+            <div class="text-3xl font-bold">${{ "%.2f"|format(customer.balance) }}</div>
+            <button onclick="openModal('walletModal')"
+                    class="mt-3 inline-flex items-center gap-1 {% if customer.balance < 0.5 %}bg-amber-500 hover:bg-amber-600{% else %}bg-white/20 hover:bg-white/30 backdrop-blur{% endif %} text-xs font-bold px-3 py-1.5 rounded-lg transition-colors w-full justify-center">
+              {% if customer.balance < 0.5 %}🎟️ إدخال كود شحن{% else %}+ إيداع / شحن{% endif %}
+            </button>
+          </div>
+
+          <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+            <h4 class="text-sm font-bold text-slate-800 mb-3">إحصائيات سريعة</h4>
+            <div class="grid grid-cols-2 gap-3">
+              <div class="bg-blue-50 rounded-xl p-3 text-center">
+                <div class="text-lg font-bold text-blue-600">{{ stats.total_orders }}</div>
+                <div class="text-[10px] text-slate-500">إجمالي الطلبات</div>
+              </div>
+              <div class="bg-emerald-50 rounded-xl p-3 text-center">
+                <div class="text-lg font-bold text-emerald-600">{{ stats.active_numbers }}</div>
+                <div class="text-[10px] text-slate-500">أرقام نشطة</div>
+              </div>
+              <div class="bg-purple-50 rounded-xl p-3 text-center">
+                <div class="text-lg font-bold text-purple-600">{{ stats.countries_count or 0 }}</div>
+                <div class="text-[10px] text-slate-500">دولة</div>
+              </div>
+              <div class="bg-amber-50 rounded-xl p-3 text-center">
+                <div class="text-lg font-bold text-amber-600">{{ stats.services_count or 0 }}</div>
+                <div class="text-[10px] text-slate-500">خدمة</div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      <button onclick="confirmPurchase()" id="buy-btn"
-              class="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl transition-colors flex items-center justify-center gap-2">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>
-        </svg>
-        شراء الآن
-      </button>
-      <p class="text-[10px] text-slate-400 text-center mt-2">
-        سيتم خصم المبلغ من رصيدك فور تأكيد الشراء.
-      </p>
-    </div>
-  </div>
-
-  <div class="space-y-4">
-    <div class="bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl p-5 text-white shadow-lg">
-      <div class="text-xs text-blue-100 font-medium mb-1">رصيدك الحالي</div>
-      <div class="text-3xl font-bold">${{ "%.2f"|format(customer.balance) }}</div>
-
-      {% if customer.balance < 0.5 %}
-        <a href="/wallet" class="mt-3 inline-flex items-center gap-1 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors w-full justify-center">
-          🎟️ إدخال كود شحن
-        </a>
-      {% else %}
-        <a href="/wallet" class="mt-3 inline-flex items-center gap-1 bg-white/20 hover:bg-white/30 backdrop-blur text-xs font-bold px-3 py-1.5 rounded-lg transition-colors w-full justify-center">
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-          </svg>
-          إيداع / شحن
-        </a>
+      <script id="countries-data" type="application/json">{{ countries | tojson }}</script>
       {% endif %}
     </div>
+  </main>
 
-    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
-      <h4 class="text-sm font-bold text-slate-800 mb-3">إحصائيات سريعة</h4>
-      <div class="grid grid-cols-2 gap-3">
-        <div class="bg-blue-50 rounded-xl p-3 text-center">
-          <div class="text-lg font-bold text-blue-600">{{ stats.total_orders }}</div>
-          <div class="text-[10px] text-slate-500">إجمالي الطلبات</div>
-        </div>
-        <div class="bg-emerald-50 rounded-xl p-3 text-center">
-          <div class="text-lg font-bold text-emerald-600">{{ stats.active_orders }}</div>
-          <div class="text-[10px] text-slate-500">طلبات نشطة</div>
-        </div>
-        <div class="bg-purple-50 rounded-xl p-3 text-center">
-          <div class="text-lg font-bold text-purple-600">{{ stats.countries_count or 0 }}</div>
-          <div class="text-[10px] text-slate-500">دولة من 5SIM</div>
-        </div>
-        <div class="bg-amber-50 rounded-xl p-3 text-center">
-          <div class="text-lg font-bold text-amber-600">{{ stats.services_count or 0 }}</div>
-          <div class="text-[10px] text-slate-500">خدمة متاحة</div>
-        </div>
+  <!-- ═══════════════ MODALS ═══════════════ -->
+
+  <!-- Wallet -->
+  <div id="walletModal" class="modal-overlay" onclick="if(event.target===this) closeModal('walletModal')">
+    <div class="modal-box p-5">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-black text-base">💳 المحفظة</h3>
+        <button onclick="closeModal('walletModal')" class="text-slate-400 hover:text-slate-600 text-xl">✕</button>
       </div>
-    </div>
 
-    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
-      <h4 class="text-sm font-bold text-slate-800 mb-3">كيف يعمل؟</h4>
-      <ol class="space-y-3 text-xs text-slate-600">
-        <li class="flex gap-2">
-          <span class="w-5 h-5 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-[10px] font-bold flex-shrink-0">1</span>
-          <span><b>أدخل كود الشحن</b> في المحفظة لشحن رصيدك</span>
-        </li>
-        <li class="flex gap-2">
-          <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-bold flex-shrink-0">2</span>
-          اختر الدولة والخدمة المطلوبة
-        </li>
-        <li class="flex gap-2">
-          <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-bold flex-shrink-0">3</span>
-          أكّد الشراء — يُخصم من رصيدك
-        </li>
-        <li class="flex gap-2">
-          <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-bold flex-shrink-0">4</span>
-          ستظهر الرسالة في صفحة الطلب مباشرة
-        </li>
-      </ol>
-    </div>
+      <div class="bg-slate-50 rounded-xl p-4 mb-4 text-center">
+        <div class="text-xs text-slate-500 mb-1">رصيدك الحالي</div>
+        <div class="text-3xl font-black text-sky-600" id="modalBalance">${{ '%.2f' % customer.balance }}</div>
+      </div>
 
-    <div class="bg-amber-50 border border-amber-200 rounded-2xl p-4">
-      <div class="flex items-start gap-2">
-        <span class="text-lg">💡</span>
-        <div class="text-xs text-amber-800">
-          <p class="font-bold mb-1">تحتاج مساعدة؟</p>
-          <a href="/support" class="underline">تواصل مع الدعم الفني</a>
+      <div class="space-y-3">
+        <div class="bg-slate-50 rounded-xl p-3">
+          <div class="text-xs font-bold mb-2">🎟️ تفعيل كود شحن</div>
+          <form id="voucherForm" class="flex gap-2">
+            <input type="text" id="voucherCode" placeholder="JS-XXX-XXXX-XXXX" class="glass uppercase flex-1">
+            <button class="bg-sky-500 hover:bg-sky-600 text-white font-bold text-sm px-4 rounded-xl">تفعيل</button>
+          </form>
+          <p class="text-[11px] text-slate-500 mt-1" id="voucherMsg"></p>
         </div>
+
+        <div class="bg-slate-50 rounded-xl p-3">
+          <div class="text-xs font-bold mb-2">💰 طلب إيداع يدوي</div>
+          <form id="depositForm" class="space-y-2">
+            <input type="number" id="depAmt" placeholder="المبلغ ($)" min="5" step="0.01" class="glass">
+            <select id="depMethod" class="glass">
+              <option value="bank">تحويل بنكي</option>
+              <option value="usdt">USDT</option>
+              <option value="paypal">PayPal</option>
+            </select>
+            <input type="text" id="depRef" placeholder="رقم المرجع" class="glass">
+            <button class="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-sm py-2 rounded-xl">إرسال</button>
+          </form>
+          <p class="text-[11px] text-slate-500 mt-1" id="depositMsg"></p>
+        </div>
+
+        {% if recent_deposits %}
+        <div class="bg-slate-50 rounded-xl p-3">
+          <div class="text-xs font-bold mb-2">📋 آخر الطلبات</div>
+          <div class="space-y-1">
+            {% for d in recent_deposits %}
+            <div class="flex items-center justify-between text-xs py-1.5 border-b border-slate-200 last:border-0">
+              <span>${{ '%.2f' % d.amount }}</span>
+              <span class="pill {% if d.status == 'pending' %}accent{% elif d.status == 'completed' %}green{% else %}red{% endif %}">{{ d.status }}</span>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
       </div>
     </div>
   </div>
-</div>
 
-<script id="countries-data" type="application/json">
-{{ countries | tojson }}
-</script>
+  <!-- Numbers -->
+  <div id="numbersModal" class="modal-overlay" onclick="if(event.target===this) closeModal('numbersModal')">
+    <div class="modal-box p-5">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-black text-base">📱 أرقامي</h3>
+        <button onclick="closeModal('numbersModal')" class="text-slate-400 hover:text-slate-600 text-xl">✕</button>
+      </div>
+      {% if not my_numbers %}
+        <div class="text-center text-slate-400 text-sm py-8">لا تملك أرقاماً بعد</div>
+      {% else %}
+        <div class="space-y-2">
+          {% for n in my_numbers %}
+          <div class="bg-slate-50 rounded-xl p-3">
+            <div class="flex items-center justify-between mb-1">
+              <div class="font-bold text-sm">{{ n.flag }} {{ n.country }}</div>
+              <span class="pill {% if n.status == 'active' %}green{% else %}red{% endif %}">{{ n.status }}</span>
+            </div>
+            <div class="text-base font-mono font-black text-slate-900">{{ n.phone }}</div>
+            <div class="text-xs text-slate-500 mt-1">{{ n.service }} · {{ n.sms_count }} رسالة</div>
+            <button onclick="closeModal('numbersModal'); openModal('inboxModal')"
+                    class="mt-2 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg">عرض الرسائل</button>
+          </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>
+  </div>
 
-{% endif %}
+  <!-- Inbox -->
+  <div id="inboxModal" class="modal-overlay" onclick="if(event.target===this) closeModal('inboxModal')">
+    <div class="modal-box p-5">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-black text-base">📨 الرسائل</h3>
+        <button onclick="closeModal('inboxModal')" class="text-slate-400 hover:text-slate-600 text-xl">✕</button>
+      </div>
+      {% if not recent_sms %}
+        <div class="text-center text-slate-400 text-sm py-8">لا توجد رسائل</div>
+      {% else %}
+        <div class="space-y-2">
+          {% for s in recent_sms %}
+          <div class="bg-slate-50 rounded-xl p-3">
+            <div class="flex items-center justify-between text-[10px] text-slate-500 mb-1">
+              <span class="font-mono">{{ s.phone }}</span>
+              <span>{{ s.created_at }}</span>
+            </div>
+            <div class="text-xs font-bold">{{ s.sender }}</div>
+            <div class="text-sm mt-1">{{ s.text }}</div>
+            {% if s.code %}
+            <div class="mt-2 inline-block bg-emerald-50 text-emerald-700 font-mono font-black px-2 py-1 rounded-lg text-sm">{{ s.code }}</div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>
+  </div>
 
-{% endblock %}
+  <!-- Transactions -->
+  <div id="txModal" class="modal-overlay" onclick="if(event.target===this) closeModal('txModal')">
+    <div class="modal-box p-5">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-black text-base">📊 السجل</h3>
+        <button onclick="closeModal('txModal')" class="text-slate-400 hover:text-slate-600 text-xl">✕</button>
+      </div>
 
+      <div class="grid grid-cols-3 gap-2 mb-3">
+        <div class="bg-slate-50 rounded-xl p-2 text-center">
+          <div class="text-[9px] text-slate-500">العدد</div>
+          <div class="text-base font-black">{{ summary.count }}</div>
+        </div>
+        <div class="bg-slate-50 rounded-xl p-2 text-center">
+          <div class="text-[9px] text-slate-500">إيداعات</div>
+          <div class="text-base font-black text-emerald-600">${{ '%.2f' % summary.total_deposits }}</div>
+        </div>
+        <div class="bg-slate-50 rounded-xl p-2 text-center">
+          <div class="text-[9px] text-slate-500">مشتريات</div>
+          <div class="text-base font-black text-red-600">${{ '%.2f' % summary.total_spent }}</div>
+        </div>
+      </div>
 
-{% block scripts %}
-<script>
-// ══════════════════════════════════════════════════════════════
-// 1) خريطة الأيقونات — Simple Icons CDN
-// ══════════════════════════════════════════════════════════════
-const SERVICE_ICONS = {
-  whatsapp:{svg:'whatsapp',color:'25D366'}, whatsappbusiness:{svg:'whatsapp',color:'25D366'},
-  wa:{svg:'whatsapp',color:'25D366'}, wapp:{svg:'whatsapp',color:'25D366'},
-  telegram:{svg:'telegram',color:'26A5E4'}, tg:{svg:'telegram',color:'26A5E4'},
-  signal:{svg:'signal',color:'3A76F0'}, viber:{svg:'viber',color:'7360F2'},
-  line:{svg:'line',color:'00C300'}, wechat:{svg:'wechat',color:'07C160'},
-  skype:{svg:'skype',color:'00AFF0'}, imo:{svg:'imo',color:'00A8E1'},
-  kakaotalk:{svg:'kakaotalk',color:'FEE500'}, kakao:{svg:'kakaotalk',color:'FEE500'},
-  instagram:{svg:'instagram',color:'E4405F'}, ig:{svg:'instagram',color:'E4405F'},
-  facebook:{svg:'facebook',color:'1877F2'}, fb:{svg:'facebook',color:'1877F2'},
-  twitter:{svg:'x',color:'000000'}, x:{svg:'x',color:'000000'},
-  tiktok:{svg:'tiktok',color:'000000'}, snapchat:{svg:'snapchat',color:'FFFC00'},
-  discord:{svg:'discord',color:'5865F2'}, reddit:{svg:'reddit',color:'FF4500'},
-  linkedin:{svg:'linkedin',color:'0A66C2'}, pinterest:{svg:'pinterest',color:'BD081C'},
-  threads:{svg:'threads',color:'000000'},
-  google:{svg:'google',color:'4285F4'}, gmail:{svg:'gmail',color:'EA4335'},
-  yahoo:{svg:'yahoo',color:'6001D2'}, outlook:{svg:'microsoftoutlook',color:'0078D4'},
-  apple:{svg:'apple',color:'000000'}, microsoft:{svg:'microsoft',color:'5E5E5E'},
-  telegram_alt:{svg:'telegram',color:'26A5E4'},
-  youtube:{svg:'youtube',color:'FF0000'}, netflix:{svg:'netflix',color:'E50914'},
-  spotify:{svg:'spotify',color:'1DB954'}, twitch:{svg:'twitch',color:'9146FF'},
-  amazon:{svg:'amazon',color:'FF9900'}, ebay:{svg:'ebay',color:'E53238'},
-  aliexpress:{svg:'aliexpress',color:'FF4747'}, alibaba:{svg:'alibabacloud',color:'FF6A00'},
-  paypal:{svg:'paypal',color:'00457C'}, binance:{svg:'binance',color:'F0B90B'},
-  coinbase:{svg:'coinbase',color:'0052FF'}, stripe:{svg:'stripe',color:'635BFF'},
-  uber:{svg:'uber',color:'000000'}, airbnb:{svg:'airbnb',color:'FF5A5F'},
-  booking:{svg:'bookingdotcom',color:'003580'},
-  steam:{svg:'steam',color:'000000'}, playstation:{svg:'playstation',color:'003791'},
-  xbox:{svg:'xbox',color:'107C10'}, roblox:{svg:'roblox',color:'000000'},
-  minecraft:{svg:'minecraft',color:'62B47A'}, pubg:{svg:'pubg',color:'F2A900'},
-  tinder:{svg:'tinder',color:'FF6B6B'}, badoo:{svg:'badoo',color:'783BF9'},
-  bumble:{svg:'bumble',color:'FFC629'},
-  imo:{svg:'imo',color:'00A8E1'}, tiktok:{svg:'tiktok',color:'000000'},
-  foodpanda:{svg:'foodpanda',color:'D70F64'}, doordash:{svg:'doordash',color:'FF3008'},
-  careem:{svg:'careem',color:'25C16F'}, talabat:{svg:'talabat',color:'FF5A00'},
-  grab:{svg:'grab',color:'00B14F'}, gojek:{svg:'gojek',color:'00AA13'},
-};
+      {% if not transactions %}
+        <div class="text-center text-slate-400 text-sm py-6">لا معاملات</div>
+      {% else %}
+        <div class="space-y-1">
+          {% for t in transactions %}
+          <div class="flex items-center justify-between py-2 border-b border-slate-200 last:border-0 text-xs">
+            <div class="flex-1 min-w-0">
+              <div class="truncate">{{ t.description }}</div>
+              <div class="text-[10px] text-slate-500">{{ t.date }}</div>
+            </div>
+            <div class="font-bold {% if t.amount >= 0 %}text-emerald-600{% else %}text-red-600{% endif %} mr-2">
+              {{ '+' if t.amount >= 0 else '' }}${{ '%.2f' % t.amount }}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>
+  </div>
 
-const CATEGORY_RULES = [
-  { re: /(betfair|betway|bet365|1xbet|betwinner|poker|casino|slots)/, emoji: '🎰' },
-  { re: /(game|blizzard|riot|pubg|freefire|steam|epic|xbox|playstation|nintendo|roblox|minecraft)/, emoji: '🎮' },
-  { re: /(uber|careem|grab|gojek|bolt|didi|taxi|lyft)/, emoji: '🚗' },
-  { re: /(food|panda|talabat|zomato|swiggy|deliveroo|doordash|mcdonald|kfc|pizza)/, emoji: '🍔' },
-  { re: /(shop|amazon|ebay|aliex|alibaba|taobao|jd|1688|lazada|shopee|trendyol)/, emoji: '🛒' },
-  { re: /(pay|binance|coin|visa|master|stripe|bank|wallet|paypal)/, emoji: '💳' },
-  { re: /(netflix|hulu|disney|primevideo|hbomax|twitch|youtube)/, emoji: '📺' },
-  { re: /(chat|talk|messenger|telegram|signal|viber|line|wechat|imo|kakao)/, emoji: '💬' },
-  { re: /(tinder|badoo|bumble|grindr|dating|love)/, emoji: '❤️' },
-  { re: /(coursera|udemy|edx|khanacademy|duolingo)/, emoji: '📚' },
-  { re: /(linkedin|indeed|glassdoor|upwork|fiverr)/, emoji: '💼' },
-  { re: /(airbnb|booking|hotel|trip|agoda|expedia|skyscanner)/, emoji: '✈️' },
-  { re: /(google|gmail|yahoo|outlook|hotmail|protonmail)/, emoji: '📧' },
-  { re: /(apple|microsoft|windows|icloud)/, emoji: '🖥️' },
-];
+  <!-- Support -->
+  <div id="supportModal" class="modal-overlay" onclick="if(event.target===this) closeModal('supportModal')">
+    <div class="modal-box p-5">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-black text-base">🎧 الدعم</h3>
+        <button onclick="closeModal('supportModal')" class="text-slate-400 hover:text-slate-600 text-xl">✕</button>
+      </div>
+      <form id="ticketForm" class="space-y-2">
+        <input type="text" id="tSubject" placeholder="الموضوع" class="glass">
+        <textarea id="tMsg" rows="3" placeholder="الرسالة" class="glass"></textarea>
+        <button class="w-full bg-gradient-to-r from-sky-500 to-violet-500 text-white font-bold py-2.5 rounded-xl">إرسال</button>
+      </form>
+      <p class="text-xs text-slate-500 mt-2" id="ticketMsg"></p>
 
-function _iconKey(id) {
-  return String(id || '').toLowerCase().normalize('NFKD').replace(/[^a-z0-9]/g, '');
-}
+      {% if tickets %}
+      <div class="mt-4">
+        <div class="text-xs font-bold mb-2">تذاكري</div>
+        <div class="space-y-1">
+          {% for t in tickets %}
+          <div class="bg-slate-50 rounded-lg p-2">
+            <div class="text-xs font-bold">{{ t.subject }}</div>
+            <div class="text-[10px] text-slate-500">{{ t.date }} · {{ t.status }}</div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
 
-function _detectCategory(id, name) {
-  const text = (_iconKey(id) + ' ' + _iconKey(name)).toLowerCase();
-  for (let i = 0; i < CATEGORY_RULES.length; i++) {
-    if (CATEGORY_RULES[i].re.test(text)) return CATEGORY_RULES[i];
-  }
-  return null;
-}
+  <!-- Profile -->
+  <div id="profileModal" class="modal-overlay" onclick="if(event.target===this) closeModal('profileModal')">
+    <div class="modal-box p-5">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-black text-base">👤 الحساب</h3>
+        <button onclick="closeModal('profileModal')" class="text-slate-400 hover:text-slate-600 text-xl">✕</button>
+      </div>
+      <form id="profileForm" class="space-y-2">
+        <div>
+          <label class="text-[10px] text-slate-500 block mb-1">الاسم</label>
+          <input type="text" id="pName" value="{{ customer.name }}" class="glass">
+        </div>
+        <div>
+          <label class="text-[10px] text-slate-500 block mb-1">الإيميل</label>
+          <input type="email" value="{{ customer.email }}" class="glass opacity-60" disabled>
+        </div>
+        <div>
+          <label class="text-[10px] text-slate-500 block mb-1">الهاتف</label>
+          <input type="text" id="pPhone" value="{{ customer.phone or '' }}" class="glass">
+        </div>
+        <div>
+          <label class="text-[10px] text-slate-500 block mb-1">الدولة</label>
+          <input type="text" id="pCountry" value="{{ customer.country or '' }}" class="glass">
+        </div>
+        <button class="w-full bg-gradient-to-r from-sky-500 to-violet-500 text-white font-bold py-2.5 rounded-xl">حفظ</button>
+      </form>
+      <p class="text-xs text-slate-500 mt-2" id="profileMsg"></p>
 
-function _categoryEmoji(id, name) {
-  const cat = _detectCategory(id, name);
-  return cat ? cat.emoji : '📱';
-}
+      <div class="mt-4 pt-4 border-t border-slate-200">
+        <a href="/logout" class="block text-center bg-red-50 text-red-600 font-bold py-2 rounded-xl hover:bg-red-100">تسجيل الخروج</a>
+      </div>
+    </div>
+  </div>
 
-function serviceIconHtml(serviceId, name, size) {
-  size = size || 24;
-  const key = _iconKey(serviceId);
-  const meta = SERVICE_ICONS[key];
-
-  if (meta) {
-    const url = 'https://cdn.simpleicons.org/' + meta.svg + '/' + meta.color;
-    return '<img src="' + url + '" alt="' + String(name).replace(/"/g, '&quot;') + '" width="' + size + '" height="' + size + '" loading="lazy" ' +
-           'style="display:inline-block;object-fit:contain" ' +
-           'onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'inline-flex\'">' +
-           '<span style="display:none;align-items:center;justify-content:center;width:' + size + 'px;height:' + size + 'px;font-size:' + Math.round(size * 0.75) + 'px;line-height:1">' + _categoryEmoji(serviceId, name) + '</span>';
-  }
-  return '<span style="display:inline-flex;align-items:center;justify-content:center;width:' + size + 'px;height:' + size + 'px;font-size:' + Math.round(size * 0.75) + 'px;line-height:1">' + _categoryEmoji(serviceId, name) + '</span>';
-}
-
-const POPULARITY_ORDER = [
-  'whatsapp','telegram','instagram','facebook','tiktok','google','gmail',
-  'youtube','twitter','snapchat','discord','signal','viber','line',
-  'netflix','spotify','amazon','paypal','uber','apple','microsoft','steam',
-  'openai','chatgpt','reddit','pinterest','twitch','binance','coinbase',
-];
-
-function serviceRank(id) {
-  const k = _iconKey(id);
-  const i = POPULARITY_ORDER.indexOf(k);
-  return i === -1 ? 9999 : i;
-}
-
-function sortByPopularity(arr, getId) {
-  getId = getId || function (x) { return x.id; };
-  return [...(arr || [])].sort(function (a, b) {
-    const ra = serviceRank(getId(a));
-    const rb = serviceRank(getId(b));
-    if (ra !== rb) return ra - rb;
-    return String(getId(a)).localeCompare(String(getId(b)));
-  });
-}
-
-const PREVIEW_COUNT = 4;
-let COUNTRIES = [];
-try {
-  const el = document.getElementById('countries-data');
-  if (el) COUNTRIES = JSON.parse(el.textContent);
-} catch (e) { console.error('فشل تحميل بيانات الدول', e); }
-
-let selectedCountry = null;
-let selectedService = null;
-let currentPrice = 0;
-let currentCount = 0;
-
-// ←←← رصيد الزبون الحقيقي (يُحدّث من السيرفر)
-const CUSTOMER_BALANCE = {{ "%.2f"|format(customer.balance) }};
-
-function hydrateServiceIcons(root) {
-  (root || document).querySelectorAll('[data-service-icon]').forEach(function (el) {
-    if (el.dataset.iconHydrated === '1') return;
-    el.innerHTML = serviceIconHtml(el.dataset.serviceIcon, el.dataset.serviceName || '', 22);
-    el.dataset.iconHydrated = '1';
-  });
-}
-
-function selectCountry(slug, btn) {
-  document.querySelectorAll('.country-btn').forEach(function (b) {
-    b.classList.remove('border-blue-500', 'bg-blue-50');
-    b.classList.add('border-slate-100');
-  });
-  btn.classList.add('border-blue-500', 'bg-blue-50');
-  btn.classList.remove('border-slate-100');
-
-  const country = COUNTRIES.find(function (c) { return c.slug === slug; });
-  selectedCountry = country
-    ? { slug: country.slug, code: country.code, name: country.name, services: country.services || [] }
-    : null;
-
-  selectedService = null;
-  currentPrice = 0;
-  currentCount = 0;
-  updateConfirm();
-  renderServices(selectedCountry ? selectedCountry.services : []);
-
-  document.getElementById('service-step').classList.remove('opacity-50', 'pointer-events-none');
-  document.getElementById('confirm-step').classList.add('opacity-50', 'pointer-events-none');
-}
-
-function renderServices(services) {
-  const grid = document.getElementById('service-grid');
-  const empty = document.getElementById('service-empty');
-  const moreWrap = document.getElementById('service-more-wrap');
-  grid.innerHTML = '';
-  moreWrap.classList.add('hidden');
-  moreWrap.innerHTML = '';
-
-  if (!services || services.length === 0) {
-    empty.classList.remove('hidden');
-    return;
-  }
-  empty.classList.add('hidden');
-
-  const sorted = sortByPopularity(services, function (s) { return s.id; });
-
-  sorted.forEach(function (s, idx) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.dataset.id = s.id;
-    btn.dataset.serviceIndex = idx;
-    btn.className = 'service-btn flex flex-col items-center gap-1 p-3 rounded-xl border-2 border-slate-100 transition-all ' +
-      (s.available ? 'hover:border-blue-400 hover:bg-blue-50' : 'opacity-40 cursor-not-allowed');
-    if (idx >= PREVIEW_COUNT) btn.classList.add('hidden');
-
-    if (s.available) {
-      btn.onclick = function () { selectService(s.id, s.cost, s.count, btn); };
-    } else { btn.disabled = true; }
-
-    const iconEl = document.createElement('div');
-    iconEl.className = 'w-10 h-10 flex items-center justify-center';
-    iconEl.innerHTML = serviceIconHtml(s.id, s.name, 30);
-
-    const priceHtml = s.available
-      ? '<span class="text-[11px] font-bold text-blue-600">$' + Number(s.cost).toFixed(2) + '</span>'
-      : '<span class="text-[10px] text-slate-400">غير متاح</span>';
-    const countHtml = s.available ? '<span class="text-[9px] text-slate-400">' + s.count + ' متاح</span>' : '';
-    const rateHtml = (s.available && s.rate) ? '<span class="text-[9px] text-emerald-600">' + Number(s.rate).toFixed(0) + '% ✓</span>' : '';
-
-    const nameEl = document.createElement('span');
-    nameEl.className = 'text-xs font-bold text-slate-700';
-    nameEl.textContent = s.name;
-
-    btn.appendChild(iconEl);
-    btn.appendChild(nameEl);
-    btn.insertAdjacentHTML('beforeend', priceHtml + countHtml + rateHtml);
-    grid.appendChild(btn);
-  });
-
-  if (sorted.length > PREVIEW_COUNT) {
-    moreWrap.classList.remove('hidden');
-    moreWrap.innerHTML =
-      '<button type="button" onclick="toggleServices(this)" data-expanded="false" data-preview="' + PREVIEW_COUNT + '" ' +
-      'class="text-xs font-bold text-blue-600 hover:text-blue-700 border border-blue-200 hover:border-blue-400 bg-white px-4 py-2 rounded-lg transition-colors inline-flex items-center gap-1">' +
-      '<span class="label">عرض المزيد (' + (sorted.length - PREVIEW_COUNT) + ')</span>' +
-      '<svg class="w-3.5 h-3.5 transition-transform duration-200 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-      '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg></button>';
-  }
-}
-
-function toggleMore(btn, selector, indexAttr) {
-  const expanded = btn.dataset.expanded === 'true';
-  const preview = parseInt(btn.dataset.preview, 10) || PREVIEW_COUNT;
-  const items = document.querySelectorAll(selector);
-  items.forEach(function (el) {
-    const i = parseInt(el.dataset[indexAttr], 10);
-    if (isNaN(i)) return;
-    if (i >= preview) el.classList.toggle('hidden', expanded);
-  });
-  btn.dataset.expanded = expanded ? 'false' : 'true';
-  const label = btn.querySelector('.label');
-  const chev = btn.querySelector('.chevron');
-  if (label) label.textContent = expanded ? 'عرض المزيد (' + (items.length - preview) + ')' : 'عرض أقل';
-  if (chev) chev.style.transform = expanded ? '' : 'rotate(180deg)';
-}
-function togglePopular(btn) { toggleMore(btn, '[data-popular-item]', 'popularIndex'); }
-function toggleNumbers(btn) { toggleMore(btn, '[data-number-item]', 'numberIndex'); }
-function toggleServices(btn) { toggleMore(btn, '.service-btn', 'serviceIndex'); }
-
-function selectService(id, cost, count, btn) {
-  document.querySelectorAll('.service-btn').forEach(function (b) {
-    b.classList.remove('border-blue-500', 'bg-blue-50');
-    b.classList.add('border-slate-100');
-  });
-  btn.classList.add('border-blue-500', 'bg-blue-50');
-  btn.classList.remove('border-slate-100');
-
-  const svc = ((selectedCountry && selectedCountry.services) || [])
-    .find(function (s) { return String(s.id) === String(id); });
-  selectedService = { id: id, name: (svc && svc.name) || id };
-  currentPrice = parseFloat(cost) || 0;
-  currentCount = parseInt(count, 10) || 0;
-  document.getElementById('confirm-step').classList.remove('opacity-50', 'pointer-events-none');
-  updateConfirm();
-}
-
-function updateConfirm() {
-  const set = function (id, v) {
+  <!-- ═══════════════ SCRIPTS ═══════════════ -->
+  <script>
+  // ══════════════════════════════════════════════════════════
+  // Modal helpers
+  // ══════════════════════════════════════════════════════════
+  function openModal(id) {
     const el = document.getElementById(id);
-    if (el) el.textContent = v;
-  };
-  set('confirm-country', (selectedCountry && selectedCountry.name) || '—');
-  set('confirm-service', (selectedService && selectedService.name) || '—');
-  set('confirm-count', currentCount ? currentCount + ' رقم' : '—');
-  set('confirm-price', '$' + currentPrice.toFixed(2));
-  set('confirm-balance', '$' + CUSTOMER_BALANCE.toFixed(2));
-
-  // ←←← التحقق من الرصيد وتحديث التحذير
-  const warn = document.getElementById('insufficient-warning');
-  const warnText = document.getElementById('insufficient-text');
-  const buyBtn = document.getElementById('buy-btn');
-
-  if (selectedService && currentPrice > CUSTOMER_BALANCE) {
-    const short = (currentPrice - CUSTOMER_BALANCE).toFixed(2);
-    if (warn && warnText) {
-      warnText.textContent = `المطلوب: $${currentPrice.toFixed(2)} — المتاح: $${CUSTOMER_BALANCE.toFixed(2)} — ينقصك: $${short}`;
-      warn.classList.remove('hidden');
-    }
-    if (buyBtn) buyBtn.disabled = true;
-  } else {
-    if (warn) warn.classList.add('hidden');
-    if (buyBtn) buyBtn.disabled = false;
+    if (el) el.classList.add('open');
+    document.body.style.overflow = 'hidden';
   }
-}
-
-function quickBuy(countrySlug, serviceId) {
-  const countryBtn = document.querySelector('.country-btn[data-slug="' + countrySlug + '"]')
-                  || document.querySelector('.country-btn[data-code="' + countrySlug + '"]');
-  if (!countryBtn) { showAlert('الدولة غير موجودة في القائمة', 'error'); return; }
-  selectCountry(countryBtn.dataset.slug, countryBtn);
-
-  requestAnimationFrame(function () {
-    const svcBtn = document.querySelector('.service-btn[data-id="' + serviceId + '"]');
-    if (svcBtn && !svcBtn.disabled) {
-      const idx = parseInt(svcBtn.dataset.serviceIndex, 10);
-      if (idx >= PREVIEW_COUNT && svcBtn.classList.contains('hidden')) {
-        const moreBtn = document.querySelector('#service-more-wrap button');
-        if (moreBtn) toggleServices(moreBtn);
-      }
-      const c = COUNTRIES.find(function (x) { return x.slug === countryBtn.dataset.slug || x.code === countryBtn.dataset.code; });
-      const s = c && (c.services || []).find(function (x) { return String(x.id) === String(serviceId); });
-      selectService(serviceId, (s && s.cost) || 0, (s && s.count) || 0, svcBtn);
+  function closeModal(id) {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove('open');
+    document.body.style.overflow = '';
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+      document.body.style.overflow = '';
     }
-    const cf = document.getElementById('confirm-step');
-    if (cf) cf.scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
-}
 
-function showAlert(msg, type) {
-  type = type || 'info';
-  const colors = { error: 'bg-red-100 border-red-300 text-red-800', success: 'bg-emerald-100 border-emerald-300 text-emerald-800', info: 'bg-blue-100 border-blue-300 text-blue-800' };
-  const div = document.createElement('div');
-  div.className = 'fixed top-4 left-1/2 -translate-x-1/2 z-50 border-2 rounded-xl px-6 py-3 text-sm font-bold shadow-lg ' + (colors[type] || colors.info);
-  div.textContent = msg;
-  document.body.appendChild(div);
-  setTimeout(function () { div.remove(); }, 5000);
-}
+  // ══════════════════════════════════════════════════════════
+  // Service Icons
+  // ══════════════════════════════════════════════════════════
+  const SERVICE_ICONS = {
+    whatsapp:{svg:'whatsapp',color:'25D366'}, telegram:{svg:'telegram',color:'26A5E4'},
+    signal:{svg:'signal',color:'3A76F0'}, viber:{svg:'viber',color:'7360F2'},
+    line:{svg:'line',color:'00C300'}, wechat:{svg:'wechat',color:'07C160'},
+    instagram:{svg:'instagram',color:'E4405F'}, facebook:{svg:'facebook',color:'1877F2'},
+    twitter:{svg:'x',color:'000000'}, x:{svg:'x',color:'000000'},
+    tiktok:{svg:'tiktok',color:'000000'}, snapchat:{svg:'snapchat',color:'FFFC00'},
+    discord:{svg:'discord',color:'5865F2'}, reddit:{svg:'reddit',color:'FF4500'},
+    google:{svg:'google',color:'4285F4'}, gmail:{svg:'gmail',color:'EA4335'},
+    yahoo:{svg:'yahoo',color:'6001D2'}, apple:{svg:'apple',color:'000000'},
+    microsoft:{svg:'microsoft',color:'5E5E5E'}, youtube:{svg:'youtube',color:'FF0000'},
+    netflix:{svg:'netflix',color:'E50914'}, spotify:{svg:'spotify',color:'1DB954'},
+    twitch:{svg:'twitch',color:'9146FF'}, amazon:{svg:'amazon',color:'FF9900'},
+    paypal:{svg:'paypal',color:'00457C'}, binance:{svg:'binance',color:'F0B90B'},
+    steam:{svg:'steam',color:'000000'}, uber:{svg:'uber',color:'000000'},
+    openai:{svg:'openai',color:'000000'}, chatgpt:{svg:'openai',color:'000000'},
+  };
+  const CATEGORY_RULES = [
+    { re: /(bet|casino|poker)/, emoji: '🎰' },
+    { re: /(game|blizzard|pubg|steam|epic|roblox|minecraft)/, emoji: '🎮' },
+    { re: /(uber|careem|taxi|lyft)/, emoji: '🚗' },
+    { re: /(food|panda|deliver|mcdonald|kfc)/, emoji: '🍔' },
+    { re: /(shop|amazon|ebay|aliex|alibaba)/, emoji: '🛒' },
+    { re: /(pay|binance|coin|stripe|bank|wallet)/, emoji: '💳' },
+    { re: /(netflix|hulu|disney|twitch|youtube)/, emoji: '📺' },
+    { re: /(chat|talk|message|telegram|signal|viber)/, emoji: '💬' },
+    { re: /(tinder|badoo|bumble|dating)/, emoji: '❤️' },
+    { re: /(google|gmail|yahoo|outlook)/, emoji: '📧' },
+  ];
 
-// ══════════════════════════════════════════════════════════════
-// تأكيد الشراء — مع التحقق من الرصيد
-// ══════════════════════════════════════════════════════════════
-async function confirmPurchase() {
-  if (!selectedCountry || !selectedService) return;
-
-  // ←←← تحقق مسبق من الرصيد
-  if (currentPrice > CUSTOMER_BALANCE) {
-    const short = (currentPrice - CUSTOMER_BALANCE).toFixed(2);
-    showAlert(`❌ رصيدك غير كافٍ — ينقصك $${short}`, 'error');
-    setTimeout(function () {
-      window.location.href = '/wallet';
-    }, 1500);
-    return;
+  function _iconKey(id) { return String(id || '').toLowerCase().normalize('NFKD').replace(/[^a-z0-9]/g, ''); }
+  function _categoryEmoji(id, name) {
+    const t = (_iconKey(id) + ' ' + _iconKey(name)).toLowerCase();
+    for (const c of CATEGORY_RULES) if (c.re.test(t)) return c.emoji;
+    return '📱';
+  }
+  function serviceIconHtml(id, name, size) {
+    size = size || 24;
+    const k = _iconKey(id); const meta = SERVICE_ICONS[k];
+    if (meta) {
+      const url = 'https://cdn.simpleicons.org/' + meta.svg + '/' + meta.color;
+      return '<img src="' + url + '" width="' + size + '" height="' + size +
+             '" style="object-fit:contain" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'inline-flex\'">' +
+             '<span style="display:none;align-items:center;justify-content:center;width:'+size+'px;height:'+size+'px;font-size:'+Math.round(size*0.75)+'px">'+_categoryEmoji(id,name)+'</span>';
+    }
+    return '<span style="display:inline-flex;align-items:center;justify-content:center;width:'+size+'px;height:'+size+'px;font-size:'+Math.round(size*0.75)+'px">'+_categoryEmoji(id,name)+'</span>';
   }
 
-  const btn = document.getElementById('buy-btn');
-  const original = btn.innerHTML;
-  btn.disabled = true;
-  btn.innerHTML = 'جارٍ الشراء...';
+  const POPULARITY_ORDER = [
+    'whatsapp','telegram','instagram','facebook','tiktok','google','gmail',
+    'youtube','twitter','snapchat','discord','signal','viber','line',
+    'netflix','spotify','amazon','paypal','uber','apple','microsoft','steam',
+    'openai','chatgpt','reddit','pinterest','twitch','binance','coinbase',
+  ];
+  function serviceRank(id) {
+    const k = _iconKey(id); const i = POPULARITY_ORDER.indexOf(k);
+    return i === -1 ? 9999 : i;
+  }
+  function sortByPopularity(arr, getId) {
+    getId = getId || (x => x.id);
+    return [...(arr||[])].sort((a,b) => {
+      const ra = serviceRank(getId(a)), rb = serviceRank(getId(b));
+      if (ra !== rb) return ra - rb;
+      return String(getId(a)).localeCompare(String(getId(b)));
+    });
+  }
 
-  try {
-    const r = await fetch('/api/v1/orders', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ country: selectedCountry.slug, service: selectedService.id }),
+  const PREVIEW_COUNT = 4;
+  let COUNTRIES = [];
+  try { COUNTRIES = JSON.parse(document.getElementById('countries-data').textContent || '[]'); } catch(e) {}
+  let selectedCountry = null, selectedService = null, currentPrice = 0, currentCount = 0;
+  let CUSTOMER_BALANCE = {{ "%.2f"|format(customer.balance) }};
+
+  function hydrateServiceIcons(root) {
+    (root||document).querySelectorAll('[data-service-icon]').forEach(el => {
+      if (el.dataset.iconHydrated === '1') return;
+      el.innerHTML = serviceIconHtml(el.dataset.serviceIcon, el.dataset.serviceName||'', 22);
+      el.dataset.iconHydrated = '1';
+    });
+  }
+
+  function selectCountry(slug, btn) {
+    document.querySelectorAll('.country-btn').forEach(b => {
+      b.classList.remove('border-blue-500','bg-blue-50'); b.classList.add('border-slate-100');
+    });
+    btn.classList.add('border-blue-500','bg-blue-50'); btn.classList.remove('border-slate-100');
+
+    const country = COUNTRIES.find(c => c.slug === slug);
+    selectedCountry = country ? { slug: country.slug, code: country.code, name: country.name, services: country.services||[] } : null;
+    selectedService = null; currentPrice = 0; currentCount = 0;
+    updateConfirm();
+    renderServices(selectedCountry ? selectedCountry.services : []);
+    document.getElementById('service-step').classList.remove('opacity-50','pointer-events-none');
+    document.getElementById('confirm-step').classList.add('opacity-50','pointer-events-none');
+  }
+
+  function renderServices(services) {
+    const grid = document.getElementById('service-grid');
+    const empty = document.getElementById('service-empty');
+    const moreWrap = document.getElementById('service-more-wrap');
+    grid.innerHTML = ''; moreWrap.classList.add('hidden'); moreWrap.innerHTML = '';
+    if (!services || services.length === 0) { empty.classList.remove('hidden'); return; }
+    empty.classList.add('hidden');
+    const sorted = sortByPopularity(services, s => s.id);
+    sorted.forEach((s, idx) => {
+      const btn = document.createElement('button');
+      btn.type = 'button'; btn.dataset.id = s.id; btn.dataset.serviceIndex = idx;
+      btn.className = 'service-btn flex flex-col items-center gap-1 p-3 rounded-xl border-2 border-slate-100 transition-all ' +
+        (s.available ? 'hover:border-blue-400 hover:bg-blue-50' : 'opacity-40 cursor-not-allowed');
+      if (idx >= PREVIEW_COUNT) btn.classList.add('hidden');
+      if (s.available) btn.onclick = () => selectService(s.id, s.cost, s.count, btn);
+      else btn.disabled = true;
+      const iconEl = document.createElement('div');
+      iconEl.className = 'w-10 h-10 flex items-center justify-center';
+      iconEl.innerHTML = serviceIconHtml(s.id, s.name, 30);
+      const priceHtml = s.available
+        ? '<span class="text-[11px] font-bold text-blue-600">$'+Number(s.cost).toFixed(2)+'</span>'
+        : '<span class="text-[10px] text-slate-400">غير متاح</span>';
+      const countHtml = s.available ? '<span class="text-[9px] text-slate-400">'+s.count+' متاح</span>' : '';
+      const nameEl = document.createElement('span');
+      nameEl.className = 'text-xs font-bold text-slate-700'; nameEl.textContent = s.name;
+      btn.appendChild(iconEl); btn.appendChild(nameEl);
+      btn.insertAdjacentHTML('beforeend', priceHtml + countHtml);
+      grid.appendChild(btn);
+    });
+    if (sorted.length > PREVIEW_COUNT) {
+      moreWrap.classList.remove('hidden');
+      moreWrap.innerHTML = '<button type="button" onclick="toggleServices(this)" data-expanded="false" data-preview="'+PREVIEW_COUNT+'" class="text-xs font-bold text-blue-600 hover:text-blue-700 border border-blue-200 hover:border-blue-400 bg-white px-4 py-2 rounded-lg transition-colors inline-flex items-center gap-1"><span class="label">عرض المزيد ('+(sorted.length-PREVIEW_COUNT)+')</span></button>';
+    }
+  }
+
+  function toggleMore(btn, selector, indexAttr) {
+    const expanded = btn.dataset.expanded === 'true';
+    const preview = parseInt(btn.dataset.preview, 10) || PREVIEW_COUNT;
+    document.querySelectorAll(selector).forEach(el => {
+      const i = parseInt(el.dataset[indexAttr], 10);
+      if (isNaN(i)) return;
+      if (i >= preview) el.classList.toggle('hidden', expanded);
+    });
+    btn.dataset.expanded = expanded ? 'false' : 'true';
+    const label = btn.querySelector('.label');
+    const chev = btn.querySelector('.chevron');
+    if (label) label.textContent = expanded ? 'عرض المزيد ('+(document.querySelectorAll(selector).length-preview)+')' : 'عرض أقل';
+    if (chev) chev.style.transform = expanded ? '' : 'rotate(180deg)';
+  }
+  function togglePopular(btn) { toggleMore(btn, '[data-popular-item]', 'popularIndex'); }
+  function toggleServices(btn) { toggleMore(btn, '.service-btn', 'serviceIndex'); }
+
+  function selectService(id, cost, count, btn) {
+    document.querySelectorAll('.service-btn').forEach(b => {
+      b.classList.remove('border-blue-500','bg-blue-50'); b.classList.add('border-slate-100');
+    });
+    btn.classList.add('border-blue-500','bg-blue-50'); btn.classList.remove('border-slate-100');
+    const svc = ((selectedCountry && selectedCountry.services) || []).find(s => String(s.id) === String(id));
+    selectedService = { id, name: (svc && svc.name) || id };
+    currentPrice = parseFloat(cost) || 0;
+    currentCount = parseInt(count, 10) || 0;
+    document.getElementById('confirm-step').classList.remove('opacity-50','pointer-events-none');
+    updateConfirm();
+  }
+
+  function updateConfirm() {
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    set('confirm-country', (selectedCountry && selectedCountry.name) || '—');
+    set('confirm-service', (selectedService && selectedService.name) || '—');
+    set('confirm-count', currentCount ? currentCount + ' رقم' : '—');
+    set('confirm-price', '$' + currentPrice.toFixed(2));
+    set('confirm-balance', '$' + CUSTOMER_BALANCE.toFixed(2));
+    const warn = document.getElementById('insufficient-warning');
+    const warnText = document.getElementById('insufficient-text');
+    const buyBtn = document.getElementById('buy-btn');
+    if (selectedService && currentPrice > CUSTOMER_BALANCE) {
+      const short = (currentPrice - CUSTOMER_BALANCE).toFixed(2);
+      if (warn && warnText) {
+        warnText.textContent = `المطلوب: $${currentPrice.toFixed(2)} — المتاح: $${CUSTOMER_BALANCE.toFixed(2)} — ينقصك: $${short}`;
+        warn.classList.remove('hidden');
+      }
+      if (buyBtn) buyBtn.disabled = true;
+    } else {
+      if (warn) warn.classList.add('hidden');
+      if (buyBtn) buyBtn.disabled = false;
+    }
+  }
+
+  function quickBuy(countrySlug, serviceId) {
+    const cb = document.querySelector('.country-btn[data-slug="'+countrySlug+'"]') || document.querySelector('.country-btn[data-code="'+countrySlug+'"]');
+    if (!cb) { showAlert('الدولة غير موجودة', 'error'); return; }
+    selectCountry(cb.dataset.slug, cb);
+    requestAnimationFrame(() => {
+      const svcBtn = document.querySelector('.service-btn[data-id="'+serviceId+'"]');
+      if (svcBtn && !svcBtn.disabled) {
+        const idx = parseInt(svcBtn.dataset.serviceIndex, 10);
+        if (idx >= PREVIEW_COUNT && svcBtn.classList.contains('hidden')) {
+          const mb = document.querySelector('#service-more-wrap button');
+          if (mb) toggleServices(mb);
+        }
+        const c = COUNTRIES.find(x => x.slug === cb.dataset.slug || x.code === cb.dataset.code);
+        const s = c && (c.services||[]).find(x => String(x.id) === String(serviceId));
+        selectService(serviceId, (s && s.cost) || 0, (s && s.count) || 0, svcBtn);
+      }
+      const cf = document.getElementById('confirm-step');
+      if (cf) cf.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }
+
+  function showAlert(msg, type) {
+    type = type || 'info';
+    const colors = { error:'bg-red-100 border-red-300 text-red-800', success:'bg-emerald-100 border-emerald-300 text-emerald-800', info:'bg-blue-100 border-blue-300 text-blue-800' };
+    const div = document.createElement('div');
+    div.className = 'fixed top-20 left-1/2 -translate-x-1/2 z-[110] border-2 rounded-xl px-6 py-3 text-sm font-bold shadow-lg ' + (colors[type]||colors.info);
+    div.textContent = msg;
+    document.body.appendChild(div);
+    setTimeout(() => div.remove(), 3500);
+  }
+
+  async function confirmPurchase() {
+    if (!selectedCountry || !selectedService) return;
+    if (currentPrice > CUSTOMER_BALANCE) {
+      showAlert(`❌ رصيدك غير كافٍ — ينقصك $${(currentPrice - CUSTOMER_BALANCE).toFixed(2)}`, 'error');
+      setTimeout(() => openModal('walletModal'), 1200);
+      return;
+    }
+    const btn = document.getElementById('buy-btn');
+    const original = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = 'جارٍ الشراء...';
+    try {
+      const r = await fetch('/api/v1/orders', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ country: selectedCountry.slug, service: selectedService.id }),
+      });
+      const d = await r.json();
+      if (r.ok) {
+        showAlert('✅ تم الشراء بنجاح', 'success');
+        setTimeout(() => location.reload(), 1000);
+      } else {
+        showAlert('❌ ' + (d.detail || 'فشل الشراء'), 'error');
+        btn.disabled = false; btn.innerHTML = original;
+        const det = (d.detail||'').toLowerCase();
+        if (det.includes('رصيد') || det.includes('balance')) {
+          setTimeout(() => openModal('walletModal'), 800);
+        }
+      }
+    } catch(e) {
+      showAlert('❌ خطأ في الاتصال', 'error');
+      btn.disabled = false; btn.innerHTML = original;
+    }
+  }
+
+  async function refreshPrices(btn) {
+    const old = btn.innerHTML;
+    btn.disabled = true; btn.innerHTML = '⏳ جارٍ التحديث...';
+    try {
+      const r = await fetch('/api/v1/prices/refresh', { method: 'POST' });
+      const j = await r.json();
+      if (!r.ok) { showAlert('فشل التحديث: ' + (j.detail||'خطأ'), 'error'); btn.disabled = false; btn.innerHTML = old; }
+      else location.reload();
+    } catch(e) {
+      showAlert('خطأ في الاتصال', 'error');
+      btn.disabled = false; btn.innerHTML = old;
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // Wallet forms
+  // ══════════════════════════════════════════════════════════
+  document.getElementById('voucherForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const code = document.getElementById('voucherCode').value.trim().toUpperCase();
+    const msg = document.getElementById('voucherMsg');
+    const r = await fetch('/api/v1/wallet/redeem-voucher', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({code})
     });
     const d = await r.json();
     if (r.ok) {
-      showAlert('✅ تم الشراء بنجاح — جارٍ التحويل...', 'success');
-      setTimeout(function () { window.location.href = '/orders/' + d.id; }, 800);
+      msg.textContent = `✅ تم إضافة $${d.value}`;
+      CUSTOMER_BALANCE = d.new_balance;
+      document.getElementById('hudBalance').textContent = '$' + d.new_balance.toFixed(2);
+      document.getElementById('modalBalance').textContent = '$' + d.new_balance.toFixed(2);
+      setTimeout(() => location.reload(), 1500);
     } else {
-      showAlert('❌ ' + (d.detail || 'فشل الشراء'), 'error');
-      btn.disabled = false;
-      btn.innerHTML = original;
-
-      // ←←← لو الرصيد غير كافٍ، اقترح الشحن
-      const detail = (d.detail || '').toLowerCase();
-      if (detail.includes('رصيد') || detail.includes('balance')) {
-        setTimeout(function () {
-          if (confirm('رصيدك غير كافٍ. هل تريد الذهاب إلى المحفظة لشحن الرصيد؟')) {
-            window.location.href = '/wallet';
-          }
-        }, 800);
-      }
+      msg.textContent = '❌ ' + (d.detail || 'فشل');
     }
-  } catch (e) {
-    showAlert('❌ خطأ في الاتصال بالخادم', 'error');
-    btn.disabled = false;
-    btn.innerHTML = original;
-  }
-}
+  });
 
-async function refreshPrices(btn) {
-  const old = btn.innerHTML;
-  btn.disabled = true;
-  btn.innerHTML = '⏳ جارٍ التحديث...';
-  try {
-    const r = await fetch('/api/v1/prices/refresh', { method: 'POST' });
-    const j = await r.json();
-    if (!r.ok) {
-      showAlert('فشل التحديث: ' + (j.detail || 'خطأ غير معروف'), 'error');
-      btn.disabled = false;
-      btn.innerHTML = old;
-    } else { location.reload(); }
-  } catch (e) {
-    showAlert('خطأ في الاتصال', 'error');
-    btn.disabled = false;
-    btn.innerHTML = old;
-  }
-}
+  document.getElementById('depositForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('depositMsg');
+    const r = await fetch('/api/v1/wallet/deposit-request', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        amount: parseFloat(document.getElementById('depAmt').value),
+        method: document.getElementById('depMethod').value,
+        reference: document.getElementById('depRef').value,
+      })
+    });
+    const d = await r.json();
+    msg.textContent = r.ok ? '✅ طلبك قيد المراجعة' : ('❌ ' + (d.detail||'فشل'));
+  });
 
-document.addEventListener('DOMContentLoaded', function () {
-  document.querySelectorAll('[data-popular-item]').forEach(function (el, i) { el.dataset.popularIndex = i; });
-  document.querySelectorAll('[data-number-item]').forEach(function (el, i) { el.dataset.numberIndex = i; });
+  // Support form
+  document.getElementById('ticketForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('ticketMsg');
+    const r = await fetch('/api/v1/support/tickets', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        subject: document.getElementById('tSubject').value,
+        message: document.getElementById('tMsg').value,
+      })
+    });
+    msg.textContent = r.ok ? '✅ تم الإرسال' : '❌ فشل';
+    if (r.ok) setTimeout(() => location.reload(), 1000);
+  });
 
-  hydrateServiceIcons(document);
+  // Profile form
+  document.getElementById('profileForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('profileMsg');
+    const r = await fetch('/api/v1/profile', {
+      method:'PATCH', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        name: document.getElementById('pName').value,
+        phone: document.getElementById('pPhone').value,
+        country: document.getElementById('pCountry').value,
+      })
+    });
+    msg.textContent = r.ok ? '✅ تم الحفظ' : '❌ فشل';
+  });
 
-  const preCountry = {{ (preselected_country or '') | tojson }};
-  const preService = {{ (preselected_service or '') | tojson }};
-
-  if (preCountry) {
-    const btn = document.querySelector('.country-btn[data-slug="' + preCountry + '"]')
-             || document.querySelector('.country-btn[data-code="' + preCountry + '"]');
-    if (btn) {
-      selectCountry(btn.dataset.slug, btn);
-      if (preService) {
-        requestAnimationFrame(function () {
-          const svcBtn = document.querySelector('.service-btn[data-id="' + preService + '"]');
-          if (svcBtn && !svcBtn.disabled) {
-            const idx = parseInt(svcBtn.dataset.serviceIndex, 10);
-            if (idx >= PREVIEW_COUNT && svcBtn.classList.contains('hidden')) {
-              const moreBtn = document.querySelector('#service-more-wrap button');
-              if (moreBtn) toggleServices(moreBtn);
-            }
-            const c = COUNTRIES.find(function (x) { return x.slug === btn.dataset.slug || x.code === btn.dataset.code; });
-            const s = c && (c.services || []).find(function (x) { return String(x.id) === String(preService); });
-            selectService(preService, (s && s.cost) || 0, (s && s.count) || 0, svcBtn);
-          }
-        });
-      }
-    }
-  }
-});
-</script>
-{% endblock %}
+  // Init
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('[data-popular-item]').forEach((el,i) => el.dataset.popularIndex = i);
+    hydrateServiceIcons(document);
+  });
+  </script>
+</body>
+</html>
