@@ -1,0 +1,30 @@
+# Dockerfile.admin — في جذر المستودع
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+RUN pip install --no-cache-dir \
+    "fastapi>=0.110" \
+    "uvicorn[standard]>=0.27" \
+    "jinja2>=3.1" \
+    "python-multipart>=0.0.9" \
+    "pydantic>=2.6" \
+    "httpx>=0.27" \
+    "sse-starlette>=2.0" \
+    "itsdangerous>=2.2"
+
+# ننسخ كل المشروع (main.py + templates/ + admin/)
+COPY . /app
+
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
+EXPOSE 8001
+
+# نعمل من /app/admin حيث main.py الأدمن
+WORKDIR /app/admin
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]
