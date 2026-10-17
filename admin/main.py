@@ -10,7 +10,10 @@ Jamal Solutions — Admin Panel (standalone)
 - GET  /api/v1/admin/whoami    → {ok, email, auth}
 - كل /api/v1/admin/*           → محمي بـ X-Admin-Secret = token أو ADMIN_SECRET
 
-admin/ هو الجذر (Root). القوالب من admin/templates/ والستاتيك من admin/static/.
+admin/ هو الجذر. المسارات مكتوبة صراحةً:
+    admin/templates/  ← القوالب
+    admin/static/     ← الستاتيك
+
 يحاول استيراد STORE و_sim5_get من main.py (إن وُجد بجانب admin/) لتزامن owner_wallet.
 
 التشغيل (من داخل admin/):
@@ -27,7 +30,6 @@ from __future__ import annotations
 
 import os
 import secrets
-import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
@@ -40,18 +42,10 @@ from pydantic import BaseModel, Field
 
 
 # ══════════════════════════════════════════════════════════════
-# 1) Paths — admin/ هو الجذر
+# 1) Paths — admin/ هو الجذر، والمسارات مكتوبة صراحةً
 # ══════════════════════════════════════════════════════════════
-ADMIN_DIR = Path(__file__).resolve().parent          # admin/  ← الجذر
-
-_REQUIRED_TEMPLATES = ("login.html", "admin.html")
+ADMIN_DIR = Path(__file__).resolve().parent          # admin/
 TEMPLATES_DIR = ADMIN_DIR / "templates"              # admin/templates/
-
-_MISSING_TEMPLATES = [
-    name for name in _REQUIRED_TEMPLATES
-    if not (TEMPLATES_DIR / name).exists()
-]
-
 STATIC_DIR = ADMIN_DIR / "static"                    # admin/static/
 
 
@@ -147,7 +141,7 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-# محاولة الاستيراد — دون تعديل sys.path (admin/ هو الجذر، main.py فقط إن كان بجانبه)
+# محاولة الاستيراد — دون تعديل sys.path
 try:
     from main import (  # type: ignore
         STORE as _MAIN_STORE,
@@ -175,7 +169,7 @@ except Exception as e:
 # ══════════════════════════════════════════════════════════════
 # 3) App + Templates
 # ══════════════════════════════════════════════════════════════
-app = FastAPI(title="Jamal Solutions — Admin Panel", version="1.7.2")
+app = FastAPI(title="Jamal Solutions — Admin Panel", version="1.7.3")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 if STATIC_DIR.exists():
@@ -266,8 +260,6 @@ async def health():
         "import_mode": _IMPORT_MODE,
         "root": str(ADMIN_DIR),
         "templates_dir": str(TEMPLATES_DIR),
-        "templates_ok": not _MISSING_TEMPLATES,
-        "missing_templates": _MISSING_TEMPLATES,
         "login_template": (TEMPLATES_DIR / "login.html").exists(),
         "admin_template": (TEMPLATES_DIR / "admin.html").exists(),
         "static_dir_exists": STATIC_DIR.exists(),
@@ -614,20 +606,16 @@ async def http_exc_handler(request: Request, exc: HTTPException):
 async def _startup_log():
     print("═" * 60)
     print(f"[admin] 🚀 لوحة الأدمن v{app.version}")
-    print(f"[admin] import_mode       = {_IMPORT_MODE}")
-    print(f"[admin] ADMIN_DIR (root)  = {ADMIN_DIR}")
-    print(f"[admin] TEMPLATES_DIR     = {TEMPLATES_DIR}")
-    if _MISSING_TEMPLATES:
-        print(f"[admin] ❌ قوالب مفقودة في {TEMPLATES_DIR}: {_MISSING_TEMPLATES}")
-    else:
-        print(f"[admin] ✅ كل القوالب موجودة: {list(_REQUIRED_TEMPLATES)}")
-    print(f"[admin] STATIC_DIR        = {STATIC_DIR} (exists={STATIC_DIR.exists()})")
-    print(f"[admin] ADMIN_EMAIL       = {ADMIN_EMAIL}")
-    print(f"[admin] PASSWORD_HASH set = {bool(ADMIN_PASSWORD_HASH)}")
-    print(f"[admin] PASSWORD plain    = {'set' if ADMIN_PASSWORD else 'not set'}")
-    print(f"[admin] ADMIN_SECRET set  = {bool(ADMIN_SECRET)}")
-    print(f"[admin] SIM5_ENABLED      = {SIM5_ENABLED}")
-    print(f"[admin] MARKUP_PERCENT    = {FIVESIM_MARKUP_PERCENT}")
-    print(f"[admin] STORE keys        = {sorted(STORE.keys())}")
-    print(f"[admin] owner_wallet      = {STORE['owner_wallet']}")
+    print(f"[admin] import_mode   = {_IMPORT_MODE}")
+    print(f"[admin] root          = {ADMIN_DIR}")
+    print(f"[admin] templates     = {TEMPLATES_DIR}")
+    print(f"[admin] login.html    = {'✅' if (TEMPLATES_DIR / 'login.html').exists() else '❌ مفقود'}")
+    print(f"[admin] admin.html    = {'✅' if (TEMPLATES_DIR / 'admin.html').exists() else '❌ مفقود'}")
+    print(f"[admin] static        = {STATIC_DIR} (exists={STATIC_DIR.exists()})")
+    print(f"[admin] ADMIN_EMAIL   = {ADMIN_EMAIL}")
+    print(f"[admin] hash set      = {bool(ADMIN_PASSWORD_HASH)}")
+    print(f"[admin] secret set    = {bool(ADMIN_SECRET)}")
+    print(f"[admin] SIM5          = {SIM5_ENABLED}")
+    print(f"[admin] MARKUP        = {FIVESIM_MARKUP_PERCENT}%")
+    print(f"[admin] owner_wallet  = {STORE['owner_wallet']}")
     print("═" * 60)
