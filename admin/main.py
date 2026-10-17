@@ -260,7 +260,7 @@ async def health():
         "import_mode": _IMPORT_MODE,
         "root": str(ADMIN_DIR),
         "templates_dir": str(TEMPLATES_DIR),
-        "login_template": (TEMPLATES_DIR / "login.html").exists(),
+        "signin_template": (TEMPLATES_DIR / "signin.html").exists(),
         "admin_template": (TEMPLATES_DIR / "admin.html").exists(),
         "static_dir_exists": STATIC_DIR.exists(),
         "admin_email": ADMIN_EMAIL,
