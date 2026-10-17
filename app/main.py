@@ -1,14 +1,11 @@
 """
 Jamal Solutions — Virtual Numbers Platform
-Customer Portal (FastAPI + Jinja2 + SSE + Google OAuth + 5SIM)
+Customer Portal (FastAPI + Jinja2 + SSE + 5SIM + Access-Code Login)
 
-✅ 1.2.0 — نظام الأكواد + محفظة المالك + هامش الربح:
-- Vouchers: توليد، تفعيل، إدارة كاملة.
-- Owner wallet: تتبع الأرباح والمحجوز لـ 5SIM.
-- FIVESIM_MARKUP_PERCENT: هامش ربح تلقائي على كل عملية.
-- Deposit requests: إيداع يدوي مع مراجعة الأدمن.
-- Admin endpoints: /api/v1/admin/*
-- Server-side validation: فحص الرصيد والسعر قبل الشراء.
+✅ 1.3.0 — تسجيل دخول بالكود:
+- Access Codes: توليد، تفعيل، إدارة كاملة عبر endpoints إدارية.
+- إزالة OAuth (Google) بالكامل.
+- رصيد ترحيبي اختياري لكل كود.
 """
 from __future__ import annotations
 
@@ -22,7 +19,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote, urlparse
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request, status
@@ -32,7 +29,6 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
-from authlib.integrations.starlette_client import OAuth
 from starlette.middleware.sessions import SessionMiddleware
 
 
@@ -52,7 +48,7 @@ if DEBUG:
 
 
 # ══════════════════════════════════════════════════════════════
-# OAuth / Session config
+# Session config
 # ══════════════════════════════════════════════════════════════
 SECRET_KEY = os.getenv("SECRET_KEY", "").strip()
 _SECRET_KEY_FROM_ENV = bool(SECRET_KEY)
@@ -73,20 +69,6 @@ SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "
 SESSION_MAX_AGE = int(os.getenv("SESSION_MAX_AGE", str(30 * 24 * 3600)))
 SESSION_IDLE_TIMEOUT = int(os.getenv("SESSION_IDLE_TIMEOUT", str(7 * 24 * 3600)))
 
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
-GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
-OAUTH_ENABLED = bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
-
-oauth = OAuth()
-if OAUTH_ENABLED:
-    oauth.register(
-        name="google",
-        client_id=GOOGLE_CLIENT_ID,
-        client_secret=GOOGLE_CLIENT_SECRET,
-        server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
-        client_kwargs={"scope": "openid email profile"},
-    )
-
 
 # ══════════════════════════════════════════════════════════════
 # 5SIM — إعدادات
@@ -99,6 +81,7 @@ FIVESIM_MARKUP_PERCENT = float(os.getenv("FIVESIM_MARKUP_PERCENT", "40"))
 
 ADMIN_SECRET = os.getenv("ADMIN_SECRET", "").strip()
 VOUCHER_PREFIX = os.getenv("VOUCHER_PREFIX", "JS").strip().upper()
+ACCESS_CODE_PREFIX = os.getenv("ACCESS_CODE_PREFIX", "JS-LOGIN").strip().upper()
 
 _SIM5_CACHE: dict[str, dict] = {
     "prices": {"data": None, "at": 0.0},
@@ -350,13 +333,12 @@ PUBLIC_PATHS = (
     "/health",
     "/status",
     "/logout",
-    "/auth/google",
-    "/auth/google/callback",
     "/auth/logout",
     "/static",
     "/favicon.ico",
     "/api/v1/system",
     "/api/v1/prices",
+    "/api/v1/auth/login-with-code",
 )
 
 PROTECTED_PREFIXES = (
@@ -530,10 +512,7 @@ async def lifespan(app: FastAPI):
     else:
         print("🔴 تحذير: SECRET_KEY غير مضبوط في متغيرات البيئة!")
 
-    if not OAUTH_ENABLED:
-        print("⚠️  OAuth معطّل (GOOGLE_CLIENT_ID/SECRET غير مضبوطة).")
-    else:
-        print(f"✅ OAuth مفعّل — Client ID: {GOOGLE_CLIENT_ID[:20]}...")
+    print("✅ تسجيل الدخول بالكود مفعّل (Access Codes).")
 
     if SIM5_ENABLED:
         print(f"✅ 5SIM مفعّل — Base: {SIM5_BASE}")
@@ -571,7 +550,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Jamal Solutions — Customer Portal",
     description="Virtual Numbers Platform",
-    version="1.2.0",
+    version="1.3.0",
     lifespan=lifespan,
 )
 
@@ -592,6 +571,7 @@ STORE: dict[str, Any] = {
     "tickets": [],
     "sessions": [],
     "vouchers": [],
+    "access_codes": [],
     "owner_wallet": {
         "total_profit": 0.0,
         "total_revenue": 0.0,
@@ -807,7 +787,97 @@ def _validate_voucher(code: str) -> dict:
     except (ValueError, TypeError):
         pass
 
-    return v# ══════════════════════════════════════════════════════════════
+    return v
+
+
+# ══════════════════════════════════════════════════════════════
+# Access Codes helpers (تسجيل دخول بالكود)
+# ══════════════════════════════════════════════════════════════
+def _gen_access_code() -> str:
+    """يولّد كود دخول بصيغة JS-LOGIN-XXXXXXXXXXXX"""
+    return f"{ACCESS_CODE_PREFIX}-{secrets.token_hex(6).upper()}"
+
+
+def _create_access_code(
+    label: str = "",
+    expires_days: int = 30,
+    max_uses: int = 1,
+    preset_name: str = "",
+    preset_email: str = "",
+    preset_balance: float = 0.0,
+) -> dict:
+    """
+    يولّد كود دخول جديد.
+    - label: اسم/ملاحظة للتعرف على الكود
+    - expires_days: صلاحية الكود بالأيام
+    - max_uses: عدد مرات الاستخدام (1 = استخدام واحد)
+    - preset_*: بيانات الحساب الذي سيُنشأ عند أول استخدام
+    """
+    while True:
+        code = _gen_access_code()
+        if not any(c["code"] == code for c in STORE["access_codes"]):
+            break
+
+    now = datetime.now(timezone.utc)
+    record = {
+        "id": len(STORE["access_codes"]) + 1,
+        "code": code,
+        "label": label,
+        "status": "active",  # active | used | expired | disabled
+        "max_uses": max_uses,
+        "uses_count": 0,
+        "preset_name": preset_name,
+        "preset_email": preset_email,
+        "preset_balance": float(preset_balance),
+        "created_at": now.isoformat(),
+        "expires_at": (now + timedelta(days=expires_days)).isoformat(),
+        "used_by": [],
+        "last_used_at": None,
+    }
+    STORE["access_codes"].append(record)
+    return record
+
+
+def _validate_access_code(code: str) -> dict:
+    """يتحقق من صلاحية كود الدخول ويُرجعه."""
+    code = (code or "").strip().upper()
+    if not code:
+        raise HTTPException(400, "الرجاء إدخال الكود")
+
+    record = next((c for c in STORE["access_codes"] if c["code"] == code), None)
+    if not record:
+        raise HTTPException(404, "الكود غير صحيح")
+
+    if record["status"] == "disabled":
+        raise HTTPException(400, "الكود معطّل")
+    if record["status"] == "expired":
+        raise HTTPException(400, "انتهت صلاحية الكود")
+    if record["status"] == "used" and record["uses_count"] >= record["max_uses"]:
+        raise HTTPException(400, "تم استخدام هذا الكود بالكامل")
+
+    try:
+        exp = datetime.fromisoformat(record["expires_at"])
+        if exp.tzinfo is None:
+            exp = exp.replace(tzinfo=timezone.utc)
+        if datetime.now(timezone.utc) > exp:
+            record["status"] = "expired"
+            raise HTTPException(400, "انتهت صلاحية الكود")
+    except (ValueError, TypeError):
+        pass
+
+    return record
+
+
+def _consume_access_code(record: dict, customer_id: int) -> None:
+    """يسجّل استخدام الكود ويربطه بالعميل."""
+    record["uses_count"] += 1
+    record["used_by"].append(customer_id)
+    record["last_used_at"] = _now_iso()
+    if record["uses_count"] >= record["max_uses"]:
+        record["status"] = "used"
+
+
+# ══════════════════════════════════════════════════════════════
 # Admin helper
 # ══════════════════════════════════════════════════════════════
 def _check_admin(request: Request) -> None:
@@ -867,6 +937,19 @@ class PreferencesUpdate(BaseModel):
     marketing_emails: bool | None = None
 
 
+class AccessCodeLogin(BaseModel):
+    code: str
+
+
+class AccessCodeCreate(BaseModel):
+    label: str = ""
+    expires_days: int = Field(30, ge=1, le=365)
+    max_uses: int = Field(1, ge=1, le=100)
+    preset_name: str = ""
+    preset_email: str = ""
+    preset_balance: float = Field(0.0, ge=0)
+
+
 # ══════════════════════════════════════════════════════════════
 # System routes
 # ══════════════════════════════════════════════════════════════
@@ -912,11 +995,13 @@ async def system_version():
             "markup_percent": FIVESIM_MARKUP_PERCENT,
             "deposit_requests": True,
             "admin_endpoints": bool(ADMIN_SECRET),
+            "login_method": "access_code",
+            "access_codes": True,
         },
         "sim5": sim5_info,
-        "oauth_enabled": OAUTH_ENABLED,
         "customers_in_store": len(STORE["customers"]),
         "vouchers_in_store": len(STORE["vouchers"]),
+        "access_codes_in_store": len(STORE["access_codes"]),
         "uptime": _fmt_uptime(time.time() - START_TIME),
     }
 
@@ -1004,7 +1089,8 @@ async def status_page(request: Request):
     </div>
     <div class="meta">
       <span>عملاء: <b>{len(STORE['customers'])}</b></span>
-      <span>أكواد: <b>{len(STORE['vouchers'])}</b></span>
+      <span>أكواد شحن: <b>{len(STORE['vouchers'])}</b></span>
+      <span>أكواد دخول: <b>{len(STORE['access_codes'])}</b></span>
       <span>هامش: <b>{FIVESIM_MARKUP_PERCENT}%</b></span>
     </div>
     <h1>🔌 5SIM</h1>
@@ -1112,7 +1198,7 @@ async def api_prices_refresh(request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# Auth routes
+# Auth — Login page + Access Code
 # ══════════════════════════════════════════════════════════════
 @app.get("/", response_class=HTMLResponse)
 async def login_page(request: Request):
@@ -1130,51 +1216,32 @@ async def login_page(request: Request):
         request=request,
         name="login.html",
         context={
-            "oauth_enabled": OAUTH_ENABLED,
             "next": request.query_params.get("next", "/dashboard"),
             "error": request.query_params.get("error"),
         },
     )
 
 
-@app.get("/auth/google")
-async def auth_google(request: Request):
-    if not OAUTH_ENABLED:
-        return RedirectResponse(url="/?error=oauth_disabled", status_code=303)
-    redirect_uri = str(request.url_for("auth_google_callback"))
-    next_url = request.query_params.get("next", "")
-    if next_url and _is_safe_next(next_url):
-        request.session["oauth_next"] = next_url
-    else:
-        request.session.pop("oauth_next", None)
-    return await oauth.google.authorize_redirect(request, redirect_uri)
+@app.post("/api/v1/auth/login-with-code")
+async def login_with_code(payload: AccessCodeLogin, request: Request):
+    """
+    تسجيل دخول العميل باستخدام كود صادر من المدير.
+    - إن كان الكود مرتبطاً بعميل سابق → يفتح جلسته.
+    - وإلا → ينشئ عميلاً جديداً بالبيانات preset_*.
+    """
+    record = _validate_access_code(payload.code)
 
+    # هل استُخدم هذا الكود سابقاً بواسطة عميل موجود؟
+    customer = None
+    if record["used_by"]:
+        prev_id = record["used_by"][-1]
+        customer = STORE["customers"].get(prev_id)
 
-@app.get("/auth/google/callback", name="auth_google_callback")
-async def auth_google_callback(request: Request):
-    if not OAUTH_ENABLED:
-        raise HTTPException(status_code=503, detail="OAuth غير مُفعّل")
-
-    try:
-        token = await oauth.google.authorize_access_token(request)
-    except Exception as e:
-        print(f"❌ OAuth error: {type(e).__name__}: {e}")
-        return RedirectResponse(url="/?error=oauth_failed", status_code=303)
-
-    userinfo = token.get("userinfo") or {}
-    email = userinfo.get("email")
-    name = userinfo.get("name") or (email.split("@")[0] if email else "مستخدم")
-    picture = userinfo.get("picture")
-
-    if not email:
-        return RedirectResponse(url="/?error=no_email", status_code=303)
-
-    customer = next(
-        (c for c in STORE["customers"].values() if c["email"] == email),
-        None,
-    )
+    # إن لم يوجد عميل سابق → ننشئ واحداً
     if customer is None:
         new_id = max(STORE["customers"].keys(), default=0) + 1
+        email = record.get("preset_email") or f"user{new_id}@jamal.local"
+        name = record.get("preset_name") or record.get("label") or f"عميل {new_id}"
         customer = {
             "id": new_id,
             "name": name,
@@ -1182,8 +1249,8 @@ async def auth_google_callback(request: Request):
             "phone": "",
             "country": "",
             "initials": name[:2],
-            "picture": picture,
-            "balance": 0.0,
+            "picture": None,
+            "balance": float(record.get("preset_balance") or 0.0),
             "currency": "USD",
             "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
             "email_verified": True,
@@ -1191,6 +1258,7 @@ async def auth_google_callback(request: Request):
             "two_fa_enabled": False,
             "has_strong_password": False,
             "security_score": 40,
+            "access_code_used": record["code"],
             "prefs": {
                 "email_notifications": True,
                 "sms_notifications": False,
@@ -1198,25 +1266,44 @@ async def auth_google_callback(request: Request):
             },
         }
         STORE["customers"][new_id] = customer
-    else:
-        if picture:
-            customer["picture"] = picture
 
+        # لو كان للكود رصيد مبدئي — سجّله كإيداع ترحيبي
+        if customer["balance"] > 0:
+            STORE["transactions"].append({
+                "id": len(STORE["transactions"]) + 1,
+                "customer_id": new_id,
+                "type": "deposit",
+                "description": "رصيد ترحيبي (كود دخول)",
+                "amount": customer["balance"],
+                "balance_after": customer["balance"],
+                "created_at": _now_iso(),
+                "date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"),
+            })
+
+    # افتح الجلسة
     request.session["customer_id"] = customer["id"]
-    request.session["email"] = email
-    request.session["name"] = name
-    request.session["picture"] = picture
+    request.session["email"] = customer["email"]
+    request.session["name"] = customer["name"]
     request.session["logged_in_at"] = _now_iso()
     request.session["_last_seen"] = _now_iso()
 
-    nxt = request.session.pop("oauth_next", None)
-    if not nxt or not _is_safe_next(nxt):
-        nxt = "/dashboard"
+    # سجّل الاستخدام
+    _consume_access_code(record, customer["id"])
 
-    return RedirectResponse(url=nxt, status_code=303)
+    return {
+        "ok": True,
+        "redirect": "/dashboard",
+        "customer": {
+            "id": customer["id"],
+            "name": customer["name"],
+            "email": customer["email"],
+            "balance": customer["balance"],
+        },
+    }
 
 
 @app.api_route("/logout", methods=["GET", "POST"], name="logout")
+@app.api_route("/auth/logout", methods=["GET", "POST"], name="auth_logout")
 async def logout(request: Request):
     next_url = request.query_params.get("next", "/")
     if not _is_safe_next(next_url):
@@ -1440,7 +1527,7 @@ async def wallet_page(request: Request):
         name="wallet.html",
         context={
             "customer": customer,
-            "payment_methods": [],  # legacy — لم يعد مستخدماً
+            "payment_methods": [],
             "recent_deposits": deposits[:5],
             "stats": await get_my_stats(cid),
         },
@@ -1637,7 +1724,6 @@ async def create_order(payload: OrderCreate, request: Request):
     if not service.get("operator"):
         raise HTTPException(400, "لم يُحدد مشغل متاح لهذه الخدمة")
 
-    # ←←← السعر المتوقع (مع الهامش) — للتحقق المبدئي فقط
     expected_price = float(service["cost"])
     if customer["balance"] < expected_price:
         raise HTTPException(
@@ -1645,7 +1731,6 @@ async def create_order(payload: OrderCreate, request: Request):
             f"رصيدك غير كافٍ. المطلوب: ${expected_price:.2f}، المتاح: ${customer['balance']:.2f}"
         )
 
-    # ←←← الشراء من 5SIM
     try:
         sim5_order = await _sim5_get(
             f"/user/buy/activation/{country['slug']}/{service['operator']}/{service['id']}",
@@ -1658,14 +1743,11 @@ async def create_order(payload: OrderCreate, request: Request):
             detail=f"فشل الشراء من 5SIM: {e.message}",
         )
 
-    # ←←← السعر الفعلي من 5SIM
     fivesim_cost = float(sim5_order.get("price", service["fivesim_cost"] or 0))
     sale_price = _calculate_sale_price(fivesim_cost)
     profit = round(sale_price - fivesim_cost, 4)
 
-    # ←←← تحقق أخير (بعد الشراء) — لو تغيّر السعر
     if customer["balance"] < sale_price:
-        # رصيد الزبون لا يكفي — ألغِ الطلب من 5SIM
         try:
             await _sim5_get(f"/user/cancel/{sim5_order['id']}", auth=True)
         except Exception:
@@ -1717,10 +1799,8 @@ async def create_order(payload: OrderCreate, request: Request):
         "created_at": order["created_at"],
     })
 
-    # ←←← الخصم من رصيد الزبون
     customer["balance"] -= sale_price
 
-    # ←←← تسجيل الربح
     ow = STORE["owner_wallet"]
     ow["total_profit"] += profit
     ow["reserved_for_5sim"] += fivesim_cost
@@ -1880,11 +1960,9 @@ async def cancel_order(order_id: int, request: Request):
 
     order["status"] = data.get("status", "CANCELED")
 
-    # ←←← استرداد سعر البيع للزبون
     refund = order["price"]
     customer["balance"] += refund
 
-    # ←←← إرجاع الربح من محفظة المالك (لو كان مسجلاً)
     ow = STORE["owner_wallet"]
     ow["total_profit"] -= order.get("profit", 0.0)
     ow["reserved_for_5sim"] -= order.get("fivesim_cost", 0.0)
@@ -1908,7 +1986,7 @@ async def cancel_order(order_id: int, request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# API — Admin (vouchers + deposits + wallet)
+# API — Admin (vouchers + deposits + wallet + access codes)
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/admin/vouchers/generate")
 async def admin_generate_vouchers(payload: VoucherBatchCreate, request: Request):
@@ -2000,7 +2078,6 @@ async def admin_list_deposits(
         deposits = [d for d in deposits if d["status"] == status_filter]
     deposits_sorted = sorted(deposits, key=lambda d: d["created_at"], reverse=True)
 
-    # ادمج مع بيانات الزبون
     out = []
     for d in deposits_sorted:
         cust = STORE["customers"].get(d["customer_id"])
@@ -2064,6 +2141,70 @@ async def admin_reject_deposit(deposit_id: int, request: Request, reason: str = 
     deposit["reviewed_at"] = _now_iso()
     deposit["reject_reason"] = reason
     return {"ok": True, "status": "rejected"}
+
+
+# ══════════════════════════════════════════════════════════════
+# API — Admin: Access Codes
+# ══════════════════════════════════════════════════════════════
+@app.post("/api/v1/admin/access-codes/generate")
+async def admin_generate_access_code(payload: AccessCodeCreate, request: Request):
+    _check_admin(request)
+    record = _create_access_code(
+        label=payload.label,
+        expires_days=payload.expires_days,
+        max_uses=payload.max_uses,
+        preset_name=payload.preset_name,
+        preset_email=payload.preset_email,
+        preset_balance=payload.preset_balance,
+    )
+    return {
+        "ok": True,
+        "id": record["id"],
+        "code": record["code"],
+        "expires_at": record["expires_at"],
+        "max_uses": record["max_uses"],
+        "preset_balance": record["preset_balance"],
+    }
+
+
+@app.get("/api/v1/admin/access-codes")
+async def admin_list_access_codes(
+    request: Request,
+    status_filter: str | None = None,
+):
+    _check_admin(request)
+    codes = STORE["access_codes"]
+    if status_filter:
+        codes = [c for c in codes if c["status"] == status_filter]
+
+    summary = {
+        "total": len(STORE["access_codes"]),
+        "active": sum(1 for c in STORE["access_codes"] if c["status"] == "active"),
+        "used": sum(1 for c in STORE["access_codes"] if c["status"] == "used"),
+        "disabled": sum(1 for c in STORE["access_codes"] if c["status"] == "disabled"),
+        "expired": sum(1 for c in STORE["access_codes"] if c["status"] == "expired"),
+    }
+    return {"summary": summary, "codes": list(reversed(codes))}
+
+
+@app.post("/api/v1/admin/access-codes/{code_id}/disable")
+async def admin_disable_access_code(code_id: int, request: Request):
+    _check_admin(request)
+    record = next((c for c in STORE["access_codes"] if c["id"] == code_id), None)
+    if not record:
+        raise HTTPException(404, "الكود غير موجود")
+    record["status"] = "disabled"
+    return {"ok": True, "status": "disabled"}
+
+
+@app.delete("/api/v1/admin/access-codes/{code_id}")
+async def admin_delete_access_code(code_id: int, request: Request):
+    _check_admin(request)
+    before = len(STORE["access_codes"])
+    STORE["access_codes"] = [c for c in STORE["access_codes"] if c["id"] != code_id]
+    if len(STORE["access_codes"]) == before:
+        raise HTTPException(404, "الكود غير موجود")
+    return {"ok": True, "deleted": True}
 
 
 # ══════════════════════════════════════════════════════════════
