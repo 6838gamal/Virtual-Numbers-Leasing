@@ -1,22 +1,26 @@
 # admin/main.py
 """
-Jamal Solutions — Admin Panel (standalone app)
+Jamal Solutions — Admin Panel (standalone)
 
-- يقدّم /admin-panel → templates/admin.html
-- POST /api/v1/admin/login  →  {ok, token}  (بريد + كلمة مرور)
-- كل /api/v1/admin/* يتحقق من X-Admin-Secret = ADMIN_SECRET أو token
-- يستورد STORE من main.py الرئيسي إن وُجد (لتزامن owner_wallet)
+- GET  /                       → redirect /login
+- GET  /login                  → templates/login.html
+- GET  /admin-panel            → templates/admin.html (JS يحمي)
+- POST /api/v1/admin/login     → {ok, token}
+- POST /api/v1/admin/logout    → {ok}
+- GET  /api/v1/admin/whoami    → {ok, email, auth}
+- كل /api/v1/admin/*           → محمي بـ X-Admin-Secret = token أو ADMIN_SECRET
+
+يستورد STORE و_sim5_get من main.py الرئيسي (إن وُجد) لتزامن owner_wallet.
 
 التشغيل (من داخل admin/):
     uvicorn main:app --host 0.0.0.0 --port 8001
 
-متطلبات البيئة:
+متغيرات البيئة:
     ADMIN_EMAIL           (افتراضي: admin@virtual-num.com)
     ADMIN_PASSWORD        (افتراضي: Virtual123) — للتطوير
-    ADMIN_PASSWORD_HASH   (bcrypt hash) — الأفضل للإنتاج
+    ADMIN_PASSWORD_HASH   (bcrypt) — الأفضل للإنتاج
     ADMIN_SECRET          (اختياري — توافق قديم)
-    SIM5_API_KEY          (لتفعيل بيانات 5SIM في /wallet)
-    FIVESIM_MARKUP_PERCENT (افتراضي 40)
+    SIM5_API_KEY, FIVESIM_MARKUP_PERCENT
 """
 from __future__ import annotations
 
@@ -28,14 +32,14 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
 
 # ══════════════════════════════════════════════════════════════
-# 1) مسارات المشروع
+# 1) Paths
 # ══════════════════════════════════════════════════════════════
 ADMIN_DIR = Path(__file__).resolve().parent          # admin/
 PROJECT_ROOT = ADMIN_DIR.parent                      # جذر المشروع
@@ -43,30 +47,25 @@ PROJECT_ROOT = ADMIN_DIR.parent                      # جذر المشروع
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-# القالب في admin/templates/admin.html
+# القالب في admin/templates/ — بديل: templates/ في الجذر
 TEMPLATES_DIR = ADMIN_DIR / "templates"
-# بديل: لو القالب في templates/ بجذر المشروع
 if not (TEMPLATES_DIR / "admin.html").exists():
     alt = PROJECT_ROOT / "templates"
     if (alt / "admin.html").exists():
         TEMPLATES_DIR = alt
 
+STATIC_DIR = ADMIN_DIR / "static"
+
 
 # ══════════════════════════════════════════════════════════════
-# 2) استيراد STORE و_sim5_get من main.py الرئيسي إن وُجد
+# 2) استيراد من main.py الرئيسي (إن وُجد)
 # ══════════════════════════════════════════════════════════════
 _IMPORT_MODE = "standalone"
+
 STORE: dict = {
-    "customers": {},
-    "numbers": [],
-    "orders": [],
-    "sms": [],
-    "transactions": [],
-    "deposits": [],
-    "tickets": [],
-    "sessions": [],
-    "vouchers": [],
-    "access_codes": [],
+    "customers": {}, "numbers": [], "orders": [], "sms": [],
+    "transactions": [], "deposits": [], "tickets": [], "sessions": [],
+    "vouchers": [], "access_codes": [],
     "owner_wallet": {
         "total_profit": 0.0,
         "total_revenue": 0.0,
@@ -90,7 +89,6 @@ async def _sim5_get(path: str, auth: bool = False, timeout: float = 25.0):
 
 
 def _create_vouchers_batch(count, value, expires_days=30, note=""):
-    # نسخة احتياطية إن لم يوجد main.py
     prefix = os.getenv("VOUCHER_PREFIX", "JS").strip().upper()
     batch_id = f"batch_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
     now = datetime.now(timezone.utc)
@@ -151,7 +149,7 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-# محاولة استيراد main.py الرئيسي
+# محاولة الاستيراد من main.py
 try:
     from main import (  # type: ignore
         STORE as _MAIN_STORE,
@@ -179,10 +177,9 @@ except Exception as e:
 # ══════════════════════════════════════════════════════════════
 # 3) App + Templates
 # ══════════════════════════════════════════════════════════════
-app = FastAPI(title="Jamal Solutions — Admin Panel", version="1.6.0")
+app = FastAPI(title="Jamal Solutions — Admin Panel", version="1.7.0")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
-STATIC_DIR = ADMIN_DIR / "static"
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
@@ -211,6 +208,7 @@ def _issue_admin_token() -> str:
 
 
 def _check_admin(request: Request) -> None:
+    """يقبل X-Admin-Secret = ADMIN_SECRET أو token صادر من /login."""
     if not ADMIN_SECRET and not ADMIN_EMAIL:
         raise HTTPException(503, "ADMIN_SECRET أو ADMIN_EMAIL غير مضبوط")
     provided = request.headers.get("X-Admin-Secret", "")
@@ -246,20 +244,21 @@ class AccessCodeCreate(BaseModel):
 
 
 # ══════════════════════════════════════════════════════════════
-# 6) Pages
+# 6) Pages  (فصل تسجيل الدخول عن لوحة التحكم)
 # ══════════════════════════════════════════════════════════════
-@app.get("/", response_class=HTMLResponse)
-async def root(request: Request):
-    return templates.TemplateResponse(
-        request=request, name="admin.html", context={},
-    )
+@app.get("/")
+async def root():
+    return RedirectResponse(url="/login", status_code=303)
+
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    return templates.TemplateResponse(request=request, name="login.html", context={})
 
 
 @app.get("/admin-panel", response_class=HTMLResponse)
 async def admin_panel(request: Request):
-    return templates.TemplateResponse(
-        request=request, name="admin.html", context={},
-    )
+    return templates.TemplateResponse(request=request, name="admin.html", context={})
 
 
 @app.get("/health")
@@ -270,19 +269,26 @@ async def health():
         "version": app.version,
         "import_mode": _IMPORT_MODE,
         "admin_email": ADMIN_EMAIL,
-        "admin_password_hash_set": bool(ADMIN_PASSWORD_HASH),
+        "password_hash_set": bool(ADMIN_PASSWORD_HASH),
+        "password_plain_set": bool(ADMIN_PASSWORD),
         "admin_secret_set": bool(ADMIN_SECRET),
         "templates_dir": str(TEMPLATES_DIR),
-        "template_exists": (TEMPLATES_DIR / "admin.html").exists(),
+        "login_template": (TEMPLATES_DIR / "login.html").exists(),
+        "admin_template": (TEMPLATES_DIR / "admin.html").exists(),
         "store_keys": sorted(STORE.keys()),
     }
 
 
 # ══════════════════════════════════════════════════════════════
-# 7) Admin Login
+# 7) Auth endpoints
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/admin/login")
 async def admin_login(payload: AdminLoginIn):
+    """
+    - إن كان ADMIN_PASSWORD_HASH مضبوطاً → bcrypt
+    - وإلا → مقارنة مع ADMIN_PASSWORD
+    يُرجع {ok, token}
+    """
     email_in = payload.email.strip().lower()
     email_ok = secrets.compare_digest(email_in, ADMIN_EMAIL)
 
@@ -303,6 +309,24 @@ async def admin_login(payload: AdminLoginIn):
         raise HTTPException(403, "البريد أو كلمة المرور غير صحيحة")
 
     return {"ok": True, "token": _issue_admin_token()}
+
+
+@app.get("/api/v1/admin/whoami")
+async def admin_whoami(request: Request):
+    """تتحقق اللوحة من صلاحية token عند الفتح."""
+    _check_admin(request)
+    provided = request.headers.get("X-Admin-Secret", "")
+    auth_mode = "token" if provided in _ADMIN_TOKENS else "secret"
+    return {"ok": True, "email": ADMIN_EMAIL, "auth": auth_mode}
+
+
+@app.post("/api/v1/admin/logout")
+async def admin_logout(request: Request):
+    """يُبطل الـ token الحالي."""
+    tok = request.headers.get("X-Admin-Secret", "")
+    if tok and tok in _ADMIN_TOKENS:
+        _ADMIN_TOKENS.pop(tok, None)
+    return {"ok": True}
 
 
 # ══════════════════════════════════════════════════════════════
@@ -347,7 +371,6 @@ async def admin_list_vouchers(
     _check_admin(request)
     vouchers = STORE["vouchers"]
 
-    # تحديث المنتهية ديناميكياً
     now = datetime.now(timezone.utc)
     for v in vouchers:
         if v.get("status") == "unused":
@@ -590,10 +613,11 @@ async def http_exc_handler(request: Request, exc: HTTPException):
 @app.on_event("startup")
 async def _startup_log():
     print("═" * 60)
-    print("[admin] 🚀 لوحة الأدمن")
+    print(f"[admin] 🚀 لوحة الأدمن v{app.version}")
     print(f"[admin] import_mode       = {_IMPORT_MODE}")
     print(f"[admin] PROJECT_ROOT      = {PROJECT_ROOT}")
     print(f"[admin] TEMPLATES_DIR     = {TEMPLATES_DIR}")
+    print(f"[admin] login.html        = {(TEMPLATES_DIR / 'login.html').exists()}")
     print(f"[admin] admin.html        = {(TEMPLATES_DIR / 'admin.html').exists()}")
     print(f"[admin] ADMIN_EMAIL       = {ADMIN_EMAIL}")
     print(f"[admin] PASSWORD_HASH set = {bool(ADMIN_PASSWORD_HASH)}")
