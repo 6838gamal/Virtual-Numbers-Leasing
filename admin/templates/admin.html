@@ -1,0 +1,807 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>لوحة الأدمن — جمال سولوشنز</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Cairo', system-ui, sans-serif; }
+    .mono { font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', monospace; }
+    .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); }
+    .stat-card { transition: transform 0.2s, box-shadow 0.2s; }
+    .stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,0.15); }
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+    .pulse-dot { animation: pulse-dot 2s infinite; }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 min-h-screen text-slate-100">
+
+<!-- ══ Login Gate ═══════════════════════════════════════════════ -->
+<div id="login-gate" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/95 backdrop-blur-md">
+  <div class="bg-slate-800 rounded-2xl shadow-2xl p-8 w-full max-w-md border border-slate-700">
+    <div class="text-center mb-6">
+      <div class="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl mx-auto flex items-center justify-center text-3xl shadow-lg mb-3">
+        🔐
+      </div>
+      <h1 class="text-2xl font-bold">لوحة الأدمن</h1>
+      <p class="text-xs text-slate-400 mt-1">جمال سولوشنز — Virtual Numbers</p>
+    </div>
+
+    <div class="space-y-4">
+      <div>
+        <label class="text-xs font-bold text-slate-400 mb-2 block">كلمة سر الأدمن</label>
+        <input type="password" id="admin-secret-input"
+               placeholder="ADMIN_SECRET"
+               onkeypress="if(event.key==='Enter') unlockAdmin()"
+               class="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none text-sm transition-all"
+               dir="ltr">
+      </div>
+
+      <div id="login-error" class="hidden text-xs font-bold text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg p-3"></div>
+
+      <button onclick="unlockAdmin()" id="login-btn"
+              class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold py-3 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"/>
+        </svg>
+        دخول
+      </button>
+
+      <p class="text-[10px] text-slate-500 text-center leading-relaxed">
+        كلمة السر تُحفظ في <code class="mono bg-slate-900 px-1 rounded">sessionStorage</code> فقط خلال هذه الجلسة.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Main Panel ═══════════════════════════════════════════════ -->
+<div id="admin-panel" class="hidden">
+  <!-- Header -->
+  <header class="glass border-b border-slate-700 sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center text-lg shadow">
+          ⚙️
+        </div>
+        <div>
+          <h1 class="text-sm font-bold">لوحة الأدمن</h1>
+          <p class="text-[10px] text-slate-400">جمال سولوشنز</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <div class="hidden sm:flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-1.5">
+          <span class="w-1.5 h-1.5 bg-emerald-400 rounded-full pulse-dot"></span>
+          <span class="text-[10px] font-bold text-emerald-400">متصل</span>
+        </div>
+        <button onclick="lockAdmin()"
+                class="text-xs font-bold text-slate-400 hover:text-red-400 border border-slate-700 hover:border-red-500/50 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+          </svg>
+          خروج
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 py-6 space-y-6">
+
+    <!-- ══ Owner Wallet ══════════════════════════════════════ -->
+    <section>
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-lg font-bold flex items-center gap-2">
+          <span class="w-1 h-5 bg-gradient-to-b from-emerald-400 to-teal-500 rounded-full"></span>
+          💰 محفظة المالك
+        </h2>
+        <button onclick="loadWallet(this)" class="text-xs font-bold text-blue-400 hover:text-blue-300 border border-slate-700 hover:border-blue-500/50 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          تحديث
+        </button>
+      </div>
+
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3" id="wallet-stats">
+        <div class="bg-slate-800 rounded-2xl p-4 border border-slate-700 stat-card">
+          <div class="text-xs text-slate-400 mb-1">إجمالي الأرباح</div>
+          <div class="text-2xl font-bold text-emerald-400">—</div>
+        </div>
+        <div class="bg-slate-800 rounded-2xl p-4 border border-slate-700 stat-card">
+          <div class="text-xs text-slate-400 mb-1">إجمالي الإيرادات</div>
+          <div class="text-2xl font-bold text-blue-400">—</div>
+        </div>
+        <div class="bg-slate-800 rounded-2xl p-4 border border-slate-700 stat-card">
+          <div class="text-xs text-slate-400 mb-1">محجوز لـ 5SIM</div>
+          <div class="text-2xl font-bold text-amber-400">—</div>
+        </div>
+        <div class="bg-slate-800 rounded-2xl p-4 border border-slate-700 stat-card">
+          <div class="text-xs text-slate-400 mb-1">رصيد 5SIM</div>
+          <div class="text-2xl font-bold text-purple-400" id="sim5-balance">—</div>
+        </div>
+      </div>
+
+      <!-- 5SIM Info -->
+      <div class="mt-3 bg-slate-800/50 rounded-xl p-3 border border-slate-700 text-xs">
+        <div class="flex items-center gap-3 flex-wrap">
+          <span class="text-slate-400">هامش الربح:</span>
+          <span id="markup-display" class="font-bold text-emerald-400">—</span>
+          <span class="text-slate-500">·</span>
+          <span class="text-slate-400">رصيد 5SIM المُجمّد:</span>
+          <span id="sim5-frozen" class="font-bold text-amber-400">—</span>
+        </div>
+      </div>
+
+      <!-- Alert for low 5SIM balance -->
+      <div id="sim5-alert" class="hidden mt-3 bg-red-500/10 border-2 border-red-500/40 rounded-xl p-4">
+        <div class="flex items-start gap-3">
+          <span class="text-2xl">⚠️</span>
+          <div class="flex-1">
+            <p class="font-bold text-red-300 text-sm">رصيد 5SIM منخفض!</p>
+            <p class="text-xs text-red-200 mt-1">يُنصح بشحن حسابك في 5SIM لتجنّب توقف الشراء.</p>
+            <a href="https://5sim.net" target="_blank" class="inline-block mt-2 text-xs bg-red-500 hover:bg-red-600 text-white font-bold px-3 py-1.5 rounded-lg">
+              فتح 5SIM ←
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ Generate Vouchers ═════════════════════════════════ -->
+    <section class="bg-slate-800 rounded-2xl border border-slate-700 p-5">
+      <h2 class="text-lg font-bold flex items-center gap-2 mb-4">
+        <span class="w-1 h-5 bg-gradient-to-b from-amber-400 to-orange-500 rounded-full"></span>
+        🎟️ توليد أكواد جديدة
+      </h2>
+
+      <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-4">
+        <div>
+          <label class="text-xs font-bold text-slate-400 mb-1.5 block">العدد</label>
+          <input type="number" id="v-count" value="10" min="1" max="1000"
+                 class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:border-amber-500 outline-none text-sm">
+        </div>
+        <div>
+          <label class="text-xs font-bold text-slate-400 mb-1.5 block">القيمة ($)</label>
+          <input type="number" id="v-value" value="5" min="1" step="0.5"
+                 class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:border-amber-500 outline-none text-sm">
+        </div>
+        <div>
+          <label class="text-xs font-bold text-slate-400 mb-1.5 block">الصلاحية (أيام)</label>
+          <input type="number" id="v-days" value="30" min="1" max="365"
+                 class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:border-amber-500 outline-none text-sm">
+        </div>
+        <div>
+          <label class="text-xs font-bold text-slate-400 mb-1.5 block">ملاحظة</label>
+          <input type="text" id="v-note" placeholder="بيع لوكيل..."
+                 class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:border-amber-500 outline-none text-sm">
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3 flex-wrap mb-4">
+        <div class="text-xs text-slate-400">
+          إجمالي قيمة الدفعة:
+          <span id="batch-total" class="font-bold text-amber-400">$50.00</span>
+        </div>
+        <button onclick="generateVouchers(this)"
+                class="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-bold px-6 py-2.5 rounded-xl transition-all shadow-lg text-sm flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+          </svg>
+          توليد الأكواد
+        </button>
+      </div>
+
+      <!-- Generated codes output -->
+      <div id="codes-output-wrap" class="hidden">
+        <div class="flex items-center justify-between mb-2">
+          <p class="text-xs font-bold text-emerald-400">✅ تم التوليد بنجاح</p>
+          <div class="flex items-center gap-2">
+            <button onclick="copyCodes()" class="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg font-bold transition-colors">
+              📋 نسخ الكل
+            </button>
+            <button onclick="downloadCodes()" class="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg font-bold transition-colors">
+              ⬇️ تنزيل TXT
+            </button>
+          </div>
+        </div>
+        <textarea id="codes-output" readonly rows="8"
+                  class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl mono text-xs outline-none"
+                  dir="ltr"></textarea>
+      </div>
+    </section>
+
+    <!-- ══ Vouchers Summary & List ═══════════════════════════ -->
+    <section class="bg-slate-800 rounded-2xl border border-slate-700 p-5">
+      <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <h2 class="text-lg font-bold flex items-center gap-2">
+          <span class="w-1 h-5 bg-gradient-to-b from-blue-400 to-indigo-500 rounded-full"></span>
+          📋 الأكواد
+        </h2>
+        <div class="flex items-center gap-2 flex-wrap">
+          <select id="v-filter" onchange="loadVouchers()"
+                  class="text-xs bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 outline-none">
+            <option value="">الكل</option>
+            <option value="unused">غير مستخدمة</option>
+            <option value="used">مستخدمة</option>
+            <option value="expired">منتهية</option>
+            <option value="disabled">معطّلة</option>
+          </select>
+          <button onclick="loadVouchers(this)" class="text-xs font-bold text-blue-400 hover:text-blue-300 border border-slate-700 hover:border-blue-500/50 px-3 py-1.5 rounded-lg transition-colors">
+            🔄 تحديث
+          </button>
+        </div>
+      </div>
+
+      <!-- Summary -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4" id="vouchers-summary">
+        <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700">
+          <div class="text-[10px] text-slate-400">الإجمالي</div>
+          <div class="text-lg font-bold">—</div>
+        </div>
+        <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700">
+          <div class="text-[10px] text-slate-400">غير مستخدمة</div>
+          <div class="text-lg font-bold text-emerald-400">—</div>
+        </div>
+        <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700">
+          <div class="text-[10px] text-slate-400">مستخدمة</div>
+          <div class="text-lg font-bold text-blue-400">—</div>
+        </div>
+        <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700">
+          <div class="text-[10px] text-slate-400">قيمة غير مستخدمة</div>
+          <div class="text-lg font-bold text-amber-400">—</div>
+        </div>
+      </div>
+
+      <!-- Table -->
+      <div class="overflow-x-auto rounded-xl border border-slate-700">
+        <table class="w-full text-right text-xs">
+          <thead class="bg-slate-900/70 border-b border-slate-700">
+            <tr class="text-slate-400 font-bold">
+              <th class="px-3 py-2.5">الكود</th>
+              <th class="px-3 py-2.5">القيمة</th>
+              <th class="px-3 py-2.5">الحالة</th>
+              <th class="px-3 py-2.5">المستخدم</th>
+              <th class="px-3 py-2.5">تاريخ الإنشاء</th>
+              <th class="px-3 py-2.5"></th>
+            </tr>
+          </thead>
+          <tbody id="vouchers-tbody" class="divide-y divide-slate-700/50">
+            <tr><td colspan="6" class="px-3 py-8 text-center text-slate-500">لا توجد بيانات</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ══ Deposit Requests ══════════════════════════════════ -->
+    <section class="bg-slate-800 rounded-2xl border border-slate-700 p-5">
+      <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <h2 class="text-lg font-bold flex items-center gap-2">
+          <span class="w-1 h-5 bg-gradient-to-b from-purple-400 to-pink-500 rounded-full"></span>
+          💳 طلبات الإيداع
+          <span id="pending-badge" class="hidden bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">0</span>
+        </h2>
+        <div class="flex items-center gap-2 flex-wrap">
+          <select id="d-filter" onchange="loadDeposits()"
+                  class="text-xs bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 outline-none">
+            <option value="">الكل</option>
+            <option value="pending" selected>قيد المراجعة</option>
+            <option value="completed">مكتملة</option>
+            <option value="rejected">مرفوضة</option>
+          </select>
+          <button onclick="loadDeposits(this)" class="text-xs font-bold text-blue-400 hover:text-blue-300 border border-slate-700 hover:border-blue-500/50 px-3 py-1.5 rounded-lg transition-colors">
+            🔄 تحديث
+          </button>
+        </div>
+      </div>
+
+      <div class="overflow-x-auto rounded-xl border border-slate-700">
+        <table class="w-full text-right text-xs">
+          <thead class="bg-slate-900/70 border-b border-slate-700">
+            <tr class="text-slate-400 font-bold">
+              <th class="px-3 py-2.5">#</th>
+              <th class="px-3 py-2.5">الزبون</th>
+              <th class="px-3 py-2.5">المبلغ</th>
+              <th class="px-3 py-2.5">الطريقة</th>
+              <th class="px-3 py-2.5">المرجع</th>
+              <th class="px-3 py-2.5">التاريخ</th>
+              <th class="px-3 py-2.5">الحالة</th>
+              <th class="px-3 py-2.5"></th>
+            </tr>
+          </thead>
+          <tbody id="deposits-tbody" class="divide-y divide-slate-700/50">
+            <tr><td colspan="8" class="px-3 py-8 text-center text-slate-500">لا توجد بيانات</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="text-center text-[10px] text-slate-500 pt-4 pb-8">
+      <p>جمال سولوشنز · لوحة الأدمن · <span id="footer-version">v1.2.0</span></p>
+      <p class="mt-1">آخر تحديث: <span id="last-refresh">—</span></p>
+    </footer>
+  </main>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] bg-slate-800 border-2 rounded-2xl px-6 py-3 text-sm font-bold shadow-2xl"></div>
+
+<script>
+// ══════════════════════════════════════════════════════════════
+// Admin Secret — sessionStorage
+// ══════════════════════════════════════════════════════════════
+let ADMIN_SECRET = sessionStorage.getItem('admin_secret') || '';
+
+function unlockAdmin() {
+  const input = document.getElementById('admin-secret-input');
+  const secret = input.value.trim();
+  if (!secret) {
+    showLoginError('الرجاء إدخال كلمة السر');
+    return;
+  }
+  ADMIN_SECRET = secret;
+  sessionStorage.setItem('admin_secret', secret);
+  verifyAndShow();
+}
+
+function lockAdmin() {
+  sessionStorage.removeItem('admin_secret');
+  ADMIN_SECRET = '';
+  document.getElementById('admin-panel').classList.add('hidden');
+  document.getElementById('login-gate').classList.remove('hidden');
+  document.getElementById('admin-secret-input').value = '';
+}
+
+async function verifyAndShow() {
+  const btn = document.getElementById('login-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ جاري التحقق...';
+
+  try {
+    const r = await adminFetch('/api/v1/admin/wallet');
+    if (r.status === 403) {
+      showLoginError('❌ كلمة السر غير صحيحة');
+      sessionStorage.removeItem('admin_secret');
+      ADMIN_SECRET = '';
+      btn.disabled = false;
+      btn.textContent = 'دخول';
+      return;
+    }
+    if (r.status === 503) {
+      showLoginError('⚠️ ADMIN_SECRET غير مضبوط على السيرفر');
+      btn.disabled = false;
+      btn.textContent = 'دخول';
+      return;
+    }
+    if (!r.ok) {
+      showLoginError('خطأ: HTTP ' + r.status);
+      btn.disabled = false;
+      btn.textContent = 'دخول';
+      return;
+    }
+
+    // نجح الدخول
+    document.getElementById('login-gate').classList.add('hidden');
+    document.getElementById('admin-panel').classList.remove('hidden');
+    btn.disabled = false;
+    btn.textContent = 'دخول';
+
+    // حمّل كل الأقسام
+    loadAll();
+    // تحديث تلقائي كل 30 ثانية
+    setInterval(loadAll, 30000);
+  } catch (e) {
+    showLoginError('فشل الاتصال: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = 'دخول';
+  }
+}
+
+function showLoginError(msg) {
+  const el = document.getElementById('login-error');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+  setTimeout(() => el.classList.add('hidden'), 5000);
+}
+
+// ══════════════════════════════════════════════════════════════
+// fetch helper
+// ══════════════════════════════════════════════════════════════
+function adminFetch(url, opts = {}) {
+  return fetch(url, {
+    ...opts,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Admin-Secret': ADMIN_SECRET,
+      ...(opts.headers || {}),
+    },
+  });
+}
+
+// ══════════════════════════════════════════════════════════════
+// Toast
+// ══════════════════════════════════════════════════════════════
+function toast(msg, type = 'info') {
+  const el = document.getElementById('toast');
+  const colors = {
+    success: 'bg-emerald-500/20 border-emerald-500 text-emerald-200',
+    error: 'bg-red-500/20 border-red-500 text-red-200',
+    info: 'bg-blue-500/20 border-blue-500 text-blue-200',
+    warning: 'bg-amber-500/20 border-amber-500 text-amber-200',
+  };
+  el.className = 'fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] border-2 rounded-2xl px-6 py-3 text-sm font-bold shadow-2xl ' + (colors[type] || colors.info);
+  el.textContent = msg;
+  el.classList.remove('hidden');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.add('hidden'), 4000);
+}
+
+// ══════════════════════════════════════════════════════════════
+// Load All
+// ══════════════════════════════════════════════════════════════
+function loadAll() {
+  loadWallet();
+  loadVouchers();
+  loadDeposits();
+  document.getElementById('last-refresh').textContent = new Date().toLocaleTimeString('ar-EG');
+}
+
+// ══════════════════════════════════════════════════════════════
+// Load Wallet
+// ══════════════════════════════════════════════════════════════
+async function loadWallet(btn) {
+  if (btn) { btn.disabled = true; }
+
+  try {
+    const r = await adminFetch('/api/v1/admin/wallet');
+    if (!r.ok) {
+      if (r.status === 403) { lockAdmin(); return; }
+      throw new Error('HTTP ' + r.status);
+    }
+    const data = await r.json();
+    const w = data.owner_wallet;
+
+    document.getElementById('wallet-stats').innerHTML = `
+      <div class="bg-slate-800 rounded-2xl p-4 border border-slate-700 stat-card">
+        <div class="text-xs text-slate-400 mb-1">إجمالي الأرباح</div>
+        <div class="text-2xl font-bold text-emerald-400">$${w.total_profit.toFixed(2)}</div>
+      </div>
+      <div class="bg-slate-800 rounded-2xl p-4 border border-slate-700 stat-card">
+        <div class="text-xs text-slate-400 mb-1">إجمالي الإيرادات</div>
+        <div class="text-2xl font-bold text-blue-400">$${w.total_revenue.toFixed(2)}</div>
+      </div>
+      <div class="bg-slate-800 rounded-2xl p-4 border border-slate-700 stat-card">
+        <div class="text-xs text-slate-400 mb-1">محجوز لـ 5SIM</div>
+        <div class="text-2xl font-bold text-amber-400">$${w.reserved_for_5sim.toFixed(2)}</div>
+      </div>
+      <div class="bg-slate-800 rounded-2xl p-4 border border-slate-700 stat-card">
+        <div class="text-xs text-slate-400 mb-1">رصيد 5SIM</div>
+        <div class="text-2xl font-bold text-purple-400">${data.sim5.balance ?? '—'}</div>
+      </div>
+    `;
+
+    document.getElementById('sim5-balance').textContent = data.sim5.balance ?? '—';
+    document.getElementById('sim5-frozen').textContent = data.sim5.frozen ?? '—';
+    document.getElementById('markup-display').textContent = (data.markup_percent || 0) + '%';
+
+    // Alert if 5SIM balance low
+    const sim5Bal = parseFloat(data.sim5.balance || 0);
+    const alertEl = document.getElementById('sim5-alert');
+    if (sim5Bal < 5 && !data.sim5.error) {
+      alertEl.classList.remove('hidden');
+    } else {
+      alertEl.classList.add('hidden');
+    }
+  } catch (e) {
+    console.error('loadWallet:', e);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// Load Vouchers
+// ══════════════════════════════════════════════════════════════
+async function loadVouchers(btn) {
+  if (btn) btn.disabled = true;
+
+  try {
+    const statusFilter = document.getElementById('v-filter').value;
+    const url = '/api/v1/admin/vouchers' + (statusFilter ? '?status_filter=' + statusFilter : '');
+    const r = await adminFetch(url);
+    if (!r.ok) {
+      if (r.status === 403) { lockAdmin(); return; }
+      throw new Error('HTTP ' + r.status);
+    }
+    const data = await r.json();
+    const s = data.summary;
+
+    document.getElementById('vouchers-summary').innerHTML = `
+      <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700">
+        <div class="text-[10px] text-slate-400">الإجمالي</div>
+        <div class="text-lg font-bold">${s.total}</div>
+      </div>
+      <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700">
+        <div class="text-[10px] text-slate-400">غير مستخدمة</div>
+        <div class="text-lg font-bold text-emerald-400">${s.unused}</div>
+      </div>
+      <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700">
+        <div class="text-[10px] text-slate-400">مستخدمة</div>
+        <div class="text-lg font-bold text-blue-400">${s.used}</div>
+      </div>
+      <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700">
+        <div class="text-[10px] text-slate-400">قيمة غير مستخدمة</div>
+        <div class="text-lg font-bold text-amber-400">$${s.total_value_unused.toFixed(2)}</div>
+      </div>
+    `;
+
+    const tbody = document.getElementById('vouchers-tbody');
+    if (!data.vouchers.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="px-3 py-8 text-center text-slate-500">لا توجد أكواد</td></tr>';
+      return;
+    }
+
+    // اعرض أحدث 100 كود
+    const rows = data.vouchers.slice(-100).reverse().map(v => {
+      const statusBadge = {
+        unused: '<span class="bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full text-[10px] font-bold">غير مستخدم</span>',
+        used: '<span class="bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full text-[10px] font-bold">مستخدم</span>',
+        expired: '<span class="bg-slate-500/20 text-slate-400 px-2 py-0.5 rounded-full text-[10px] font-bold">منتهي</span>',
+        disabled: '<span class="bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full text-[10px] font-bold">معطّل</span>',
+      }[v.status] || v.status;
+
+      const date = new Date(v.created_at).toLocaleDateString('ar-EG');
+
+      return `
+        <tr class="hover:bg-slate-700/30 transition-colors">
+          <td class="px-3 py-2"><code class="mono text-[11px] bg-slate-900 px-2 py-0.5 rounded">${v.code}</code></td>
+          <td class="px-3 py-2 font-bold text-amber-400">$${v.value.toFixed(2)}</td>
+          <td class="px-3 py-2">${statusBadge}</td>
+          <td class="px-3 py-2 text-slate-400">${v.used_by || '—'}</td>
+          <td class="px-3 py-2 text-slate-500 text-[10px]">${date}</td>
+          <td class="px-3 py-2">
+            ${v.status === 'unused' ? `
+              <button onclick="disableVoucher(${v.id})" class="text-[10px] font-bold text-red-400 hover:text-red-300 border border-red-500/30 hover:border-red-500 px-2 py-1 rounded-lg transition-colors">
+                تعطيل
+              </button>
+            ` : ''}
+          </td>
+        </tr>
+      `;
+    }).join('');
+    tbody.innerHTML = rows;
+  } catch (e) {
+    console.error('loadVouchers:', e);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// Load Deposits
+// ══════════════════════════════════════════════════════════════
+async function loadDeposits(btn) {
+  if (btn) btn.disabled = true;
+
+  try {
+    const statusFilter = document.getElementById('d-filter').value;
+    const url = '/api/v1/admin/deposits' + (statusFilter ? '?status_filter=' + statusFilter : '');
+    const r = await adminFetch(url);
+    if (!r.ok) {
+      if (r.status === 403) { lockAdmin(); return; }
+      throw new Error('HTTP ' + r.status);
+    }
+    const data = await r.json();
+
+    // Badge
+    const badge = document.getElementById('pending-badge');
+    if (data.summary.pending > 0) {
+      badge.textContent = data.summary.pending;
+      badge.classList.remove('hidden');
+    } else {
+      badge.classList.add('hidden');
+    }
+
+    const tbody = document.getElementById('deposits-tbody');
+    if (!data.deposits.length) {
+      tbody.innerHTML = '<tr><td colspan="8" class="px-3 py-8 text-center text-slate-500">لا توجد طلبات</td></tr>';
+      return;
+    }
+
+    const rows = data.deposits.map(d => {
+      const statusBadge = {
+        pending: '<span class="bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full text-[10px] font-bold">قيد المراجعة</span>',
+        completed: '<span class="bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full text-[10px] font-bold">مكتمل</span>',
+        rejected: '<span class="bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full text-[10px] font-bold">مرفوض</span>',
+      }[d.status] || d.status;
+
+      const actions = d.status === 'pending' ? `
+        <div class="flex items-center gap-1.5">
+          <button onclick="approveDeposit(${d.id})" class="text-[10px] font-bold bg-emerald-500 hover:bg-emerald-600 text-white px-2 py-1 rounded-lg transition-colors">
+            ✓ موافقة
+          </button>
+          <button onclick="rejectDeposit(${d.id})" class="text-[10px] font-bold bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded-lg transition-colors">
+            ✗ رفض
+          </button>
+        </div>
+      ` : '';
+
+      return `
+        <tr class="hover:bg-slate-700/30 transition-colors">
+          <td class="px-3 py-2 text-slate-500">#${d.id}</td>
+          <td class="px-3 py-2">
+            <div class="font-bold text-[11px]">${d.customer_name || '—'}</div>
+            <div class="text-[10px] text-slate-500 mono" dir="ltr">${d.customer_email || '—'}</div>
+          </td>
+          <td class="px-3 py-2 font-bold text-emerald-400">$${d.amount.toFixed(2)}</td>
+          <td class="px-3 py-2 text-[10px]">
+            <span class="bg-slate-700 px-2 py-0.5 rounded">${d.method}</span>
+          </td>
+          <td class="px-3 py-2">
+            <code class="mono text-[10px] bg-slate-900 px-1.5 py-0.5 rounded block max-w-[150px] truncate" title="${d.reference}" dir="ltr">
+              ${d.reference}
+            </code>
+          </td>
+          <td class="px-3 py-2 text-slate-500 text-[10px]">${d.date}</td>
+          <td class="px-3 py-2">${statusBadge}</td>
+          <td class="px-3 py-2">${actions}</td>
+        </tr>
+      `;
+    }).join('');
+    tbody.innerHTML = rows;
+  } catch (e) {
+    console.error('loadDeposits:', e);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// Generate Vouchers
+// ══════════════════════════════════════════════════════════════
+async function generateVouchers(btn) {
+  const count = parseInt(document.getElementById('v-count').value, 10);
+  const value = parseFloat(document.getElementById('v-value').value);
+  const days = parseInt(document.getElementById('v-days').value, 10);
+  const note = document.getElementById('v-note').value;
+
+  if (!count || count < 1 || count > 1000) { toast('العدد يجب أن يكون 1-1000', 'error'); return; }
+  if (!value || value < 1) { toast('القيمة يجب أن تكون ≥ $1', 'error'); return; }
+  if (!days || days < 1) { toast('الصلاحية يجب أن تكون ≥ يوم', 'error'); return; }
+
+  const originalText = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '⏳ جارٍ التوليد...';
+
+  try {
+    const r = await adminFetch('/api/v1/admin/vouchers/generate', {
+      method: 'POST',
+      body: JSON.stringify({ count, value, expires_days: days, note }),
+    });
+    const data = await r.json();
+
+    if (!r.ok) {
+      toast('❌ ' + (data.detail || 'فشل التوليد'), 'error');
+      return;
+    }
+
+    document.getElementById('codes-output').value = data.codes.join('\n');
+    document.getElementById('codes-output-wrap').classList.remove('hidden');
+
+    toast(`✅ تم توليد ${data.count} كود بقيمة $${data.total_value.toFixed(2)}`, 'success');
+    loadVouchers();
+  } catch (e) {
+    toast('❌ خطأ في الاتصال', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalText;
+  }
+}
+
+function copyCodes() {
+  const t = document.getElementById('codes-output');
+  t.select();
+  document.execCommand('copy');
+  toast('✅ تم النسخ', 'success');
+}
+
+function downloadCodes() {
+  const codes = document.getElementById('codes-output').value;
+  const blob = new Blob([codes], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'vouchers_' + new Date().toISOString().slice(0, 10) + '.txt';
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('⬇️ تم التنزيل', 'success');
+}
+
+// ══════════════════════════════════════════════════════════════
+// Voucher Actions
+// ══════════════════════════════════════════════════════════════
+async function disableVoucher(id) {
+  if (!confirm('هل أنت متأكد من تعطيل هذا الكود؟')) return;
+  try {
+    const r = await adminFetch(`/api/v1/admin/vouchers/${id}/disable`, { method: 'POST' });
+    if (r.ok) {
+      toast('✅ تم تعطيل الكود', 'success');
+      loadVouchers();
+    } else {
+      const d = await r.json();
+      toast('❌ ' + (d.detail || 'فشل'), 'error');
+    }
+  } catch (e) {
+    toast('❌ خطأ في الاتصال', 'error');
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// Deposit Actions
+// ══════════════════════════════════════════════════════════════
+async function approveDeposit(id) {
+  if (!confirm('تأكيد الموافقة على الإيداع؟ سيُضاف المبلغ لرصيد الزبون.')) return;
+  try {
+    const r = await adminFetch(`/api/v1/admin/deposits/${id}/approve`, { method: 'POST' });
+    const d = await r.json();
+    if (r.ok) {
+      toast(`✅ تمت الموافقة — الرصيد الجديد: $${d.new_balance.toFixed(2)}`, 'success');
+      loadDeposits();
+      loadWallet();
+    } else {
+      toast('❌ ' + (d.detail || 'فشل'), 'error');
+    }
+  } catch (e) {
+    toast('❌ خطأ في الاتصال', 'error');
+  }
+}
+
+async function rejectDeposit(id) {
+  const reason = prompt('سبب الرفض (اختياري):') || '';
+  try {
+    const r = await adminFetch(`/api/v1/admin/deposits/${id}/reject?reason=${encodeURIComponent(reason)}`, { method: 'POST' });
+    if (r.ok) {
+      toast('تم رفض الطلب', 'warning');
+      loadDeposits();
+    } else {
+      const d = await r.json();
+      toast('❌ ' + (d.detail || 'فشل'), 'error');
+    }
+  } catch (e) {
+    toast('❌ خطأ في الاتصال', 'error');
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// Batch Total (Live)
+// ══════════════════════════════════════════════════════════════
+function updateBatchTotal() {
+  const count = parseInt(document.getElementById('v-count').value, 10) || 0;
+  const value = parseFloat(document.getElementById('v-value').value) || 0;
+  document.getElementById('batch-total').textContent = '$' + (count * value).toFixed(2);
+}
+['v-count', 'v-value'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('input', updateBatchTotal);
+});
+updateBatchTotal();
+
+// ══════════════════════════════════════════════════════════════
+// Init
+// ══════════════════════════════════════════════════════════════
+(function init() {
+  // لو عنده secret محفوظ، حاول الدخول مباشرة
+  if (ADMIN_SECRET) {
+    document.getElementById('admin-secret-input').value = ADMIN_SECRET;
+    verifyAndShow();
+  }
+})();
+</script>
+</body>
+</html>
