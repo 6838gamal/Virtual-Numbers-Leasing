@@ -2,9 +2,9 @@
 """
 Jamal Solutions — Admin Panel (standalone)
 
-- GET  /                       → redirect /login
-- GET  /login                  → templates/login.html
-- GET  /admin-panel            → templates/admin.html (JS يحمي)
+- GET  /                       → login.html   (نفس /login)
+- GET  /login                  → login.html
+- GET  /admin-panel            → admin.html   (JS يحمي)
 - POST /api/v1/admin/login     → {ok, token}
 - POST /api/v1/admin/logout    → {ok}
 - GET  /api/v1/admin/whoami    → {ok, email, auth}
@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
@@ -177,7 +177,7 @@ except Exception as e:
 # ══════════════════════════════════════════════════════════════
 # 3) App + Templates
 # ══════════════════════════════════════════════════════════════
-app = FastAPI(title="Jamal Solutions — Admin Panel", version="1.7.0")
+app = FastAPI(title="Jamal Solutions — Admin Panel", version="1.7.1")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 if STATIC_DIR.exists():
@@ -244,20 +244,18 @@ class AccessCodeCreate(BaseModel):
 
 
 # ══════════════════════════════════════════════════════════════
-# 6) Pages  (فصل تسجيل الدخول عن لوحة التحكم)
+# 6) Pages  —  `/` و `/login` يشيران إلى نفس الملف login.html
 # ══════════════════════════════════════════════════════════════
-@app.get("/")
-async def root():
-    return RedirectResponse(url="/login", status_code=303)
-
-
+@app.get("/", response_class=HTMLResponse)
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
+    """`/` و `/login` → نفس القالب login.html (بدون redirect)."""
     return templates.TemplateResponse(request=request, name="login.html", context={})
 
 
 @app.get("/admin-panel", response_class=HTMLResponse)
 async def admin_panel(request: Request):
+    """لوحة التحكم — JS يتحقق من token ويعيد التوجيه إن لزم."""
     return templates.TemplateResponse(request=request, name="admin.html", context={})
 
 
