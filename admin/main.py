@@ -1,6 +1,6 @@
 # admin/main.py
 """
-Jamal Solutions — Admin Panel (standalone + persistent storage)
+Jamal Solutions — Admin Panel (standalone + persistent storage مشترك)
 
 - GET  /                       → login.html
 - GET  /login                  → login.html
@@ -10,14 +10,14 @@ Jamal Solutions — Admin Panel (standalone + persistent storage)
 - GET  /api/v1/admin/whoami    → {ok, email, auth}
 - كل /api/v1/admin/*           → محمي بـ X-Admin-Secret = token أو ADMIN_SECRET
 
-التخزين:
-    admin/data/store.json       ← يُقرأ عند البدء، يُحفظ تلقائياً بعد كل تعديل
-    admin/data/backups/         ← نسخة احتياطية عند الإغلاق الآمن
+التخزين (مشترك مع app/main.py):
+    project/data/store.json     ← يُقرأ عند البدء + قبل كل عرض، يُحفظ بعد كل تعديل
+    project/data/backups/       ← نسخة احتياطية عند الإغلاق الآمن
 
 التشغيل (من داخل admin/):
-    uvicorn main:app --host 0.0.0.0 --port 8001
+    uvicorn main:app --host 0.0.0.0 --port 8001 --workers 1
 
-ملاحظة: استخدم --workers 1 فقط (التخزين بالملف لا يدعم التزامن).
+⚠️  استخدم --workers 1 فقط لكلا التطبيقين (التخزين بالملف).
 """
 from __future__ import annotations
 
@@ -43,21 +43,42 @@ STATIC_DIR = ADMIN_DIR / "static"
 
 
 # ══════════════════════════════════════════════════════════════
-# 2) التخزين الدائم (JSON)
+# 2) التخزين الدائم المشترك (JSON)
 # ══════════════════════════════════════════════════════════════
-# storage.py يجب أن يكون بجانب هذا الملف (admin/storage.py)
+# storage.py بجانب هذا الملف؛ لكن DATA_DIR داخله يشير إلى project/data
 from storage import (  # type: ignore
     load_store,
     schedule_save,
     save_now,
     backup,
+    reload_from_disk,
     STORE_FILE,
 )
 
 STORE: dict = load_store()
-print(f"[admin] 💾 تم تحميل store من {STORE_FILE}")
+print(f"[admin] 💾 store loaded from {STORE_FILE}")
 
 
+def _persist() -> None:
+    """حفظ مؤجل (debounced) — سريع، يكفي لمعظم الحالات."""
+    schedule_save(STORE)
+
+
+def _persist_now() -> None:
+    """حفظ فوري — للعمليات الحسّاسة (توليد أكواد، تعديل رصيد، اعتماد إيداع)."""
+    save_now(STORE)
+
+
+def _refresh() -> None:
+    """إعادة قراءة store.json من القرص لرؤية تعديلات العميل."""
+    fresh = reload_from_disk()
+    STORE.clear()
+    STORE.update(fresh)
+
+
+# ══════════════════════════════════════════════════════════════
+# 2b) إعدادات 5SIM (للتوافق — الأدمن لا يشتري، فقط يقرأ الرصيد)
+# ══════════════════════════════════════════════════════════════
 SIM5_ENABLED = bool(os.getenv("SIM5_API_KEY", "").strip())
 FIVESIM_MARKUP_PERCENT = float(os.getenv("FIVESIM_MARKUP_PERCENT", "40"))
 
@@ -74,6 +95,9 @@ async def _sim5_get(path: str, auth: bool = False, timeout: float = 25.0):
     raise Sim5Error(503, "5SIM غير مفعّل (وضع مستقل)", path)
 
 
+# ══════════════════════════════════════════════════════════════
+# 2c) مولّدات الأكواد
+# ══════════════════════════════════════════════════════════════
 def _create_vouchers_batch(count, value, expires_days=30, note=""):
     prefix = os.getenv("VOUCHER_PREFIX", "JS").strip().upper()
     batch_id = f"batch_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
@@ -139,15 +163,10 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _persist() -> None:
-    """يُستدعى بعد أي تعديل على STORE — يحفظ تلقائياً (debounced)."""
-    schedule_save(STORE)
-
-
 # ══════════════════════════════════════════════════════════════
 # 3) App + Templates
 # ══════════════════════════════════════════════════════════════
-app = FastAPI(title="Jamal Solutions — Admin Panel", version="1.8.0")
+app = FastAPI(title="Jamal Solutions — Admin Panel", version="1.9.0")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 if STATIC_DIR.exists():
@@ -178,7 +197,6 @@ def _issue_admin_token() -> str:
 
 
 def _check_admin(request: Request) -> None:
-    """يقبل X-Admin-Secret = ADMIN_SECRET أو token صادر من /login."""
     if not ADMIN_SECRET and not ADMIN_EMAIL:
         raise HTTPException(503, "ADMIN_SECRET أو ADMIN_EMAIL غير مضبوط")
     provided = request.headers.get("X-Admin-Secret", "")
@@ -229,6 +247,7 @@ async def admin_panel(request: Request):
 
 @app.get("/health")
 async def health():
+    _refresh()
     return {
         "status": "ok",
         "app": "admin",
@@ -249,6 +268,8 @@ async def health():
             "vouchers": len(STORE["vouchers"]),
             "access_codes": len(STORE["access_codes"]),
             "deposits": len(STORE["deposits"]),
+            "customers": len(STORE["customers"]),
+            "orders": len(STORE["orders"]),
         },
     }
 
@@ -302,6 +323,8 @@ async def admin_logout(request: Request):
 @app.get("/api/v1/admin/wallet")
 async def admin_owner_wallet(request: Request):
     _check_admin(request)
+    _refresh()  # ← تعديلات العميل (شراء، استرداد، إيداع)
+
     ow = STORE["owner_wallet"]
 
     sim5_info: dict = {}
@@ -336,9 +359,12 @@ async def admin_list_vouchers(
     batch_id: Optional[str] = None,
 ):
     _check_admin(request)
+    _refresh()  # ← العميل قد استهلك أكواداً
+
     vouchers = STORE["vouchers"]
 
     now = datetime.now(timezone.utc)
+    changed = False
     for v in vouchers:
         if v.get("status") == "unused":
             try:
@@ -347,8 +373,11 @@ async def admin_list_vouchers(
                     exp = exp.replace(tzinfo=timezone.utc)
                 if now > exp:
                     v["status"] = "expired"
+                    changed = True
             except (ValueError, KeyError, TypeError):
                 pass
+    if changed:
+        _persist()
 
     filtered = vouchers
     if status_filter:
@@ -378,13 +407,15 @@ async def admin_list_vouchers(
 @app.post("/api/v1/admin/vouchers/generate")
 async def admin_generate_vouchers(payload: VoucherBatchCreate, request: Request):
     _check_admin(request)
+    _refresh()  # ← اقرأ أحدث نسخة قبل الإضافة (تجنب الكتابة فوق تعديلات العميل)
+
     created = _create_vouchers_batch(
         count=payload.count,
         value=payload.value,
         expires_days=payload.expires_days,
         note=payload.note,
     )
-    _persist()  # 💾
+    _persist_now()  # 💾 فوري — ليتمكن العميل من استهلاك الكود مباشرة
     return {
         "ok": True,
         "count": len(created),
@@ -400,13 +431,14 @@ async def admin_generate_vouchers(payload: VoucherBatchCreate, request: Request)
 @app.post("/api/v1/admin/vouchers/{voucher_id}/disable")
 async def admin_disable_voucher(voucher_id: int, request: Request):
     _check_admin(request)
+    _refresh()
     v = next((v for v in STORE["vouchers"] if v["id"] == voucher_id), None)
     if not v:
         raise HTTPException(404, "الكود غير موجود")
     if v["status"] == "used":
         raise HTTPException(400, "لا يمكن تعطيل كود مستخدم")
     v["status"] = "disabled"
-    _persist()  # 💾
+    _persist_now()  # 💾 فوري
     return {"ok": True, "status": "disabled"}
 
 
@@ -419,6 +451,8 @@ async def admin_list_deposits(
     status_filter: Optional[str] = None,
 ):
     _check_admin(request)
+    _refresh()  # ← العميل قد أضاف طلبات إيداع جديدة
+
     deposits = STORE["deposits"]
     if status_filter:
         deposits = [d for d in deposits if d["status"] == status_filter]
@@ -450,6 +484,8 @@ async def admin_list_deposits(
 @app.post("/api/v1/admin/deposits/{deposit_id}/approve")
 async def admin_approve_deposit(deposit_id: int, request: Request):
     _check_admin(request)
+    _refresh()  # ← اقرأ أحدث نسخة (قد يكون الرصيد تغيّر من شراء)
+
     deposit = next((d for d in STORE["deposits"] if d["id"] == deposit_id), None)
     if not deposit:
         raise HTTPException(404, "الطلب غير موجود")
@@ -476,7 +512,7 @@ async def admin_approve_deposit(deposit_id: int, request: Request):
     })
 
     STORE["owner_wallet"]["total_revenue"] += deposit["amount"]
-    _persist()  # 💾
+    _persist_now()  # 💾 فوري
     return {"ok": True, "new_balance": customer["balance"]}
 
 
@@ -486,13 +522,14 @@ async def admin_approve_deposit(deposit_id: int, request: Request):
 @app.post("/api/v1/admin/deposits/{deposit_id}/reject")
 async def admin_reject_deposit(deposit_id: int, request: Request, reason: str = ""):
     _check_admin(request)
+    _refresh()
     deposit = next((d for d in STORE["deposits"] if d["id"] == deposit_id), None)
     if not deposit:
         raise HTTPException(404, "الطلب غير موجود")
     deposit["status"] = "rejected"
     deposit["reviewed_at"] = _now_iso()
     deposit["reject_reason"] = reason
-    _persist()  # 💾
+    _persist_now()  # 💾 فوري
     return {"ok": True, "status": "rejected"}
 
 
@@ -502,6 +539,7 @@ async def admin_reject_deposit(deposit_id: int, request: Request, reason: str = 
 @app.post("/api/v1/admin/access-codes/generate")
 async def admin_generate_access_code(payload: AccessCodeCreate, request: Request):
     _check_admin(request)
+    _refresh()
     record = _create_access_code(
         label=payload.label,
         expires_days=payload.expires_days,
@@ -510,7 +548,7 @@ async def admin_generate_access_code(payload: AccessCodeCreate, request: Request
         preset_email=payload.preset_email,
         preset_balance=payload.preset_balance,
     )
-    _persist()  # 💾
+    _persist_now()  # 💾 فوري — ليتمكن العميل من الدخول بالكود
     return {
         "ok": True,
         "id": record["id"],
@@ -530,6 +568,8 @@ async def admin_list_access_codes(
     status_filter: Optional[str] = None,
 ):
     _check_admin(request)
+    _refresh()  # ← العميل قد استهلك كوداً
+
     codes = STORE["access_codes"]
     if status_filter:
         codes = [c for c in codes if c["status"] == status_filter]
@@ -550,11 +590,12 @@ async def admin_list_access_codes(
 @app.post("/api/v1/admin/access-codes/{code_id}/disable")
 async def admin_disable_access_code(code_id: int, request: Request):
     _check_admin(request)
+    _refresh()
     record = next((c for c in STORE["access_codes"] if c["id"] == code_id), None)
     if not record:
         raise HTTPException(404, "الكود غير موجود")
     record["status"] = "disabled"
-    _persist()  # 💾
+    _persist_now()  # 💾 فوري
     return {"ok": True, "status": "disabled"}
 
 
@@ -564,20 +605,22 @@ async def admin_disable_access_code(code_id: int, request: Request):
 @app.delete("/api/v1/admin/access-codes/{code_id}")
 async def admin_delete_access_code(code_id: int, request: Request):
     _check_admin(request)
+    _refresh()
     before = len(STORE["access_codes"])
     STORE["access_codes"] = [c for c in STORE["access_codes"] if c["id"] != code_id]
     if len(STORE["access_codes"]) == before:
         raise HTTPException(404, "الكود غير موجود")
-    _persist()  # 💾
+    _persist_now()  # 💾 فوري
     return {"ok": True, "deleted": True}
 
 
 # ══════════════════════════════════════════════════════════════
-# 19) Backup يدوي (اختياري)
+# 19) Backup يدوي
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/admin/backup")
 async def admin_backup(request: Request):
     _check_admin(request)
+    _refresh()
     p = backup(STORE)
     save_now(STORE)
     return {"ok": True, "path": str(p), "size": p.stat().st_size}
@@ -596,6 +639,7 @@ async def http_exc_handler(request: Request, exc: HTTPException):
 # ══════════════════════════════════════════════════════════════
 @app.on_event("startup")
 async def _startup_log():
+    _refresh()
     print("═" * 60)
     print(f"[admin] 🚀 لوحة الأدمن v{app.version}")
     print(f"[admin] root          = {ADMIN_DIR}")
@@ -613,6 +657,8 @@ async def _startup_log():
     print(f"[admin] owner_wallet  = {STORE['owner_wallet']}")
     print(f"[admin] vouchers      = {len(STORE['vouchers'])}")
     print(f"[admin] access_codes  = {len(STORE['access_codes'])}")
+    print(f"[admin] customers     = {len(STORE['customers'])}")
+    print(f"[admin] orders        = {len(STORE['orders'])}")
     print("═" * 60)
 
 
