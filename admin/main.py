@@ -10,7 +10,8 @@ Jamal Solutions — Admin Panel (standalone)
 - GET  /api/v1/admin/whoami    → {ok, email, auth}
 - كل /api/v1/admin/*           → محمي بـ X-Admin-Secret = token أو ADMIN_SECRET
 
-يستورد STORE و_sim5_get من main.py الرئيسي (إن وُجد) لتزامن owner_wallet.
+admin/ هو الجذر (Root). القوالب من admin/templates/ والستاتيك من admin/static/.
+يحاول استيراد STORE و_sim5_get من main.py (إن وُجد بجانب admin/) لتزامن owner_wallet.
 
 التشغيل (من داخل admin/):
     uvicorn main:app --host 0.0.0.0 --port 8001
@@ -39,26 +40,23 @@ from pydantic import BaseModel, Field
 
 
 # ══════════════════════════════════════════════════════════════
-# 1) Paths
+# 1) Paths — admin/ هو الجذر
 # ══════════════════════════════════════════════════════════════
-ADMIN_DIR = Path(__file__).resolve().parent          # admin/
-PROJECT_ROOT = ADMIN_DIR.parent                      # جذر المشروع
+ADMIN_DIR = Path(__file__).resolve().parent          # admin/  ← الجذر
 
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+_REQUIRED_TEMPLATES = ("login.html", "admin.html")
+TEMPLATES_DIR = ADMIN_DIR / "templates"              # admin/templates/
 
-# القالب في admin/templates/ — بديل: templates/ في الجذر
-TEMPLATES_DIR = ADMIN_DIR / "templates"
-if not (TEMPLATES_DIR / "admin.html").exists():
-    alt = PROJECT_ROOT / "templates"
-    if (alt / "admin.html").exists():
-        TEMPLATES_DIR = alt
+_MISSING_TEMPLATES = [
+    name for name in _REQUIRED_TEMPLATES
+    if not (TEMPLATES_DIR / name).exists()
+]
 
-STATIC_DIR = ADMIN_DIR / "static"
+STATIC_DIR = ADMIN_DIR / "static"                    # admin/static/
 
 
 # ══════════════════════════════════════════════════════════════
-# 2) استيراد من main.py الرئيسي (إن وُجد)
+# 2) استيراد من main.py الرئيسي (اختياري — فقط إن وُجد بجانب admin/)
 # ══════════════════════════════════════════════════════════════
 _IMPORT_MODE = "standalone"
 
@@ -149,7 +147,7 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-# محاولة الاستيراد من main.py
+# محاولة الاستيراد — دون تعديل sys.path (admin/ هو الجذر، main.py فقط إن كان بجانبه)
 try:
     from main import (  # type: ignore
         STORE as _MAIN_STORE,
@@ -177,7 +175,7 @@ except Exception as e:
 # ══════════════════════════════════════════════════════════════
 # 3) App + Templates
 # ══════════════════════════════════════════════════════════════
-app = FastAPI(title="Jamal Solutions — Admin Panel", version="1.7.1")
+app = FastAPI(title="Jamal Solutions — Admin Panel", version="1.7.2")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 if STATIC_DIR.exists():
@@ -266,13 +264,17 @@ async def health():
         "app": "admin",
         "version": app.version,
         "import_mode": _IMPORT_MODE,
+        "root": str(ADMIN_DIR),
+        "templates_dir": str(TEMPLATES_DIR),
+        "templates_ok": not _MISSING_TEMPLATES,
+        "missing_templates": _MISSING_TEMPLATES,
+        "login_template": (TEMPLATES_DIR / "login.html").exists(),
+        "admin_template": (TEMPLATES_DIR / "admin.html").exists(),
+        "static_dir_exists": STATIC_DIR.exists(),
         "admin_email": ADMIN_EMAIL,
         "password_hash_set": bool(ADMIN_PASSWORD_HASH),
         "password_plain_set": bool(ADMIN_PASSWORD),
         "admin_secret_set": bool(ADMIN_SECRET),
-        "templates_dir": str(TEMPLATES_DIR),
-        "login_template": (TEMPLATES_DIR / "login.html").exists(),
-        "admin_template": (TEMPLATES_DIR / "admin.html").exists(),
         "store_keys": sorted(STORE.keys()),
     }
 
@@ -613,10 +615,13 @@ async def _startup_log():
     print("═" * 60)
     print(f"[admin] 🚀 لوحة الأدمن v{app.version}")
     print(f"[admin] import_mode       = {_IMPORT_MODE}")
-    print(f"[admin] PROJECT_ROOT      = {PROJECT_ROOT}")
+    print(f"[admin] ADMIN_DIR (root)  = {ADMIN_DIR}")
     print(f"[admin] TEMPLATES_DIR     = {TEMPLATES_DIR}")
-    print(f"[admin] login.html        = {(TEMPLATES_DIR / 'login.html').exists()}")
-    print(f"[admin] admin.html        = {(TEMPLATES_DIR / 'admin.html').exists()}")
+    if _MISSING_TEMPLATES:
+        print(f"[admin] ❌ قوالب مفقودة في {TEMPLATES_DIR}: {_MISSING_TEMPLATES}")
+    else:
+        print(f"[admin] ✅ كل القوالب موجودة: {list(_REQUIRED_TEMPLATES)}")
+    print(f"[admin] STATIC_DIR        = {STATIC_DIR} (exists={STATIC_DIR.exists()})")
     print(f"[admin] ADMIN_EMAIL       = {ADMIN_EMAIL}")
     print(f"[admin] PASSWORD_HASH set = {bool(ADMIN_PASSWORD_HASH)}")
     print(f"[admin] PASSWORD plain    = {'set' if ADMIN_PASSWORD else 'not set'}")
