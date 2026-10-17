@@ -2,11 +2,10 @@
 Jamal Solutions — Virtual Numbers Platform
 Customer Portal (FastAPI + Jinja2 + SSE + 5SIM + Access-Code Login)
 
-✅ 1.4.0 — شاشة واحدة موحّدة (/buy) + تسجيل دخول بالكود:
-- كل شيء في /buy?tab=... (شراء، أرقامي، طلبات، وارد، محفظة، معاملات، دعم، حساب)
-- إعادة توجيه كل المسارات القديمة إلى /buy تلقائياً.
-- Access Codes: توليد، تفعيل، إدارة كاملة عبر endpoints إدارية.
-- إزالة OAuth (Google) بالكامل.
+✅ 1.5.0 — الشاشة الوحيدة /buy:
+- كل تفاعل العميل في /buy (Stage ديناميكي + modals) — لا تبويبات، لا صفحات.
+- بقيّة المسارات موجودة كما هي في الكود (لم تُحذف) لكن لا روابط إليها من الواجهة.
+- تسجيل الدخول بالكود.
 """
 from __future__ import annotations
 
@@ -101,7 +100,6 @@ class Sim5Error(Exception):
 
 
 def _sim5_explain_400(text: str) -> str:
-    """ترجمة رسائل 400 الشائعة من 5SIM إلى العربية."""
     t = text.lower()
     if "no free phones" in t:
         return "لا توجد أرقام متاحة حاليًا لهذه الدولة/الخدمة"
@@ -129,7 +127,6 @@ def _sim5_explain_400(text: str) -> str:
 
 
 async def _sim5_get(path: str, auth: bool = False, timeout: float = 25.0) -> Any:
-    """استدعاء GET واحد إلى 5SIM مع ترجمة كاملة للأخطاء."""
     if not SIM5_ENABLED and auth:
         raise Sim5Error(503, "5SIM غير مفعّل — SIM5_API_KEY غير مضبوط", path)
 
@@ -167,7 +164,6 @@ async def _sim5_get(path: str, auth: bool = False, timeout: float = 25.0) -> Any
     raise Sim5Error(r.status_code, f"استجابة غير متوقعة من 5SIM: {r.text[:200]}", path)
 
 
-# ── دوال مساعدة للعرض فقط ──
 def _iso_to_flag(iso: str) -> str:
     if not iso or len(iso) != 2:
         return "🏳️"
@@ -194,7 +190,6 @@ def _service_icon(slug: str) -> str:
 
 
 def _calculate_sale_price(fivesim_cost: float) -> float:
-    """سعر البيع = تكلفة 5SIM + هامش الربح."""
     if fivesim_cost <= 0:
         return 0.0
     markup = fivesim_cost * (FIVESIM_MARKUP_PERCENT / 100.0)
@@ -232,10 +227,6 @@ async def fetch_sim5_prices(force: bool = False) -> dict:
 
 
 async def build_live_catalog(force: bool = False) -> dict:
-    """
-    يبني كتالوج الدول والخدمات من 5SIM فقط.
-    ✅ الأسعار المعروضة = سعر 5SIM + هامش الربح.
-    """
     if not SIM5_ENABLED:
         return {
             "ok": False,
@@ -381,9 +372,6 @@ _alert_flag = {"down": False}
 _subscribers: set[asyncio.Queue] = set()
 
 
-# ══════════════════════════════════════════════════════════════
-# Request stats
-# ══════════════════════════════════════════════════════════════
 _REQUEST_STATS: dict[str, Any] = {
     "total": 0,
     "protected_401": 0,
@@ -456,9 +444,6 @@ async def _broadcast(event: str, data: dict) -> None:
             pass
 
 
-# ══════════════════════════════════════════════════════════════
-# Background keepalive
-# ══════════════════════════════════════════════════════════════
 async def _keepalive_loop(app: FastAPI) -> None:
     await asyncio.sleep(5)
     async with httpx.AsyncClient(timeout=10.0) as client:
@@ -513,8 +498,8 @@ async def lifespan(app: FastAPI):
     else:
         print("🔴 تحذير: SECRET_KEY غير مضبوط في متغيرات البيئة!")
 
-    print("✅ تسجيل الدخول بالكود مفعّل (Access Codes).")
-    print("✅ الشاشة الموحّدة /buy?tab=... مفعّلة.")
+    print("✅ تسجيل الدخول بالكود مفعّل.")
+    print("✅ الشاشة الوحيدة: /buy")
 
     if SIM5_ENABLED:
         print(f"✅ 5SIM مفعّل — Base: {SIM5_BASE}")
@@ -552,7 +537,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Jamal Solutions — Customer Portal",
     description="Virtual Numbers Platform",
-    version="1.4.0",
+    version="1.5.0",
     lifespan=lifespan,
 )
 
@@ -586,7 +571,6 @@ STORE: dict[str, Any] = {
 # Customer helpers
 # ══════════════════════════════════════════════════════════════
 def _get_customer_from_session(request: Request) -> dict | None:
-    """يرجع العميل، أو يعيد إنشاؤه من الجلسة بعد restart."""
     try:
         cid = request.session.get("customer_id")
     except Exception:
@@ -722,7 +706,6 @@ async def get_my_recent_sms(customer_id: int, limit: int = 20) -> list[dict]:
 # Vouchers helpers
 # ══════════════════════════════════════════════════════════════
 def _gen_voucher_code(value: float) -> str:
-    """يولّد كوداً فريداً بصيغة JS-500-A1B2-C3D4"""
     part1 = secrets.token_hex(2).upper()
     part2 = secrets.token_hex(2).upper()
     val_str = f"{value:g}".replace(".", "")
@@ -735,7 +718,6 @@ def _create_vouchers_batch(
     expires_days: int = 30,
     note: str = "",
 ) -> list[dict]:
-    """يولّد دفعة أكواد جديدة."""
     batch_id = f"batch_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
     now = datetime.now(timezone.utc)
     expires = now + timedelta(days=expires_days)
@@ -766,7 +748,6 @@ def _create_vouchers_batch(
 
 
 def _validate_voucher(code: str) -> dict:
-    """يتحقق من صلاحية الكود ويرجعه."""
     code = code.strip().upper()
     v = next((v for v in STORE["vouchers"] if v["code"] == code), None)
     if not v:
@@ -793,10 +774,9 @@ def _validate_voucher(code: str) -> dict:
 
 
 # ══════════════════════════════════════════════════════════════
-# Access Codes helpers (تسجيل دخول بالكود)
+# Access Codes helpers
 # ══════════════════════════════════════════════════════════════
 def _gen_access_code() -> str:
-    """يولّد كود دخول بصيغة JS-LOGIN-XXXXXXXXXXXX"""
     return f"{ACCESS_CODE_PREFIX}-{secrets.token_hex(6).upper()}"
 
 
@@ -808,22 +788,17 @@ def _create_access_code(
     preset_email: str = "",
     preset_balance: float = 0.0,
 ) -> dict:
-    """
-    يولّد كود دخول جديد.
-    - label: اسم/ملاحظة للتعرف على الكود
-    - expires_days: صلاحية الكود بالأيام
-    - max_uses: عدد مرات الاستخدام (1 = استخدام واحد)
-    - preset_*: بيانات الحساب الذي سيُنشأ عند أول استخدام
-    """
     while True:
         code = _gen_access_code()
         if not any(c["code"] == code for c in STORE["access_codes"]):
-            break    now = datetime.now(timezone.utc)
+            break
+
+    now = datetime.now(timezone.utc)
     record = {
         "id": len(STORE["access_codes"]) + 1,
         "code": code,
         "label": label,
-        "status": "active",  # active | used | expired | disabled
+        "status": "active",
         "max_uses": max_uses,
         "uses_count": 0,
         "preset_name": preset_name,
@@ -839,7 +814,6 @@ def _create_access_code(
 
 
 def _validate_access_code(code: str) -> dict:
-    """يتحقق من صلاحية كود الدخول ويُرجعه."""
     code = (code or "").strip().upper()
     if not code:
         raise HTTPException(400, "الرجاء إدخال الكود")
@@ -869,7 +843,6 @@ def _validate_access_code(code: str) -> dict:
 
 
 def _consume_access_code(record: dict, customer_id: int) -> None:
-    """يسجّل استخدام الكود ويربطه بالعميل."""
     record["uses_count"] += 1
     record["used_by"].append(customer_id)
     record["last_used_at"] = _now_iso()
@@ -881,7 +854,6 @@ def _consume_access_code(record: dict, customer_id: int) -> None:
 # Admin helper
 # ══════════════════════════════════════════════════════════════
 def _check_admin(request: Request) -> None:
-    """يتحقق من صلاحية الأدمن (كلمة سر في الهيدر)."""
     if not ADMIN_SECRET:
         raise HTTPException(503, "ADMIN_SECRET غير مضبوط")
     provided = request.headers.get("X-Admin-Secret", "")
@@ -997,7 +969,7 @@ async def system_version():
             "admin_endpoints": bool(ADMIN_SECRET),
             "login_method": "access_code",
             "access_codes": True,
-            "single_screen_buy": True,
+            "single_screen": True,
         },
         "sim5": sim5_info,
         "customers_in_store": len(STORE["customers"]),
@@ -1217,7 +1189,6 @@ async def login_page(request: Request):
         request=request,
         name="login.html",
         context={
-            "next": request.query_params.get("next", "/buy"),
             "error": request.query_params.get("error"),
         },
     )
@@ -1225,11 +1196,6 @@ async def login_page(request: Request):
 
 @app.post("/api/v1/auth/login-with-code")
 async def login_with_code(payload: AccessCodeLogin, request: Request):
-    """
-    تسجيل دخول العميل باستخدام كود صادر من المدير.
-    - إن كان الكود مرتبطاً بعميل سابق → يفتح جلسته.
-    - وإلا → ينشئ عميلاً جديداً بالبيانات preset_*.
-    """
     record = _validate_access_code(payload.code)
 
     customer = None
@@ -1309,91 +1275,49 @@ async def logout(request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# ⭐ الشاشة الوحيدة: /buy — كل التبويبات
+# ⭐ الشاشة الوحيدة — /buy
 # ══════════════════════════════════════════════════════════════
 @app.get("/buy", response_class=HTMLResponse)
-async def buy_page(
-    request: Request,
-    tab: str = "buy",
-    country: str | None = None,
-    service: str | None = None,
-    number: str | None = None,
-):
-    """
-    الشاشة الوحيدة للعميل. كل شيء يُدار هنا عبر تبويبات:
-      tab = buy | numbers | orders | inbox | wallet | transactions | support | profile
-    """
+async def buy_page(request: Request):
+    """الشاشة الوحيدة للعميل — Stage ديناميكي + modals."""
     customer = await get_current_customer(request)
     cid = customer["id"]
     stats = await get_my_stats(cid)
 
-    valid_tabs = {"buy", "numbers", "orders", "inbox", "wallet",
-                  "transactions", "support", "profile"}
-    if tab not in valid_tabs:
-        tab = "buy"
-
-    # ── الكتالوج
     result = await build_live_catalog()
     countries = result["countries"] if result["ok"] else []
 
     popular: list[dict] = []
-    available: list[dict] = []
     if result["ok"]:
         for c in countries:
             for s in c["services"]:
                 if s["available"]:
-                    row = {
+                    popular.append({
                         "country_slug": c["slug"],
-                        "country_code": c["code"],
                         "country_name": c["name"],
                         "country_flag": c["flag"],
                         "service_id": s["id"],
                         "service_name": s["name"],
-                        "service_icon": s["icon"],
                         "price": s["cost"],
                         "count": s["count"],
-                        "rate": s["rate"],
-                    }
-                    available.append(row)
-                    popular.append(row)
+                    })
         popular.sort(key=lambda x: x["price"])
-        popular = popular[:6]
-        available.sort(key=lambda x: x["price"])
-        available = available[:24]
+        popular = popular[:8]
 
     stats["countries_count"] = len(countries)
     stats["services_count"] = sum(c["services_count"] for c in countries)
 
-    # ── أرقامي
     my_numbers = await get_my_numbers(cid)
-
-    # ── الطلبات
-    orders = [o for o in STORE["orders"] if o["customer_id"] == cid]
-    orders.sort(key=lambda o: o["created_at"], reverse=True)
-    orders_by_status = await get_my_orders_by_status(cid)
-
-    # ── الوارد
     sms_list = await get_my_recent_sms(cid, limit=100)
-    if number:
-        sms_list = [s for s in sms_list if s["phone"] == number]
 
-    # ── المحفظة
     deposits = [d for d in STORE["deposits"] if d["customer_id"] == cid]
     deposits.sort(key=lambda d: d["created_at"], reverse=True)
 
-    # ── المعاملات
     txs = [t for t in STORE["transactions"] if t["customer_id"] == cid]
     txs.sort(key=lambda t: t["created_at"], reverse=True)
     total_deposits = sum(t["amount"] for t in txs if t["type"] == "deposit")
     total_spent = sum(-t["amount"] for t in txs if t["type"] == "purchase")
-    month_start = datetime.now(timezone.utc).date().replace(day=1)
-    this_month = sum(
-        -t["amount"] for t in txs
-        if t["type"] == "purchase"
-        and datetime.fromisoformat(t["created_at"]).date() >= month_start
-    )
 
-    # ── الدعم
     tickets = [t for t in STORE["tickets"] if t["customer_id"] == cid]
     tickets.sort(key=lambda t: t["created_at"], reverse=True)
 
@@ -1403,121 +1327,96 @@ async def buy_page(
         context={
             "customer": customer,
             "stats": stats,
-            "active_tab": tab,
-
-            # شراء
             "countries": countries,
-            "preselected_country": country,
-            "preselected_service": service,
             "popular_services": popular,
-            "available_numbers": available,
             "prices_meta": {
-                "ok": result["ok"], "source": "5sim",
-                "error": result["error"], "error_code": result["error_code"],
+                "ok": result["ok"],
+                "error": result["error"],
+                "error_code": result["error_code"],
                 "fetched_at": result["fetched_at"],
             },
-
-            # أرقامي
             "my_numbers": my_numbers,
-
-            # الطلبات
-            "orders": orders,
-            "orders_by_status": orders_by_status,
-
-            # الوارد
             "recent_sms": sms_list,
-            "sms_filter_number": number,
-
-            # المحفظة
-            "recent_deposits": deposits,
-
-            # المعاملات
-            "transactions": txs,
+            "recent_deposits": deposits[:10],
+            "transactions": txs[:30],
             "summary": {
                 "total_deposits": total_deposits,
                 "total_spent": total_spent,
                 "count": len(txs),
-                "this_month": this_month,
             },
-
-            # الدعم
             "tickets": tickets,
-            "faqs": [],
         },
     )
 
 
 # ══════════════════════════════════════════════════════════════
-# Redirect old page routes → /buy?tab=...
+# الصفحات القديمة — تبقى كما هي، غير مستخدمة من الواجهة
+# (لا حذف، لا تعديل — فقط موجودة)
 # ══════════════════════════════════════════════════════════════
-def _redirect_to_buy(tab: str):
-    return RedirectResponse(url=f"/buy?tab={tab}", status_code=303)
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard_page(request: Request):
+    customer = await get_current_customer(request)
+    return RedirectResponse(url="/buy", status_code=303)
 
 
-@app.get("/dashboard")
-async def dashboard_redirect(request: Request):
+@app.get("/catalog", response_class=HTMLResponse)
+async def catalog_page(request: Request):
     await get_current_customer(request)
-    return _redirect_to_buy("buy")
+    return RedirectResponse(url="/buy", status_code=303)
 
 
-@app.get("/catalog")
-async def catalog_redirect(request: Request):
+@app.get("/my-numbers", response_class=HTMLResponse)
+async def my_numbers_page(request: Request):
     await get_current_customer(request)
-    return _redirect_to_buy("buy")
+    return RedirectResponse(url="/buy", status_code=303)
 
 
-@app.get("/my-numbers")
-async def my_numbers_redirect(request: Request):
+@app.get("/orders", response_class=HTMLResponse)
+async def orders_page(request: Request):
     await get_current_customer(request)
-    return _redirect_to_buy("numbers")
+    return RedirectResponse(url="/buy", status_code=303)
 
 
-@app.get("/orders")
-async def orders_redirect(request: Request):
+@app.get("/orders/{order_id}", response_class=HTMLResponse)
+async def order_detail_page(request: Request, order_id: int):
     await get_current_customer(request)
-    return _redirect_to_buy("orders")
+    return RedirectResponse(url="/buy", status_code=303)
 
 
-@app.get("/orders/{order_id}")
-async def order_detail_redirect(order_id: int, request: Request):
+@app.get("/inbox", response_class=HTMLResponse)
+async def inbox_page(request: Request):
     await get_current_customer(request)
-    return _redirect_to_buy("orders")
+    return RedirectResponse(url="/buy", status_code=303)
 
 
-@app.get("/inbox")
-async def inbox_redirect(request: Request):
+@app.get("/wallet", response_class=HTMLResponse)
+async def wallet_page(request: Request):
     await get_current_customer(request)
-    return _redirect_to_buy("inbox")
+    return RedirectResponse(url="/buy", status_code=303)
 
 
-@app.get("/wallet")
-async def wallet_redirect(request: Request):
+@app.get("/transactions", response_class=HTMLResponse)
+async def transactions_page(request: Request):
     await get_current_customer(request)
-    return _redirect_to_buy("wallet")
+    return RedirectResponse(url="/buy", status_code=303)
 
 
-@app.get("/transactions")
-async def transactions_redirect(request: Request):
+@app.get("/support", response_class=HTMLResponse)
+async def support_page(request: Request):
     await get_current_customer(request)
-    return _redirect_to_buy("transactions")
+    return RedirectResponse(url="/buy", status_code=303)
 
 
-@app.get("/support")
-async def support_redirect(request: Request):
+@app.get("/profile", response_class=HTMLResponse)
+async def profile_page(request: Request):
     await get_current_customer(request)
-    return _redirect_to_buy("support")
+    return RedirectResponse(url="/buy", status_code=303)
 
 
-@app.get("/profile")
-async def profile_redirect(request: Request):
+@app.get("/security", response_class=HTMLResponse)
+async def security_page(request: Request):
     await get_current_customer(request)
-    return _redirect_to_buy("profile")
-
-
-@app.get("/security")
-async def security_redirect(request: Request):
-    await get_current_customer(request)
-    return _redirect_to_buy("profile")
+    return RedirectResponse(url="/buy", status_code=303)
 
 
 @app.get("/admin-panel", response_class=HTMLResponse)
@@ -1530,11 +1429,10 @@ async def admin_panel(request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# API — Wallet: Voucher + Deposit Request
+# API — Wallet
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/wallet/redeem-voucher")
 async def redeem_voucher(payload: VoucherRedeem, request: Request):
-    """الزبون يدخل الكود → يُضاف رصيد."""
     customer = await get_current_customer(request)
     cid = customer["id"]
 
@@ -1568,11 +1466,7 @@ async def redeem_voucher(payload: VoucherRedeem, request: Request):
 
 
 @app.post("/api/v1/wallet/deposit-request")
-async def create_deposit_request(
-    payload: DepositRequestCreate,
-    request: Request,
-):
-    """إنشاء طلب إيداع يدوي — ينتظر موافقة الأدمن."""
+async def create_deposit_request(payload: DepositRequestCreate, request: Request):
     customer = await get_current_customer(request)
 
     deposit = {
@@ -1596,7 +1490,7 @@ async def create_deposit_request(
 
 
 # ══════════════════════════════════════════════════════════════
-# API — Orders (شراء حقيقي من 5SIM مع هامش الربح)
+# API — Orders
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/orders")
 async def create_order(payload: OrderCreate, request: Request):
@@ -1729,6 +1623,10 @@ async def create_order(payload: OrderCreate, request: Request):
         "status": order["status"],
         "expires": order["expires"],
         "price": sale_price,
+        "service": service["name"],
+        "country": country["name"],
+        "flag": country["flag"],
+        "new_balance": customer["balance"],
     }
 
 
@@ -1892,7 +1790,7 @@ async def cancel_order(order_id: int, request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# API — Admin (vouchers + deposits + wallet + access codes)
+# API — Admin
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/admin/vouchers/generate")
 async def admin_generate_vouchers(payload: VoucherBatchCreate, request: Request):
@@ -2049,9 +1947,6 @@ async def admin_reject_deposit(deposit_id: int, request: Request, reason: str = 
     return {"ok": True, "status": "rejected"}
 
 
-# ══════════════════════════════════════════════════════════════
-# API — Admin: Access Codes
-# ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/admin/access-codes/generate")
 async def admin_generate_access_code(payload: AccessCodeCreate, request: Request):
     _check_admin(request)
