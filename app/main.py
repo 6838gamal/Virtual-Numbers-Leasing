@@ -2,10 +2,11 @@
 Jamal Solutions — Virtual Numbers Platform
 Customer Portal (FastAPI + Jinja2 + SSE + 5SIM + Access-Code Login)
 
-✅ 1.5.0 — الشاشة الوحيدة /buy:
-- كل تفاعل العميل في /buy (Stage ديناميكي + modals) — لا تبويبات، لا صفحات.
-- بقيّة المسارات موجودة كما هي في الكود (لم تُحذف) لكن لا روابط إليها من الواجهة.
-- تسجيل الدخول بالكود.
+✅ 1.6.0 — مخزن مشترك مع admin/main.py:
+- STORE يُحمَّل من project/data/store.json (عبر admin/storage.py).
+- _refresh() قبل كل قراءة/تعديل — لرؤية أكواد الأدمن والإيداعات المعتمدة.
+- _persist_now() بعد كل تعديل — ليتمكن الأدمن من رؤية الشراء/الاستهلاك فوراً.
+- الشاشة الوحيدة /buy، تسجيل الدخول بالكود.
 """
 from __future__ import annotations
 
@@ -13,6 +14,7 @@ import asyncio
 import json
 import os
 import secrets
+import sys
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -35,9 +37,10 @@ from starlette.middleware.sessions import SessionMiddleware
 # ══════════════════════════════════════════════════════════════
 # Paths
 # ══════════════════════════════════════════════════════════════
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent          # project/
+APP_DIR = Path(__file__).resolve().parent                  # project/app/
 TEMPLATES_DIR = BASE_DIR / "templates"
-STATIC_DIR = BASE_DIR / "app" / "static"
+STATIC_DIR = APP_DIR / "static"
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
@@ -45,6 +48,42 @@ DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 if DEBUG:
     from jinja2 import StrictUndefined
     templates.env.undefined = StrictUndefined
+
+
+# ══════════════════════════════════════════════════════════════
+# ⭐ المخزن المشترك (project/data/store.json عبر admin/storage.py)
+# ══════════════════════════════════════════════════════════════
+# نضيف جذر المشروع إلى sys.path حتى يعمل: from admin.storage import ...
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
+from admin.storage import (  # type: ignore
+    load_store,
+    schedule_save,
+    save_now,
+    reload_from_disk,
+    STORE_FILE,
+)
+
+STORE: dict[str, Any] = load_store()
+print(f"[app] 💾 store loaded from {STORE_FILE}")
+
+
+def _persist() -> None:
+    """حفظ مؤجل (debounced)."""
+    schedule_save(STORE)
+
+
+def _persist_now() -> None:
+    """حفظ فوري — للعمليات التي يجب أن يراها الأدمن مباشرة."""
+    save_now(STORE)
+
+
+def _refresh() -> None:
+    """إعادة قراءة store.json لرؤية تعديلات الأدمن (أكواد، إيداعات، تعطيل)."""
+    fresh = reload_from_disk()
+    STORE.clear()
+    STORE.update(fresh)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -184,6 +223,7 @@ _SERVICE_ICONS = {
     "openai": "🤖", "chatgpt": "🤖", "claudeai": "🤖", "gemini": "✨",
     "deepseek": "🐋", "perplexity": "🔎", "poeai": "💬",
 }
+
 
 def _service_icon(slug: str) -> str:
     return _SERVICE_ICONS.get(slug.lower(), "📱")
@@ -500,6 +540,7 @@ async def lifespan(app: FastAPI):
 
     print("✅ تسجيل الدخول بالكود مفعّل.")
     print("✅ الشاشة الوحيدة: /buy")
+    print(f"✅ المخزن المشترك: {STORE_FILE}")
 
     if SIM5_ENABLED:
         print(f"✅ 5SIM مفعّل — Base: {SIM5_BASE}")
@@ -529,6 +570,12 @@ async def lifespan(app: FastAPI):
             await task
         except asyncio.CancelledError:
             pass
+        # 💾 حفظ آمن عند الإغلاق
+        try:
+            save_now(STORE)
+            print("[app] 💾 store saved on shutdown")
+        except Exception as e:
+            print(f"[app] ⚠️  shutdown save failed: {type(e).__name__}: {e}")
 
 
 # ══════════════════════════════════════════════════════════════
@@ -537,34 +584,12 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Jamal Solutions — Customer Portal",
     description="Virtual Numbers Platform",
-    version="1.5.0",
+    version="1.6.0",
     lifespan=lifespan,
 )
 
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-
-
-# ══════════════════════════════════════════════════════════════
-# In-memory store
-# ══════════════════════════════════════════════════════════════
-STORE: dict[str, Any] = {
-    "customers": {},
-    "numbers": [],
-    "orders": [],
-    "sms": [],
-    "transactions": [],
-    "deposits": [],
-    "tickets": [],
-    "sessions": [],
-    "vouchers": [],
-    "access_codes": [],
-    "owner_wallet": {
-        "total_profit": 0.0,
-        "total_revenue": 0.0,
-        "reserved_for_5sim": 0.0,
-    },
-}
 
 
 # ══════════════════════════════════════════════════════════════
@@ -612,6 +637,7 @@ def _get_customer_from_session(request: Request) -> dict | None:
         },
     }
     STORE["customers"][cid] = customer
+    _persist_now()  # 💾 ليتمكن الأدمن من رؤية العميل الجديد
     print(f"♻️  أُعيد إنشاء العميل #{cid} ({email}) من الجلسة.")
     return customer
 
@@ -931,6 +957,7 @@ async def health():
         "status": "ok",
         "uptime": _fmt_uptime(time.time() - START_TIME),
         "timestamp": _now_iso(),
+        "store_file": str(STORE_FILE),
     }
 
 
@@ -946,6 +973,7 @@ async def health_check():
 
 @app.get("/api/v1/system/version")
 async def system_version():
+    _refresh()
     sim5_info: dict[str, Any] = {"enabled": SIM5_ENABLED}
     if SIM5_ENABLED:
         try:
@@ -970,12 +998,14 @@ async def system_version():
             "login_method": "access_code",
             "access_codes": True,
             "single_screen": True,
+            "shared_store": True,
         },
         "sim5": sim5_info,
         "customers_in_store": len(STORE["customers"]),
         "vouchers_in_store": len(STORE["vouchers"]),
         "access_codes_in_store": len(STORE["access_codes"]),
         "uptime": _fmt_uptime(time.time() - START_TIME),
+        "store_file": str(STORE_FILE),
     }
 
 
@@ -999,6 +1029,7 @@ async def sim5_profile():
 
 @app.get("/api/v1/system/whoami")
 async def whoami(request: Request):
+    _refresh()
     cid = request.session.get("customer_id")
     customer_exists = cid in STORE["customers"] if cid else False
     return {
@@ -1018,6 +1049,7 @@ async def request_stats():
 
 @app.get("/status", response_class=HTMLResponse)
 async def status_page(request: Request):
+    _refresh()
     uptime = _fmt_uptime(time.time() - START_TIME)
     history = KA_STATE["history"][-20:]
     rows = "".join(
@@ -1115,6 +1147,7 @@ async def sse_events(request: Request):
 # ══════════════════════════════════════════════════════════════
 @app.get("/api/v1/me/stats")
 async def me_stats(request: Request):
+    _refresh()
     customer = _get_customer_from_session(request)
     if not customer:
         return JSONResponse(
@@ -1175,6 +1208,7 @@ async def api_prices_refresh(request: Request):
 # ══════════════════════════════════════════════════════════════
 @app.get("/", response_class=HTMLResponse)
 async def login_page(request: Request):
+    _refresh()
     if request.session.get("customer_id"):
         if _session_is_expired(request):
             request.session.clear()
@@ -1196,6 +1230,7 @@ async def login_page(request: Request):
 
 @app.post("/api/v1/auth/login-with-code")
 async def login_with_code(payload: AccessCodeLogin, request: Request):
+    _refresh()  # ← اقرأ أكواد الأدمن من القرص
     record = _validate_access_code(payload.code)
 
     customer = None
@@ -1251,6 +1286,7 @@ async def login_with_code(payload: AccessCodeLogin, request: Request):
     request.session["_last_seen"] = _now_iso()
 
     _consume_access_code(record, customer["id"])
+    _persist_now()  # 💾 استهلاك الكود + العميل الجديد — فوراً للأدمن
 
     return {
         "ok": True,
@@ -1280,6 +1316,7 @@ async def logout(request: Request):
 @app.get("/buy", response_class=HTMLResponse)
 async def buy_page(request: Request):
     """الشاشة الوحيدة للعميل — Stage ديناميكي + modals."""
+    _refresh()  # ← رصيد محدّث (قد اعتمد الأدمن إيداعاً)
     customer = await get_current_customer(request)
     cid = customer["id"]
     stats = await get_my_stats(cid)
@@ -1350,12 +1387,11 @@ async def buy_page(request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# الصفحات القديمة — تبقى كما هي، غير مستخدمة من الواجهة
-# (لا حذف، لا تعديل — فقط موجودة)
+# الصفحات القديمة — redirect إلى /buy
 # ══════════════════════════════════════════════════════════════
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard_page(request: Request):
-    customer = await get_current_customer(request)
+    await get_current_customer(request)
     return RedirectResponse(url="/buy", status_code=303)
 
 
@@ -1433,6 +1469,7 @@ async def admin_panel(request: Request):
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/wallet/redeem-voucher")
 async def redeem_voucher(payload: VoucherRedeem, request: Request):
+    _refresh()  # ← اقرأ أكواد الشحن من الأدمن
     customer = await get_current_customer(request)
     cid = customer["id"]
 
@@ -1457,6 +1494,7 @@ async def redeem_voucher(payload: VoucherRedeem, request: Request):
     })
 
     STORE["owner_wallet"]["total_revenue"] += voucher["value"]
+    _persist_now()  # 💾
 
     return {
         "status": "success",
@@ -1467,6 +1505,7 @@ async def redeem_voucher(payload: VoucherRedeem, request: Request):
 
 @app.post("/api/v1/wallet/deposit-request")
 async def create_deposit_request(payload: DepositRequestCreate, request: Request):
+    _refresh()
     customer = await get_current_customer(request)
 
     deposit = {
@@ -1481,6 +1520,7 @@ async def create_deposit_request(payload: DepositRequestCreate, request: Request
         "reviewed_at": None,
     }
     STORE["deposits"].append(deposit)
+    _persist_now()  # 💾 ليظهر في لوحة الأدمن
 
     return {
         "status": "pending",
@@ -1494,6 +1534,7 @@ async def create_deposit_request(payload: DepositRequestCreate, request: Request
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/orders")
 async def create_order(payload: OrderCreate, request: Request):
+    _refresh()  # ← رصيد محدّث (قد اعتمد الأدمن إيداعاً)
     customer = await get_current_customer(request)
     cid = customer["id"]
 
@@ -1616,6 +1657,8 @@ async def create_order(payload: OrderCreate, request: Request):
         "date": now.strftime("%Y-%m-%d %H:%M"),
     })
 
+    _persist_now()  # 💾 المهم — الأدمن يرى الطلب والرصيد الجديد فوراً
+
     return {
         "id": order_id,
         "sim5_id": order["sim5_id"],
@@ -1632,6 +1675,7 @@ async def create_order(payload: OrderCreate, request: Request):
 
 @app.get("/api/v1/orders/sync")
 async def sync_orders_from_sim5(request: Request, category: str = "activation"):
+    _refresh()
     customer = await get_current_customer(request)
     if not SIM5_ENABLED:
         raise HTTPException(503, "5SIM غير مفعّل")
@@ -1672,11 +1716,15 @@ async def sync_orders_from_sim5(request: Request, category: str = "activation"):
         })
         imported += 1
 
+    if imported:
+        _persist_now()
+
     return {"ok": True, "imported": imported, "total_from_sim5": len(sim5_orders)}
 
 
 @app.get("/api/v1/orders/{order_id}/check")
 async def check_order(order_id: int, request: Request):
+    _refresh()
     customer = await get_current_customer(request)
     order = next(
         (o for o in STORE["orders"]
@@ -1720,6 +1768,8 @@ async def check_order(order_id: int, request: Request):
             if order["status"] == "RECEIVED":
                 n["status"] = "active"
 
+    _persist_now()  # 💾
+
     return {
         "ok": True,
         "status": order["status"],
@@ -1731,6 +1781,7 @@ async def check_order(order_id: int, request: Request):
 
 @app.post("/api/v1/orders/{order_id}/finish")
 async def finish_order(order_id: int, request: Request):
+    _refresh()
     customer = await get_current_customer(request)
     order = next(
         (o for o in STORE["orders"]
@@ -1744,11 +1795,13 @@ async def finish_order(order_id: int, request: Request):
     except Sim5Error as e:
         raise HTTPException(e.status or 503, e.message)
     order["status"] = data.get("status", "FINISHED")
+    _persist_now()
     return {"ok": True, "status": order["status"]}
 
 
 @app.post("/api/v1/orders/{order_id}/cancel")
 async def cancel_order(order_id: int, request: Request):
+    _refresh()
     customer = await get_current_customer(request)
     order = next(
         (o for o in STORE["orders"]
@@ -1786,21 +1839,25 @@ async def cancel_order(order_id: int, request: Request):
         if n.get("sim5_id") == order["sim5_id"]:
             n["status"] = "cancelled"
 
+    _persist_now()  # 💾
+
     return {"ok": True, "status": order["status"], "refund": refund}
 
 
 # ══════════════════════════════════════════════════════════════
-# API — Admin
+# API — Admin (احتياطي — الأدمن الأساسي في admin/main.py)
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/admin/vouchers/generate")
 async def admin_generate_vouchers(payload: VoucherBatchCreate, request: Request):
     _check_admin(request)
+    _refresh()
     created = _create_vouchers_batch(
         count=payload.count,
         value=payload.value,
         expires_days=payload.expires_days,
         note=payload.note,
     )
+    _persist_now()
     return {
         "ok": True,
         "count": len(created),
@@ -1817,6 +1874,7 @@ async def admin_list_vouchers(
     batch_id: str | None = None,
 ):
     _check_admin(request)
+    _refresh()
     vouchers = STORE["vouchers"]
     if status_filter:
         vouchers = [v for v in vouchers if v["status"] == status_filter]
@@ -1839,18 +1897,21 @@ async def admin_list_vouchers(
 @app.post("/api/v1/admin/vouchers/{voucher_id}/disable")
 async def admin_disable_voucher(voucher_id: int, request: Request):
     _check_admin(request)
+    _refresh()
     v = next((v for v in STORE["vouchers"] if v["id"] == voucher_id), None)
     if not v:
         raise HTTPException(404, "الكود غير موجود")
     if v["status"] == "used":
         raise HTTPException(400, "لا يمكن تعطيل كود مستخدم")
     v["status"] = "disabled"
+    _persist_now()
     return {"ok": True, "status": "disabled"}
 
 
 @app.get("/api/v1/admin/wallet")
 async def admin_owner_wallet(request: Request):
     _check_admin(request)
+    _refresh()
     ow = STORE["owner_wallet"]
 
     sim5_info: dict[str, Any] = {}
@@ -1877,6 +1938,7 @@ async def admin_list_deposits(
     status_filter: str | None = None,
 ):
     _check_admin(request)
+    _refresh()
     deposits = STORE["deposits"]
     if status_filter:
         deposits = [d for d in deposits if d["status"] == status_filter]
@@ -1905,6 +1967,7 @@ async def admin_list_deposits(
 @app.post("/api/v1/admin/deposits/{deposit_id}/approve")
 async def admin_approve_deposit(deposit_id: int, request: Request):
     _check_admin(request)
+    _refresh()
     deposit = next((d for d in STORE["deposits"] if d["id"] == deposit_id), None)
     if not deposit:
         raise HTTPException(404, "الطلب غير موجود")
@@ -1931,6 +1994,7 @@ async def admin_approve_deposit(deposit_id: int, request: Request):
     })
 
     STORE["owner_wallet"]["total_revenue"] += deposit["amount"]
+    _persist_now()
 
     return {"ok": True, "new_balance": customer["balance"]}
 
@@ -1938,18 +2002,21 @@ async def admin_approve_deposit(deposit_id: int, request: Request):
 @app.post("/api/v1/admin/deposits/{deposit_id}/reject")
 async def admin_reject_deposit(deposit_id: int, request: Request, reason: str = ""):
     _check_admin(request)
+    _refresh()
     deposit = next((d for d in STORE["deposits"] if d["id"] == deposit_id), None)
     if not deposit:
         raise HTTPException(404, "الطلب غير موجود")
     deposit["status"] = "rejected"
     deposit["reviewed_at"] = _now_iso()
     deposit["reject_reason"] = reason
+    _persist_now()
     return {"ok": True, "status": "rejected"}
 
 
 @app.post("/api/v1/admin/access-codes/generate")
 async def admin_generate_access_code(payload: AccessCodeCreate, request: Request):
     _check_admin(request)
+    _refresh()
     record = _create_access_code(
         label=payload.label,
         expires_days=payload.expires_days,
@@ -1958,6 +2025,7 @@ async def admin_generate_access_code(payload: AccessCodeCreate, request: Request
         preset_email=payload.preset_email,
         preset_balance=payload.preset_balance,
     )
+    _persist_now()
     return {
         "ok": True,
         "id": record["id"],
@@ -1974,6 +2042,7 @@ async def admin_list_access_codes(
     status_filter: str | None = None,
 ):
     _check_admin(request)
+    _refresh()
     codes = STORE["access_codes"]
     if status_filter:
         codes = [c for c in codes if c["status"] == status_filter]
@@ -1991,20 +2060,24 @@ async def admin_list_access_codes(
 @app.post("/api/v1/admin/access-codes/{code_id}/disable")
 async def admin_disable_access_code(code_id: int, request: Request):
     _check_admin(request)
+    _refresh()
     record = next((c for c in STORE["access_codes"] if c["id"] == code_id), None)
     if not record:
         raise HTTPException(404, "الكود غير موجود")
     record["status"] = "disabled"
+    _persist_now()
     return {"ok": True, "status": "disabled"}
 
 
 @app.delete("/api/v1/admin/access-codes/{code_id}")
 async def admin_delete_access_code(code_id: int, request: Request):
     _check_admin(request)
+    _refresh()
     before = len(STORE["access_codes"])
     STORE["access_codes"] = [c for c in STORE["access_codes"] if c["id"] != code_id]
     if len(STORE["access_codes"]) == before:
         raise HTTPException(404, "الكود غير موجود")
+    _persist_now()
     return {"ok": True, "deleted": True}
 
 
@@ -2013,10 +2086,12 @@ async def admin_delete_access_code(code_id: int, request: Request):
 # ══════════════════════════════════════════════════════════════
 @app.delete("/api/v1/sms/{sms_id}")
 async def delete_sms(sms_id: int, request: Request):
+    _refresh()
     customer = await get_current_customer(request)
     for i, s in enumerate(STORE["sms"]):
         if s["id"] == sms_id and s["customer_id"] == customer["id"]:
             STORE["sms"].pop(i)
+            _persist_now()
             return {"status": "deleted"}
     raise HTTPException(status_code=404, detail="الرسالة غير موجودة")
 
@@ -2026,6 +2101,7 @@ async def delete_sms(sms_id: int, request: Request):
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/support/tickets")
 async def create_ticket(payload: TicketCreate, request: Request):
+    _refresh()
     customer = await get_current_customer(request)
     cid = customer["id"]
     now = datetime.now(timezone.utc)
@@ -2041,6 +2117,7 @@ async def create_ticket(payload: TicketCreate, request: Request):
         "date": now.strftime("%Y-%m-%d %H:%M"),
     }
     STORE["tickets"].append(ticket)
+    _persist_now()
     return {"id": ticket["id"], "status": "open"}
 
 
@@ -2049,6 +2126,7 @@ async def create_ticket(payload: TicketCreate, request: Request):
 # ══════════════════════════════════════════════════════════════
 @app.patch("/api/v1/profile")
 async def update_profile(payload: ProfileUpdate, request: Request):
+    _refresh()
     customer = await get_current_customer(request)
     if payload.name is not None:
         customer["name"] = payload.name
@@ -2057,11 +2135,13 @@ async def update_profile(payload: ProfileUpdate, request: Request):
         customer["phone"] = payload.phone
     if payload.country is not None:
         customer["country"] = payload.country
+    _persist_now()
     return {"status": "updated"}
 
 
 @app.patch("/api/v1/profile/preferences")
 async def update_preferences(payload: PreferencesUpdate, request: Request):
+    _refresh()
     customer = await get_current_customer(request)
     prefs = customer.setdefault("prefs", {})
     if payload.email_notifications is not None:
@@ -2070,6 +2150,7 @@ async def update_preferences(payload: PreferencesUpdate, request: Request):
         prefs["sms_notifications"] = payload.sms_notifications
     if payload.marketing_emails is not None:
         prefs["marketing_emails"] = payload.marketing_emails
+    _persist_now()
     return {"status": "updated"}
 
 
@@ -2086,25 +2167,31 @@ async def change_password(payload: PasswordChange, request: Request):
 
 @app.post("/api/v1/security/2fa/enable")
 async def enable_2fa(request: Request):
+    _refresh()
     customer = await get_current_customer(request)
     secret = uuid.uuid4().hex[:16].upper()
     customer["two_fa_enabled"] = True
     customer["security_score"] = min(100, customer["security_score"] + 20)
+    _persist_now()
     return {"secret": secret, "status": "enabled"}
 
 
 @app.post("/api/v1/security/2fa/disable")
 async def disable_2fa(request: Request):
+    _refresh()
     customer = await get_current_customer(request)
     customer["two_fa_enabled"] = False
     customer["security_score"] = max(0, customer["security_score"] - 20)
+    _persist_now()
     return {"status": "disabled"}
 
 
 @app.delete("/api/v1/security/sessions/{session_id}")
 async def end_session(session_id: str, request: Request):
+    _refresh()
     await get_current_customer(request)
     STORE["sessions"] = [s for s in STORE["sessions"] if s["id"] != session_id]
+    _persist_now()
     return {"status": "ended"}
 
 
