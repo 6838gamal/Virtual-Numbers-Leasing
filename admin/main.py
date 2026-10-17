@@ -2,26 +2,28 @@
 """
 Jamal Solutions — Admin Panel (standalone app)
 
-- يقدّم /admin-panel  → templates/admin.html
-- يوفّر /api/v1/admin/* بنفس عقد التطبيق الرئيسي (Pasted text.txt)
-- يستورد STORE / _sim5_get / Sim5Error / FIVESIM_MARKUP_PERCENT من main.py
-  لتجنّب أي تعارض في owner_wallet أو sim5.
+- يقدّم /admin-panel → templates/admin.html
+- POST /api/v1/admin/login  →  {ok, token}  (بريد + كلمة مرور)
+- كل /api/v1/admin/* يتحقق من X-Admin-Secret = ADMIN_SECRET أو token
+- يستورد STORE من main.py الرئيسي إن وُجد (لتزامن owner_wallet)
 
-التشغيل:
-    # من داخل admin/
+التشغيل (من داخل admin/):
     uvicorn main:app --host 0.0.0.0 --port 8001
 
 متطلبات البيئة:
-    ADMIN_SECRET      (إلزامي — وإلا كل /api/v1/admin/* → 503)
-    SIM5_API_KEY      (اختياري — لتفعيل sim5 في /wallet)
-    FIVESIM_MARKUP_PERCENT  (افتراضي 40)
+    ADMIN_EMAIL           (افتراضي: admin@virtual-num.com)
+    ADMIN_PASSWORD        (افتراضي: Virtual123) — للتطوير
+    ADMIN_PASSWORD_HASH   (bcrypt hash) — الأفضل للإنتاج
+    ADMIN_SECRET          (اختياري — توافق قديم)
+    SIM5_API_KEY          (لتفعيل بيانات 5SIM في /wallet)
+    FIVESIM_MARKUP_PERCENT (افتراضي 40)
 """
 from __future__ import annotations
 
 import os
 import secrets
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -33,108 +35,200 @@ from pydantic import BaseModel, Field
 
 
 # ══════════════════════════════════════════════════════════════
-# 1) استيراد من التطبيق الرئيسي — لا نعيد تعريف STORE أو _sim5_get
+# 1) مسارات المشروع
 # ══════════════════════════════════════════════════════════════
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+ADMIN_DIR = Path(__file__).resolve().parent          # admin/
+PROJECT_ROOT = ADMIN_DIR.parent                      # جذر المشروع
+
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-try:
-    # التطبيق الرئيسي: main.py في جذر المشروع
-    from main import (  # type: ignore
-        STORE,
-        SIM5_ENABLED,
-        FIVESIM_MARKUP_PERCENT,
-        Sim5Error,
-        _sim5_get,
-        _create_vouchers_batch,
-        _create_access_code,
-        _now_iso,
-        _iso_to_flag,  # noqa: F401  (متاح للاستخدام لو احتجته)
-    )
-    _IMPORT_MODE = "main.py"
-except Exception as _imp_err:  # pragma: no cover
-    # fallback: لم نجد main.py — نعمل مستقلاً (لا يجب أن يحدث في الإنتاج)
-    print(f"[admin] ⚠️  تعذّر استيراد main.py: {_imp_err}")
-    print("[admin] ⚠️  سيعمل الأدمن بمخزن مستقل — owner_wallet لن يتزامن!")
-    STORE = {
-        "customers": {},
-        "numbers": [],
-        "orders": [],
-        "sms": [],
-        "transactions": [],
-        "deposits": [],
-        "tickets": [],
-        "sessions": [],
-        "vouchers": [],
-        "access_codes": [],
-        "owner_wallet": {
-            "total_profit": 0.0,
-            "total_revenue": 0.0,
-            "reserved_for_5sim": 0.0,
-        },
+# القالب في admin/templates/admin.html
+TEMPLATES_DIR = ADMIN_DIR / "templates"
+# بديل: لو القالب في templates/ بجذر المشروع
+if not (TEMPLATES_DIR / "admin.html").exists():
+    alt = PROJECT_ROOT / "templates"
+    if (alt / "admin.html").exists():
+        TEMPLATES_DIR = alt
+
+
+# ══════════════════════════════════════════════════════════════
+# 2) استيراد STORE و_sim5_get من main.py الرئيسي إن وُجد
+# ══════════════════════════════════════════════════════════════
+_IMPORT_MODE = "standalone"
+STORE: dict = {
+    "customers": {},
+    "numbers": [],
+    "orders": [],
+    "sms": [],
+    "transactions": [],
+    "deposits": [],
+    "tickets": [],
+    "sessions": [],
+    "vouchers": [],
+    "access_codes": [],
+    "owner_wallet": {
+        "total_profit": 0.0,
+        "total_revenue": 0.0,
+        "reserved_for_5sim": 0.0,
+    },
+}
+SIM5_ENABLED = bool(os.getenv("SIM5_API_KEY", "").strip())
+FIVESIM_MARKUP_PERCENT = float(os.getenv("FIVESIM_MARKUP_PERCENT", "40"))
+
+
+class Sim5Error(Exception):
+    def __init__(self, status_code: int, message: str, endpoint: str = ""):
+        self.status = status_code
+        self.message = message
+        self.endpoint = endpoint
+        super().__init__(f"[{status_code}] {message} ({endpoint})")
+
+
+async def _sim5_get(path: str, auth: bool = False, timeout: float = 25.0):
+    raise Sim5Error(503, "5SIM غير مفعّل (وضع مستقل)", path)
+
+
+def _create_vouchers_batch(count, value, expires_days=30, note=""):
+    # نسخة احتياطية إن لم يوجد main.py
+    prefix = os.getenv("VOUCHER_PREFIX", "JS").strip().upper()
+    batch_id = f"batch_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
+    now = datetime.now(timezone.utc)
+    expires = now + timedelta(days=expires_days)
+    created = []
+    for _ in range(count):
+        while True:
+            code = f"{prefix}-{f'{value:g}'.replace('.', '')}-{secrets.token_hex(2).upper()}-{secrets.token_hex(2).upper()}"
+            if not any(v["code"] == code for v in STORE["vouchers"]):
+                break
+        v = {
+            "id": len(STORE["vouchers"]) + 1,
+            "code": code,
+            "value": float(value),
+            "status": "unused",
+            "batch_id": batch_id,
+            "note": note,
+            "created_at": now.isoformat(),
+            "expires_at": expires.isoformat(),
+            "used_by": None,
+            "used_at": None,
+        }
+        STORE["vouchers"].append(v)
+        created.append(v)
+    return created
+
+
+def _create_access_code(
+    label="", expires_days=30, max_uses=1,
+    preset_name="", preset_email="", preset_balance=0.0,
+):
+    prefix = os.getenv("ACCESS_CODE_PREFIX", "JS-LOGIN").strip().upper()
+    while True:
+        code = f"{prefix}-{secrets.token_hex(6).upper()}"
+        if not any(c["code"] == code for c in STORE["access_codes"]):
+            break
+    now = datetime.now(timezone.utc)
+    record = {
+        "id": len(STORE["access_codes"]) + 1,
+        "code": code,
+        "label": label,
+        "status": "active",
+        "max_uses": max_uses,
+        "uses_count": 0,
+        "preset_name": preset_name,
+        "preset_email": preset_email,
+        "preset_balance": float(preset_balance),
+        "created_at": now.isoformat(),
+        "expires_at": (now + timedelta(days=expires_days)).isoformat(),
+        "used_by": [],
+        "last_used_at": None,
     }
-    SIM5_ENABLED = bool(os.getenv("SIM5_API_KEY", "").strip())
-    FIVESIM_MARKUP_PERCENT = float(os.getenv("FIVESIM_MARKUP_PERCENT", "40"))
+    STORE["access_codes"].append(record)
+    return record
 
-    class Sim5Error(Exception):
-        def __init__(self, status_code: int, message: str, endpoint: str = ""):
-            self.status = status_code
-            self.message = message
-            self.endpoint = endpoint
-            super().__init__(f"[{status_code}] {message} ({endpoint})")
 
-    async def _sim5_get(path: str, auth: bool = False, timeout: float = 25.0):  # type: ignore
-        raise Sim5Error(503, "5SIM غير مفعّل (وضع مستقل)", path)
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
-    def _create_vouchers_batch(count, value, expires_days=30, note=""):  # type: ignore
-        raise RuntimeError("main.py غير متاح")
 
-    def _create_access_code(**kwargs):  # type: ignore
-        raise RuntimeError("main.py غير متاح")
-
-    def _now_iso() -> str:
-        return datetime.now(timezone.utc).isoformat()
-
-    _IMPORT_MODE = "standalone"
+# محاولة استيراد main.py الرئيسي
+try:
+    from main import (  # type: ignore
+        STORE as _MAIN_STORE,
+        SIM5_ENABLED as _MAIN_SIM5_ENABLED,
+        FIVESIM_MARKUP_PERCENT as _MAIN_MARKUP,
+        Sim5Error as _MainSim5Error,
+        _sim5_get as _main_sim5_get,
+        _create_vouchers_batch as _main_create_vouchers,
+        _create_access_code as _main_create_access_code,
+    )
+    STORE = _MAIN_STORE
+    SIM5_ENABLED = _MAIN_SIM5_ENABLED
+    FIVESIM_MARKUP_PERCENT = _MAIN_MARKUP
+    Sim5Error = _MainSim5Error
+    _sim5_get = _main_sim5_get
+    _create_vouchers_batch = _main_create_vouchers
+    _create_access_code = _main_create_access_code
+    _IMPORT_MODE = "main.py"
+    print("[admin] ✅ تم استيراد STORE و_sim5_get من main.py")
+except Exception as e:
+    print(f"[admin] ⚠️  تعذّر استيراد main.py ({type(e).__name__}: {e})")
+    print("[admin] ⚠️  سيعمل الأدمن بمخزن مستقل — owner_wallet لن يتزامن")
 
 
 # ══════════════════════════════════════════════════════════════
-# 2) مسارات القوالب — نستخدم نفس templates/ في جذر المشروع
+# 3) App + Templates
 # ══════════════════════════════════════════════════════════════
-TEMPLATES_DIR = PROJECT_ROOT / "templates"
-STATIC_DIR = PROJECT_ROOT / "static"
-
-
-# ══════════════════════════════════════════════════════════════
-# 3) App
-# ══════════════════════════════════════════════════════════════
-app = FastAPI(title="Jamal Solutions — Admin Panel", version="1.5.0")
-
+app = FastAPI(title="Jamal Solutions — Admin Panel", version="1.6.0")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
+STATIC_DIR = ADMIN_DIR / "static"
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 # ══════════════════════════════════════════════════════════════
-# 4) Auth — نفس آلية _check_admin في main.py
+# 4) إعدادات الأدمن
 # ══════════════════════════════════════════════════════════════
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@virtual-num.com").strip().lower()
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "Virtual123")
+ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH", "").strip()
 ADMIN_SECRET = os.getenv("ADMIN_SECRET", "").strip()
+
+_bcrypt = None
+try:
+    import bcrypt as _bcrypt  # type: ignore
+except Exception:
+    _bcrypt = None
+
+_ADMIN_TOKENS: dict[str, dict] = {}
+
+
+def _issue_admin_token() -> str:
+    tok = secrets.token_urlsafe(32)
+    _ADMIN_TOKENS[tok] = {"issued_at": _now_iso()}
+    return tok
 
 
 def _check_admin(request: Request) -> None:
-    """تطابق حرفي مع main.py — 503 إذا لم يُضبط، 403 إذا خاطئ."""
-    if not ADMIN_SECRET:
-        raise HTTPException(503, "ADMIN_SECRET غير مضبوط")
+    if not ADMIN_SECRET and not ADMIN_EMAIL:
+        raise HTTPException(503, "ADMIN_SECRET أو ADMIN_EMAIL غير مضبوط")
     provided = request.headers.get("X-Admin-Secret", "")
-    if not secrets.compare_digest(provided, ADMIN_SECRET):
-        raise HTTPException(403, "غير مصرح")
+    if ADMIN_SECRET and secrets.compare_digest(provided, ADMIN_SECRET):
+        return
+    if provided and provided in _ADMIN_TOKENS:
+        return
+    raise HTTPException(403, "غير مصرح")
 
 
 # ══════════════════════════════════════════════════════════════
-# 5) Pydantic models — مطابقة لـ main.py
+# 5) Pydantic models
 # ══════════════════════════════════════════════════════════════
+class AdminLoginIn(BaseModel):
+    email: str
+    password: str
+
+
 class VoucherBatchCreate(BaseModel):
     count: int = Field(..., ge=1, le=1000)
     value: float = Field(..., ge=1)
@@ -154,12 +248,17 @@ class AccessCodeCreate(BaseModel):
 # ══════════════════════════════════════════════════════════════
 # 6) Pages
 # ══════════════════════════════════════════════════════════════
+@app.get("/", response_class=HTMLResponse)
+async def root(request: Request):
+    return templates.TemplateResponse(
+        request=request, name="admin.html", context={},
+    )
+
+
 @app.get("/admin-panel", response_class=HTMLResponse)
 async def admin_panel(request: Request):
     return templates.TemplateResponse(
-        request=request,
-        name="admin.html",
-        context={},
+        request=request, name="admin.html", context={},
     )
 
 
@@ -170,7 +269,9 @@ async def health():
         "app": "admin",
         "version": app.version,
         "import_mode": _IMPORT_MODE,
-        "admin_secret_configured": bool(ADMIN_SECRET),
+        "admin_email": ADMIN_EMAIL,
+        "admin_password_hash_set": bool(ADMIN_PASSWORD_HASH),
+        "admin_secret_set": bool(ADMIN_SECRET),
         "templates_dir": str(TEMPLATES_DIR),
         "template_exists": (TEMPLATES_DIR / "admin.html").exists(),
         "store_keys": sorted(STORE.keys()),
@@ -178,7 +279,34 @@ async def health():
 
 
 # ══════════════════════════════════════════════════════════════
-# 7) /api/v1/admin/wallet
+# 7) Admin Login
+# ══════════════════════════════════════════════════════════════
+@app.post("/api/v1/admin/login")
+async def admin_login(payload: AdminLoginIn):
+    email_in = payload.email.strip().lower()
+    email_ok = secrets.compare_digest(email_in, ADMIN_EMAIL)
+
+    pass_ok = False
+    if email_ok:
+        if ADMIN_PASSWORD_HASH and _bcrypt is not None:
+            try:
+                pass_ok = _bcrypt.checkpw(
+                    payload.password.encode("utf-8"),
+                    ADMIN_PASSWORD_HASH.encode("utf-8"),
+                )
+            except Exception:
+                pass_ok = False
+        else:
+            pass_ok = secrets.compare_digest(payload.password, ADMIN_PASSWORD)
+
+    if not (email_ok and pass_ok):
+        raise HTTPException(403, "البريد أو كلمة المرور غير صحيحة")
+
+    return {"ok": True, "token": _issue_admin_token()}
+
+
+# ══════════════════════════════════════════════════════════════
+# 8) /api/v1/admin/wallet
 # ══════════════════════════════════════════════════════════════
 @app.get("/api/v1/admin/wallet")
 async def admin_owner_wallet(request: Request):
@@ -189,10 +317,7 @@ async def admin_owner_wallet(request: Request):
     if SIM5_ENABLED:
         try:
             p = await _sim5_get("/user/profile", auth=True)
-            sim5_info = {
-                "balance": p.get("balance"),
-                "frozen": p.get("frozen_balance"),
-            }
+            sim5_info = {"balance": p.get("balance"), "frozen": p.get("frozen_balance")}
         except Sim5Error as e:
             sim5_info = {"error": e.message}
         except Exception as e:
@@ -211,7 +336,7 @@ async def admin_owner_wallet(request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# 8) /api/v1/admin/vouchers  (GET)
+# 9) /api/v1/admin/vouchers  (GET)
 # ══════════════════════════════════════════════════════════════
 @app.get("/api/v1/admin/vouchers")
 async def admin_list_vouchers(
@@ -222,7 +347,7 @@ async def admin_list_vouchers(
     _check_admin(request)
     vouchers = STORE["vouchers"]
 
-    # تحديث المنتهية ديناميكياً (مطابق لسلوك main.py عند الاستخدام)
+    # تحديث المنتهية ديناميكياً
     now = datetime.now(timezone.utc)
     for v in vouchers:
         if v.get("status") == "unused":
@@ -254,12 +379,11 @@ async def admin_list_vouchers(
             sum(v["value"] for v in vouchers if v["status"] == "used"), 2
         ),
     }
-
     return {"summary": summary, "vouchers": filtered}
 
 
 # ══════════════════════════════════════════════════════════════
-# 9) /api/v1/admin/vouchers/generate  (POST)
+# 10) /api/v1/admin/vouchers/generate  (POST)
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/admin/vouchers/generate")
 async def admin_generate_vouchers(payload: VoucherBatchCreate, request: Request):
@@ -280,7 +404,7 @@ async def admin_generate_vouchers(payload: VoucherBatchCreate, request: Request)
 
 
 # ══════════════════════════════════════════════════════════════
-# 10) /api/v1/admin/vouchers/{id}/disable  (POST)
+# 11) /api/v1/admin/vouchers/{id}/disable  (POST)
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/admin/vouchers/{voucher_id}/disable")
 async def admin_disable_voucher(voucher_id: int, request: Request):
@@ -288,7 +412,6 @@ async def admin_disable_voucher(voucher_id: int, request: Request):
     v = next((v for v in STORE["vouchers"] if v["id"] == voucher_id), None)
     if not v:
         raise HTTPException(404, "الكود غير موجود")
-    # مطابق main.py: يرفض used فقط
     if v["status"] == "used":
         raise HTTPException(400, "لا يمكن تعطيل كود مستخدم")
     v["status"] = "disabled"
@@ -296,7 +419,7 @@ async def admin_disable_voucher(voucher_id: int, request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# 11) /api/v1/admin/deposits  (GET)
+# 12) /api/v1/admin/deposits  (GET)
 # ══════════════════════════════════════════════════════════════
 @app.get("/api/v1/admin/deposits")
 async def admin_list_deposits(
@@ -330,7 +453,7 @@ async def admin_list_deposits(
 
 
 # ══════════════════════════════════════════════════════════════
-# 12) /api/v1/admin/deposits/{id}/approve  (POST)
+# 13) /api/v1/admin/deposits/{id}/approve  (POST)
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/admin/deposits/{deposit_id}/approve")
 async def admin_approve_deposit(deposit_id: int, request: Request):
@@ -366,7 +489,7 @@ async def admin_approve_deposit(deposit_id: int, request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# 13) /api/v1/admin/deposits/{id}/reject  (POST)
+# 14) /api/v1/admin/deposits/{id}/reject  (POST)
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/admin/deposits/{deposit_id}/reject")
 async def admin_reject_deposit(deposit_id: int, request: Request, reason: str = ""):
@@ -381,7 +504,7 @@ async def admin_reject_deposit(deposit_id: int, request: Request, reason: str = 
 
 
 # ══════════════════════════════════════════════════════════════
-# 14) /api/v1/admin/access-codes/generate  (POST)
+# 15) /api/v1/admin/access-codes/generate  (POST)
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/admin/access-codes/generate")
 async def admin_generate_access_code(payload: AccessCodeCreate, request: Request):
@@ -405,7 +528,7 @@ async def admin_generate_access_code(payload: AccessCodeCreate, request: Request
 
 
 # ══════════════════════════════════════════════════════════════
-# 15) /api/v1/admin/access-codes  (GET)
+# 16) /api/v1/admin/access-codes  (GET)
 # ══════════════════════════════════════════════════════════════
 @app.get("/api/v1/admin/access-codes")
 async def admin_list_access_codes(
@@ -428,7 +551,7 @@ async def admin_list_access_codes(
 
 
 # ══════════════════════════════════════════════════════════════
-# 16) /api/v1/admin/access-codes/{id}/disable  (POST)
+# 17) /api/v1/admin/access-codes/{id}/disable  (POST)
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/admin/access-codes/{code_id}/disable")
 async def admin_disable_access_code(code_id: int, request: Request):
@@ -441,7 +564,7 @@ async def admin_disable_access_code(code_id: int, request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# 17) /api/v1/admin/access-codes/{id}  (DELETE)
+# 18) /api/v1/admin/access-codes/{id}  (DELETE)
 # ══════════════════════════════════════════════════════════════
 @app.delete("/api/v1/admin/access-codes/{code_id}")
 async def admin_delete_access_code(code_id: int, request: Request):
@@ -454,7 +577,7 @@ async def admin_delete_access_code(code_id: int, request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# 18) JSON error handler
+# 19) JSON error handler
 # ══════════════════════════════════════════════════════════════
 @app.exception_handler(HTTPException)
 async def http_exc_handler(request: Request, exc: HTTPException):
@@ -462,17 +585,20 @@ async def http_exc_handler(request: Request, exc: HTTPException):
 
 
 # ══════════════════════════════════════════════════════════════
-# 19) Startup log — تشخيص سريع في Docker
+# 20) Startup log
 # ══════════════════════════════════════════════════════════════
 @app.on_event("startup")
 async def _startup_log():
     print("═" * 60)
-    print("[admin] 🚀 بدء لوحة الأدمن")
+    print("[admin] 🚀 لوحة الأدمن")
     print(f"[admin] import_mode       = {_IMPORT_MODE}")
     print(f"[admin] PROJECT_ROOT      = {PROJECT_ROOT}")
     print(f"[admin] TEMPLATES_DIR     = {TEMPLATES_DIR}")
     print(f"[admin] admin.html        = {(TEMPLATES_DIR / 'admin.html').exists()}")
-    print(f"[admin] ADMIN_SECRET      = {'set ✅' if ADMIN_SECRET else 'NOT SET ❌'}")
+    print(f"[admin] ADMIN_EMAIL       = {ADMIN_EMAIL}")
+    print(f"[admin] PASSWORD_HASH set = {bool(ADMIN_PASSWORD_HASH)}")
+    print(f"[admin] PASSWORD plain    = {'set' if ADMIN_PASSWORD else 'not set'}")
+    print(f"[admin] ADMIN_SECRET set  = {bool(ADMIN_SECRET)}")
     print(f"[admin] SIM5_ENABLED      = {SIM5_ENABLED}")
     print(f"[admin] MARKUP_PERCENT    = {FIVESIM_MARKUP_PERCENT}")
     print(f"[admin] STORE keys        = {sorted(STORE.keys())}")
