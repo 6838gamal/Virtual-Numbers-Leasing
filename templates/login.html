@@ -184,21 +184,21 @@
       const errBox = document.getElementById('err');
       const btnText = btn.querySelector('.btn-text');
 
-      // تعبئة تلقائية لو جاء الكود في الرابط ?code=...
+      // ── تعبئة تلقائية لو جاء الكود في الرابط ?code=...
       const params = new URLSearchParams(location.search);
       if (params.get('code')) {
         input.value = params.get('code').toUpperCase();
       }
 
-      // لو جاء خطأ من الخادم في ?error=... نعرضه
+      // ── رسائل الخطأ القادمة من الخادم عبر ?error=...
       const serverError = params.get('error');
       if (serverError) {
         const messages = {
-          oauth_failed: 'فشل تسجيل الدخول. حاول مرة أخرى.',
-          no_email: 'لم نتمكن من قراءة بياناتك.',
+          session_expired: 'انتهت جلستك. الرجاء تسجيل الدخول مجدداً.',
           invalid_code: 'الكود غير صحيح أو منتهي الصلاحية.',
+          not_authenticated: 'الرجاء تسجيل الدخول أولاً.',
         };
-        showError(messages[serverError] || ('حدث خطأ غير متوقع: ' + serverError));
+        showError(messages[serverError] || ('حدث خطأ: ' + serverError));
       }
 
       function showError(msg) {
@@ -215,7 +215,7 @@
         btnText.textContent = on ? 'جارٍ التحقق...' : 'دخول';
       }
 
-      // تنسيق تلقائي للكود أثناء الكتابة (حروف كبيرة، بدون مسافات)
+      // ── تنسيق تلقائي للكود أثناء الكتابة (حروف كبيرة، بدون مسافات)
       input.addEventListener('input', () => {
         const pos = input.selectionStart;
         input.value = input.value.toUpperCase().replace(/\s+/g, '');
@@ -252,8 +252,8 @@
             return;
           }
 
-          // نجاح — انتقل للوحة التحكم
-          window.location.href = data.redirect || '/dashboard';
+          // ✅ نجاح — التوجيه إلى الشاشة الموحّدة
+          window.location.href = data.redirect || '/buy';
         } catch (err) {
           showError('تعذّر الاتصال بالخادم. تحقق من الإنترنت وحاول مجدداً.');
           setLoading(false);
