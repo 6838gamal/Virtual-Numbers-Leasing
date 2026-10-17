@@ -3,7 +3,7 @@
 Jamal Solutions — Admin Panel (standalone)
 
 - GET  /                       → login.html   (نفس /login)
-- GET  /login                  → singin.html
+- GET  /login                  → login.html
 - GET  /admin-panel            → admin.html   (JS يحمي)
 - POST /api/v1/admin/login     → {ok, token}
 - POST /api/v1/admin/logout    → {ok}
@@ -239,10 +239,10 @@ class AccessCodeCreate(BaseModel):
 # 6) Pages  —  `/` و `/login` يشيران إلى نفس الملف login.html
 # ══════════════════════════════════════════════════════════════
 @app.get("/", response_class=HTMLResponse)
-@app.get("/signin", response_class=HTMLResponse)
+@app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
     """`/` و `/login` → نفس القالب login.html (بدون redirect)."""
-    return templates.TemplateResponse(request=request, name="signin.html", context={})
+    return templates.TemplateResponse(request=request, name="login.html", context={})
 
 
 @app.get("/admin-panel", response_class=HTMLResponse)
@@ -260,7 +260,7 @@ async def health():
         "import_mode": _IMPORT_MODE,
         "root": str(ADMIN_DIR),
         "templates_dir": str(TEMPLATES_DIR),
-        "signin_template": (TEMPLATES_DIR / "signin.html").exists(),
+        "login_template": (TEMPLATES_DIR / "login.html").exists(),
         "admin_template": (TEMPLATES_DIR / "admin.html").exists(),
         "static_dir_exists": STATIC_DIR.exists(),
         "admin_email": ADMIN_EMAIL,
@@ -609,7 +609,7 @@ async def _startup_log():
     print(f"[admin] import_mode   = {_IMPORT_MODE}")
     print(f"[admin] root          = {ADMIN_DIR}")
     print(f"[admin] templates     = {TEMPLATES_DIR}")
-    print(f"[admin] signin.html    = {'✅' if (TEMPLATES_DIR / 'signin.html').exists() else '❌ مفقود'}")
+    print(f"[admin] login.html    = {'✅' if (TEMPLATES_DIR / 'login.html').exists() else '❌ مفقود'}")
     print(f"[admin] admin.html    = {'✅' if (TEMPLATES_DIR / 'admin.html').exists() else '❌ مفقود'}")
     print(f"[admin] static        = {STATIC_DIR} (exists={STATIC_DIR.exists()})")
     print(f"[admin] ADMIN_EMAIL   = {ADMIN_EMAIL}")
