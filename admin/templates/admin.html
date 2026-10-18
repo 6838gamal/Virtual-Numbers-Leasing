@@ -483,7 +483,7 @@ function updateMeta() {
   const meta = document.getElementById('catalog-meta');
   if (!CATALOG.fetched_at) { meta.textContent = ''; return; }
   const d = new Date(CATALOG.fetched_at);
-  meta.textContent = `آخر تحديث: ${d.toLocaleTimeString('ar-EG')} · هامش: ${CATALOG.markup_percent || 0}%`;
+  meta.textContent = `آخر تحديث: ${d.toLocaleTimeString('ar-EG')}`;
   document.getElementById('count-countries').textContent = CATALOG.countries.length;
   document.getElementById('count-services').textContent =
     CATALOG.countries.reduce((sum, c) => sum + (c.services_count || 0), 0);
@@ -531,7 +531,6 @@ function renderTree() {
           <div class="flex items-center gap-2">
             <span class="text-[10px] text-emerald-400 font-bold">${availCount}</span>
             <span class="text-[10px] text-slate-500">/ ${services.length}</span>
-            ${c.min_price != null ? `<span class="text-[10px] text-amber-400 mono">$${c.min_price.toFixed(2)}</span>` : ''}
             <svg class="w-3.5 h-3.5 text-slate-400 country-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
             </svg>
@@ -576,8 +575,7 @@ function renderServiceRow(c, s) {
       </div>
       <div class="flex items-center gap-2 text-[10px]">
         ${s.available
-          ? `<span class="text-emerald-400 font-bold">${s.count}</span>
-             <span class="text-slate-500 mono">$${(s.cost || 0).toFixed(2)}</span>`
+          ? `<span class="text-emerald-400 font-bold">${s.count} متاح</span>`
           : `<span class="text-red-400">غير متوفر</span>`}
       </div>
     </label>
@@ -609,7 +607,6 @@ function onServiceToggle(countrySlug, serviceId, checked) {
       count: service.count || 0,
       operator: service.operator,
       rate: service.rate,
-      cost: service.cost,
       pairCount: 1,
     });
   } else {
