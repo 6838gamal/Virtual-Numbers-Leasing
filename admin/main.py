@@ -1,14 +1,14 @@
 # admin/main.py
 """
-Jamal Solutions — Admin Panel (standalone + persistent storage مشترك)
+Jamal Solutions — Admin Panel (standalone + shared storage)
 
-- GET  /                       → admin.html  (بدون تسجيل دخول)
+- GET  /                       → admin.html
 - GET  /api/v1/admin/catalog   → دول + خدمات + توفر (منطق app/main.py)
 - كل /api/v1/admin/*           → 🔓 مفتوحة (بدون تحقق)
 
-التخزين المشترك:
-    project/data/store.json     ← يُقرأ عند البدء + قبل كل عرض، يُحفظ بعد كل تعديل
-    project/data/backups/       ← نسخة احتياطية عند الإغلاق الآمن
+التخزين المشترك (shared_storage.py في جذر المشروع):
+    project/data/store.json     (أو DATA_DIR=/var/data على Render Disks)
+    project/data/backups/
 
 التشغيل (من داخل admin/):
     uvicorn main:app --host 127.0.0.1 --port 8001 --workers 1
@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import os
 import secrets
+import sys
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -37,15 +38,19 @@ from pydantic import BaseModel, Field
 # ══════════════════════════════════════════════════════════════
 # 1) Paths
 # ══════════════════════════════════════════════════════════════
-ADMIN_DIR = Path(__file__).resolve().parent
+ADMIN_DIR = Path(__file__).resolve().parent          # admin/
+PROJECT_ROOT = ADMIN_DIR.parent                      # project/
 TEMPLATES_DIR = ADMIN_DIR / "templates"
 STATIC_DIR = ADMIN_DIR / "static"
 
 
 # ══════════════════════════════════════════════════════════════
-# 2) التخزين الدائم المشترك
+# 2) التخزين الدائم المشترك — shared_storage.py في جذر المشروع
 # ══════════════════════════════════════════════════════════════
-from storage import (  # type: ignore
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from shared_storage import (  # type: ignore
     load_store,
     schedule_save,
     save_now,
@@ -73,7 +78,7 @@ def _refresh() -> None:
 
 
 # ══════════════════════════════════════════════════════════════
-# 3) 5SIM — إعدادات (نفس منطق app/main.py)
+# 3) 5SIM — إعدادات
 # ══════════════════════════════════════════════════════════════
 SIM5_BASE = os.getenv("SIM5_BASE", "https://5sim.net/v1").rstrip("/")
 SIM5_API_KEY = os.getenv("SIM5_API_KEY", "").strip()
@@ -146,7 +151,7 @@ async def _sim5_get(path: str, auth: bool = False, timeout: float = 25.0) -> Any
 
 
 # ══════════════════════════════════════════════════════════════
-# 3b) أدوات مساعدة (منقولة من app/main.py)
+# 3b) أدوات مساعدة
 # ══════════════════════════════════════════════════════════════
 def _iso_to_flag(iso: str) -> str:
     if not iso or len(iso) != 2:
@@ -182,7 +187,7 @@ def _calculate_sale_price(fivesim_cost: float) -> float:
 
 
 # ══════════════════════════════════════════════════════════════
-# 3c) كتالوج 5SIM — دمج منطق app/main.py + كاش
+# 3c) كتالوج 5SIM
 # ══════════════════════════════════════════════════════════════
 CATALOG_TTL_SECONDS = float(os.getenv("CATALOG_TTL_SECONDS", "300"))
 _SIM5_CACHE: dict[str, dict] = {
@@ -221,7 +226,6 @@ async def _fetch_sim5_prices(force: bool = False) -> dict:
 
 
 async def build_live_catalog(force: bool = False) -> dict:
-    """نفس منطق app/main.py — countries with services list."""
     if not SIM5_ENABLED:
         return {
             "ok": False,
@@ -396,7 +400,7 @@ def _now_iso() -> str:
 # ══════════════════════════════════════════════════════════════
 # 5) App
 # ══════════════════════════════════════════════════════════════
-app = FastAPI(title="Jamal Solutions — Admin Panel", version="2.1.0-open")
+app = FastAPI(title="Jamal Solutions — Admin Panel", version="2.2.0-open")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 if STATIC_DIR.exists():
@@ -502,7 +506,7 @@ async def admin_logout(request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# 8b) 5SIM Catalog — منطق app/main.py
+# 8b) 5SIM Catalog
 # ══════════════════════════════════════════════════════════════
 @app.get("/api/v1/admin/catalog")
 async def admin_catalog(request: Request, force: bool = False):
@@ -554,7 +558,7 @@ async def admin_sim5_profile(request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# 9) Wallet — قيمة كلية واحدة
+# 9) Wallet
 # ══════════════════════════════════════════════════════════════
 @app.get("/api/v1/admin/wallet")
 async def admin_owner_wallet(request: Request):
@@ -649,7 +653,7 @@ async def admin_generate_vouchers(payload: VoucherBatchCreate, request: Request)
 
 
 # ══════════════════════════════════════════════════════════════
-# 12) Vouchers — generate multi (كل كود مستقل)
+# 12) Vouchers — generate multi
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/admin/vouchers/generate-multi")
 async def admin_generate_vouchers_multi(payload: VoucherMultiCreate, request: Request):
@@ -879,6 +883,7 @@ async def _startup_log():
     print("═" * 60)
     print(f"[admin] 🚀 لوحة الأدمن v{app.version}  (🔓 بدون تسجيل دخول)")
     print(f"[admin] root          = {ADMIN_DIR}")
+    print(f"[admin] project root  = {PROJECT_ROOT}")
     print(f"[admin] store file    = {STORE_FILE}")
     print(f"[admin] store exists  = {STORE_FILE.exists()}")
     print(f"[admin] templates     = {TEMPLATES_DIR}")
