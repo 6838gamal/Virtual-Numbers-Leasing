@@ -15,21 +15,12 @@
     .stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,0.15); }
     @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:.3} }
     .pulse-dot { animation: pulse-dot 2s infinite; }
-    html.auth-pending body { visibility: hidden; }
   </style>
 </head>
 <body class="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 min-h-screen text-slate-100">
 
-<!-- حماية: لا تُظهر شيئاً حتى التحقق -->
-<div id="auth-check" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950">
-  <div class="text-center">
-    <div class="text-4xl mb-3">⏳</div>
-    <p class="text-sm text-slate-400">جاري التحقق من الجلسة...</p>
-  </div>
-</div>
-
-<!-- ══ Main Panel ═══════════════════════════════════════════════ -->
-<div id="admin-panel" class="hidden">
+<!-- ══ Main Panel (ظاهر دائماً — بدون تسجيل دخول) ══════════════ -->
+<div id="admin-panel">
   <header class="glass border-b border-slate-700 sticky top-0 z-40">
     <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
       <div class="flex items-center gap-3">
@@ -44,13 +35,6 @@
           <span class="w-1.5 h-1.5 bg-emerald-400 rounded-full pulse-dot"></span>
           <span class="text-[10px] font-bold text-emerald-400">متصل</span>
         </div>
-        <button onclick="logout()"
-                class="text-xs font-bold text-slate-400 hover:text-red-400 border border-slate-700 hover:border-red-500/50 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5">
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
-          </svg>
-          خروج
-        </button>
       </div>
     </div>
   </header>
@@ -215,7 +199,6 @@
         🔑 أكواد تسجيل الدخول للمستخدمين
       </h2>
 
-      <!-- نموذج التوليد -->
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
         <div>
           <label class="text-xs font-bold text-slate-400 mb-1.5 block">الوصف / الملصق</label>
@@ -252,7 +235,6 @@
         </button>
       </div>
 
-      <!-- نتيجة التوليد -->
       <div id="ac-output-wrap" class="hidden mb-4">
         <div class="flex items-center justify-between mb-2">
           <p class="text-xs font-bold text-cyan-400">✅ تم إنشاء الكود</p>
@@ -261,7 +243,6 @@
         <input id="ac-output" readonly class="w-full px-3 py-2 bg-slate-900 border border-cyan-500/50 rounded-xl mono text-sm text-cyan-300 outline-none" dir="ltr">
       </div>
 
-      <!-- قائمة الأكواد -->
       <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
         <h3 class="text-sm font-bold text-slate-300">الأكواد المُولّدة</h3>
         <div class="flex items-center gap-2">
@@ -343,7 +324,7 @@
     </section>
 
     <footer class="text-center text-[10px] text-slate-500 pt-4 pb-8">
-      <p>جمال سولوشنز · لوحة التحكم · <span id="footer-version">v1.7.4</span></p>
+      <p>جمال سولوشنز · لوحة التحكم · <span id="footer-version">v1.9.0-open</span></p>
       <p class="mt-1">آخر تحديث: <span id="last-refresh">—</span></p>
     </footer>
   </main>
@@ -353,61 +334,17 @@
 
 <script>
 // ══════════════════════════════════════════════════════════════
-// Auth — كل الصفحة محمية
+// 🔓 بدون تسجيل دخول — الوصول مفتوح
 // ══════════════════════════════════════════════════════════════
-let ADMIN_TOKEN = sessionStorage.getItem('admin_token') || '';
-
-function redirectToLogin() {
-  sessionStorage.removeItem('admin_token');
-  ADMIN_TOKEN = '';
-  window.location.replace('/login');
-}
-
 function adminFetch(url, opts = {}) {
   return fetch(url, {
     ...opts,
     headers: {
       'Content-Type': 'application/json',
-      'X-Admin-Secret': ADMIN_TOKEN,
       ...(opts.headers || {}),
     },
   });
 }
-
-async function logout() {
-  try {
-    await adminFetch('/api/v1/admin/logout', { method: 'POST' });
-  } catch (_) {}
-  redirectToLogin();
-}
-
-// التحقق من الجلسة قبل عرض أي شيء
-(async function verify() {
-  if (!ADMIN_TOKEN) {
-    redirectToLogin();
-    return;
-  }
-  try {
-    const r = await adminFetch('/api/v1/admin/whoami');
-    if (!r.ok) {
-      redirectToLogin();
-      return;
-    }
-    const data = await r.json();
-    if (!data.ok) {
-      redirectToLogin();
-      return;
-    }
-    document.getElementById('auth-check').classList.add('hidden');
-    document.getElementById('admin-panel').classList.remove('hidden');
-    loadAll();
-    if (!window._adminInterval) {
-      window._adminInterval = setInterval(loadAll, 30000);
-    }
-  } catch (_) {
-    redirectToLogin();
-  }
-})();
 
 // ══════════════════════════════════════════════════════════════
 // Toast
@@ -446,10 +383,7 @@ async function loadWallet(btn) {
   if (btn) btn.disabled = true;
   try {
     const r = await adminFetch('/api/v1/admin/wallet');
-    if (!r.ok) {
-      if (r.status === 403) { redirectToLogin(); return; }
-      throw new Error('HTTP ' + r.status);
-    }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
     const w = data.owner_wallet;
 
@@ -495,10 +429,7 @@ async function loadVouchers(btn) {
     const statusFilter = document.getElementById('v-filter').value;
     const url = '/api/v1/admin/vouchers' + (statusFilter ? '?status_filter=' + statusFilter : '');
     const r = await adminFetch(url);
-    if (!r.ok) {
-      if (r.status === 403) { redirectToLogin(); return; }
-      throw new Error('HTTP ' + r.status);
-    }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
     const s = data.summary;
 
@@ -603,10 +534,7 @@ async function loadAccessCodes(btn) {
     const statusFilter = document.getElementById('ac-filter').value;
     const url = '/api/v1/admin/access-codes' + (statusFilter ? '?status_filter=' + statusFilter : '');
     const r = await adminFetch(url);
-    if (!r.ok) {
-      if (r.status === 403) { redirectToLogin(); return; }
-      throw new Error('HTTP ' + r.status);
-    }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
     const s = data.summary;
 
@@ -680,10 +608,7 @@ async function loadDeposits(btn) {
     const statusFilter = document.getElementById('d-filter').value;
     const url = '/api/v1/admin/deposits' + (statusFilter ? '?status_filter=' + statusFilter : '');
     const r = await adminFetch(url);
-    if (!r.ok) {
-      if (r.status === 403) { redirectToLogin(); return; }
-      throw new Error('HTTP ' + r.status);
-    }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
 
     const badge = document.getElementById('pending-badge');
@@ -852,6 +777,12 @@ function updateBatchTotal() {
   if (el) el.addEventListener('input', updateBatchTotal);
 });
 updateBatchTotal();
+
+// ══════════════════════════════════════════════════════════════
+// تشغيل فوري عند تحميل الصفحة + تحديث كل 30 ثانية
+// ══════════════════════════════════════════════════════════════
+loadAll();
+setInterval(loadAll, 30000);
 </script>
 </body>
 </html>
