@@ -9,6 +9,7 @@ Jamal Solutions — Admin Panel (standalone + shared storage)
 التخزين المشترك (shared_storage.py في جذر المشروع):
     project/data/store.json     (أو DATA_DIR=/var/data على Render Disks)
     project/data/backups/
+    أو PostgreSQL عبر DATABASE_URL
 
 التشغيل (من داخل admin/):
     uvicorn main:app --host 127.0.0.1 --port 8001 --workers 1
@@ -61,6 +62,27 @@ from shared_storage import (  # type: ignore
 
 STORE: dict = load_store()
 print(f"[admin] 💾 store loaded from {STORE_FILE}")
+
+
+def _store_file_info() -> dict:
+    """
+    يعيد معلومات آمنة عن STORE_FILE بغض النظر عن نوعه:
+      - Path (تخزين ملف محلي)
+      - str  (DSN لـ PostgreSQL)
+    """
+    if isinstance(STORE_FILE, Path):
+        return {
+            "path": str(STORE_FILE),
+            "exists": STORE_FILE.exists(),
+            "kind": "file",
+        }
+    s = str(STORE_FILE)
+    is_dsn = ("://" in s) or ("@/" in s)
+    return {
+        "path": s,
+        "exists": True,             # DSN لا يوجد كملف، نعتبره "موجود"
+        "kind": "dsn" if is_dsn else "string",
+    }
 
 
 def _persist() -> None:
@@ -400,7 +422,7 @@ def _now_iso() -> str:
 # ══════════════════════════════════════════════════════════════
 # 5) App
 # ══════════════════════════════════════════════════════════════
-app = FastAPI(title="Jamal Solutions — Admin Panel", version="2.2.0-open")
+app = FastAPI(title="Jamal Solutions — Admin Panel", version="2.2.1-open")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 if STATIC_DIR.exists():
@@ -467,13 +489,15 @@ async def admin_panel(request: Request):
 @app.get("/health")
 async def health():
     _refresh()
+    _info = _store_file_info()
     return {
         "status": "ok",
         "app": "admin",
         "version": app.version,
         "auth": "open",
-        "store_file": str(STORE_FILE),
-        "store_file_exists": STORE_FILE.exists(),
+        "store_file": _info["path"],
+        "store_file_exists": _info["exists"],
+        "store_kind": _info["kind"],
         "sim5_enabled": SIM5_ENABLED,
         "sim5_base": SIM5_BASE,
         "catalog_cached": _SIM5_CACHE["prices"]["data"] is not None,
@@ -861,9 +885,27 @@ async def admin_delete_access_code(code_id: int, request: Request):
 async def admin_backup(request: Request):
     _check_admin(request)
     _refresh()
-    p = backup(STORE)
+    result = backup(STORE)
     save_now(STORE)
-    return {"ok": True, "path": str(p), "size": p.stat().st_size}
+
+    # حالات: Path / str / dict / None
+    if isinstance(result, Path):
+        return {
+            "ok": True,
+            "path": str(result),
+            "size": result.stat().st_size,
+            "kind": "file",
+        }
+    if isinstance(result, dict):
+        return {"ok": True, **result}
+    if result is None:
+        return {
+            "ok": True,
+            "path": None,
+            "kind": "none",
+            "note": "backup غير مدعوم في وضع PostgreSQL — استخدم pg_dump",
+        }
+    return {"ok": True, "path": str(result), "kind": "string"}
 
 
 # ══════════════════════════════════════════════════════════════
@@ -880,12 +922,14 @@ async def http_exc_handler(request: Request, exc: HTTPException):
 @app.on_event("startup")
 async def _startup_log():
     _refresh()
+    _info = _store_file_info()
     print("═" * 60)
     print(f"[admin] 🚀 لوحة الأدمن v{app.version}  (🔓 بدون تسجيل دخول)")
     print(f"[admin] root          = {ADMIN_DIR}")
     print(f"[admin] project root  = {PROJECT_ROOT}")
-    print(f"[admin] store file    = {STORE_FILE}")
-    print(f"[admin] store exists  = {STORE_FILE.exists()}")
+    print(f"[admin] store file    = {_info['path']}")
+    print(f"[admin] store kind    = {_info['kind']}")
+    print(f"[admin] store ready   = {'✅' if _info['exists'] else '❌'}")
     print(f"[admin] templates     = {TEMPLATES_DIR}")
     print(f"[admin] admin.html    = {'✅' if (TEMPLATES_DIR / 'admin.html').exists() else '❌ مفقود'}")
     print(f"[admin] static        = {STATIC_DIR} (exists={STATIC_DIR.exists()})")
@@ -912,7 +956,12 @@ async def _startup_log():
 async def _shutdown_save():
     try:
         save_now(STORE)
-        p = backup(STORE)
-        print(f"[admin] 💾 تم حفظ store ونسخ احتياطي في {p}")
+        result = backup(STORE)
+        if isinstance(result, Path):
+            print(f"[admin] 💾 تم حفظ store ونسخ احتياطي في {result}")
+        elif result is None:
+            print("[admin] 💾 تم حفظ store (بدون نسخ احتياطي في وضع PG)")
+        else:
+            print(f"[admin] 💾 تم حفظ store ونسخ احتياطي: {result}")
     except Exception as e:
         print(f"[admin] ⚠️  فشل الحفظ عند الإغلاق: {type(e).__name__}: {e}")
