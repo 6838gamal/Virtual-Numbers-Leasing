@@ -22,4 +22,4 @@ python-multipart
 
 
 
-psycopg
+psycopg[binary]
