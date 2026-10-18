@@ -21,6 +21,9 @@
     .country-row:hover { background: rgba(51, 65, 85, 0.4); }
     .service-chip { transition: all 0.15s; }
     .service-chip.unavailable { opacity: 0.55; }
+    /* ✨ NEW — تأثير بصري لخيار الدمج */
+    #merge-box { transition: all 0.2s; }
+    #merge-box.active { border-color: #f59e0b; background: rgba(245, 158, 11, 0.08); }
   </style>
 </head>
 <body class="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 min-h-screen text-slate-100">
@@ -140,6 +143,29 @@
         </div>
       </div>
 
+      <!-- ✨ NEW — خيار الدمج في كود واحد -->
+      <div id="merge-box" class="bg-slate-900/50 rounded-xl border-2 border-slate-700 p-3 mb-4">
+        <label class="flex items-start gap-2 cursor-pointer">
+          <input type="checkbox" id="merge-mode" checked
+                 class="accent-amber-500 w-4 h-4 mt-0.5"
+                 onchange="onMergeToggle()">
+          <div class="flex-1">
+            <span class="text-xs font-bold text-slate-200">
+              🔗 دمج الاختيارات في كود واحد — يصلح لأي من الأزواج المختارة
+            </span>
+            <p class="text-[10px] text-slate-500 mt-1">
+              عند التفعيل: يُولّد كود واحد لكل "عدد" ويصلح لأي دولة/خدمة مختارة.
+              عند الإلغاء: كود منفصل لكل زوج (الوضع القديم).
+            </p>
+            <div id="merge-info" class="text-[11px] text-amber-400 mt-2 hidden">
+              سيُولّد <span id="merge-count-label" class="font-bold">0</span> كود،
+              كل كود يصلح لـ <span id="merge-pairs-label" class="font-bold">0</span> زوج:
+              <span id="merge-pairs-list" class="text-amber-300"></span>
+            </div>
+          </div>
+        </label>
+      </div>
+
       <div class="flex items-center gap-3 flex-wrap mb-4">
         <div class="text-xs text-slate-400">
           الأزواج المختارة: <span id="pairs-count" class="font-bold text-amber-400">0</span>
@@ -153,7 +179,7 @@
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
           </svg>
-          توليد الأكواد لكل المحدد
+          توليد الأكواد
         </button>
         <button onclick="clearSelection()" class="bg-slate-700 hover:bg-slate-600 text-white font-bold px-4 py-2.5 rounded-xl transition-all text-sm">مسح التحديد</button>
       </div>
@@ -189,10 +215,12 @@
         </div>
       </div>
 
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4" id="vouchers-summary">
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4" id="vouchers-summary">
         <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700"><div class="text-[10px] text-slate-400">الإجمالي</div><div class="text-lg font-bold">—</div></div>
         <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700"><div class="text-[10px] text-slate-400">غير مستخدمة</div><div class="text-lg font-bold text-emerald-400">—</div></div>
         <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700"><div class="text-[10px] text-slate-400">مستخدمة</div><div class="text-lg font-bold text-blue-400">—</div></div>
+        <!-- ✨ NEW — إحصاء الأكواد الموحّدة -->
+        <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700"><div class="text-[10px] text-slate-400">موحّدة</div><div class="text-lg font-bold text-amber-400">—</div></div>
         <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700"><div class="text-[10px] text-slate-400">قيمة غير مستخدمة</div><div class="text-lg font-bold text-amber-400">—</div></div>
       </div>
 
@@ -349,7 +377,7 @@
     </section>
 
     <footer class="text-center text-[10px] text-slate-500 pt-4 pb-8">
-      <p>جمال سولوشنز · لوحة التحكم · <span id="footer-version">v2.2.0-open</span></p>
+      <p>جمال سولوشنز · لوحة التحكم · <span id="footer-version">v2.3.0-open</span></p>
       <p class="mt-1">آخر تحديث: <span id="last-refresh">—</span></p>
     </footer>
   </main>
@@ -548,7 +576,6 @@ function renderTree() {
   }
   tree.innerHTML = html;
 
-  // إعادة تفعيل حالة "مفتوح" للدول التي تحتوي خدمات مختارة
   const selectedCountries = new Set(Array.from(SELECTED.values()).map(r => r.countrySlug));
   selectedCountries.forEach(slug => {
     const box = document.querySelector(`[data-services="${CSS.escape(slug)}"]`);
@@ -688,19 +715,50 @@ function renderDetails() {
   }).join('');
 }
 
+// ✨ NEW — عدّل updatePairsCounter لدعم وضع الدمج
+function isMergeMode() {
+  const el = document.getElementById('merge-mode');
+  return el ? el.checked : false;
+}
+
+function onMergeToggle() {
+  const box = document.getElementById('merge-box');
+  if (isMergeMode()) {
+    box.classList.add('active');
+  } else {
+    box.classList.remove('active');
+  }
+  updatePairsCounter();
+}
+
 function updatePairsCounter() {
   const rows = Array.from(SELECTED.values());
-  let totalCodes = 0;
   const value = parseFloat(document.getElementById('v-value').value) || 0;
+  const merge = isMergeMode();
 
-  rows.forEach(r => {
-    const n = parseInt(r.pairCount, 10) || 0;
-    totalCodes += n;
-  });
+  let totalCodes = 0;
+  if (merge) {
+    // في وضع الدمج: العدد = أكبر "عدد" بين الأزواج
+    totalCodes = rows.length ? Math.max(...rows.map(r => parseInt(r.pairCount, 10) || 1)) : 0;
+  } else {
+    totalCodes = rows.reduce((s, r) => s + (parseInt(r.pairCount, 10) || 0), 0);
+  }
 
   document.getElementById('pairs-count').textContent = rows.length;
   document.getElementById('total-codes-count').textContent = totalCodes;
   document.getElementById('batch-total').textContent = '$' + (totalCodes * value).toFixed(2);
+
+  // ✨ NEW — عرض معلومات الدمج
+  const info = document.getElementById('merge-info');
+  if (merge && rows.length) {
+    info.classList.remove('hidden');
+    document.getElementById('merge-count-label').textContent = totalCodes;
+    document.getElementById('merge-pairs-label').textContent = rows.length;
+    document.getElementById('merge-pairs-list').textContent =
+      ' (' + rows.map(r => `${r.countryName}/${r.serviceName}`).join(', ') + ')';
+  } else {
+    info.classList.add('hidden');
+  }
 }
 ['v-value'].forEach(id => {
   const el = document.getElementById(id);
@@ -747,7 +805,6 @@ async function generateForPair(key, btn) {
     }
     toast(`✅ ${data.count} كود لـ ${r.flag || ''} ${r.countryName} / ${r.serviceName}`, 'success');
 
-    // عرض أكواد هذا الزوج
     document.getElementById('codes-output').value =
       `# ${r.countrySlug} / ${r.serviceId}  (${data.count} كود)\n` +
       data.codes.join('\n');
@@ -762,12 +819,13 @@ async function generateForPair(key, btn) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// Generate for ALL selected
+// Generate — يدعم وضع الدمج ✨ NEW
 // ══════════════════════════════════════════════════════════════
 async function generateVouchers(btn) {
   const value = parseFloat(document.getElementById('v-value').value);
   const days = parseInt(document.getElementById('v-days').value, 10);
   const note = document.getElementById('v-note').value;
+  const merge = isMergeMode();
 
   if (!value || value < 1) { toast('القيمة يجب أن تكون ≥ $1', 'error'); return; }
   if (!days || days < 1) { toast('الصلاحية يجب أن تكون ≥ يوم', 'error'); return; }
@@ -781,12 +839,46 @@ async function generateVouchers(btn) {
     return;
   }
 
-  for (const r of rows) {
-    const n = parseInt(r.pairCount, 10);
-    if (!n || n < 1 || n > 1000) {
-      toast(`❌ العدد غير صحيح لـ ${r.serviceName}`, 'error');
+  // ── بناء body حسب الوضع ──
+  let body;
+  if (merge) {
+    // ✨ وضع الدمج: كود واحد يصلح لكل الأزواج
+    const maxCount = Math.max(...rows.map(r => parseInt(r.pairCount, 10) || 1));
+    if (maxCount < 1 || maxCount > 1000) {
+      toast('العدد يجب أن يكون 1-1000', 'error');
       return;
     }
+    body = {
+      value,
+      expires_days: days,
+      note,
+      merge: true,
+      count: maxCount,
+      allowed_pairs: rows.map(r => ({
+        country: r.countrySlug,
+        service: r.serviceId,
+      })),
+    };
+  } else {
+    // الوضع القديم: كود منفصل لكل زوج
+    for (const r of rows) {
+      const n = parseInt(r.pairCount, 10);
+      if (!n || n < 1 || n > 1000) {
+        toast(`❌ العدد غير صحيح لـ ${r.serviceName}`, 'error');
+        return;
+      }
+    }
+    body = {
+      value,
+      expires_days: days,
+      note,
+      merge: false,
+      pairs: rows.map(r => ({
+        country: r.countrySlug,
+        service: r.serviceId,
+        count: parseInt(r.pairCount, 10),
+      })),
+    };
   }
 
   const originalText = btn.innerHTML;
@@ -794,16 +886,6 @@ async function generateVouchers(btn) {
   btn.innerHTML = '⏳ جارٍ التوليد...';
 
   try {
-    const body = {
-      value,
-      expires_days: days,
-      note,
-      pairs: rows.map(r => ({
-        country: r.countrySlug,
-        service: r.serviceId,
-        count: parseInt(r.pairCount, 10),
-      })),
-    };
     const resp = await adminFetch('/api/v1/admin/vouchers/generate-multi', {
       method: 'POST',
       body: JSON.stringify(body),
@@ -814,15 +896,26 @@ async function generateVouchers(btn) {
       return;
     }
 
+    // ── عرض الأكواد ──
     const lines = [];
-    data.batches.forEach(b => {
-      lines.push(`# ${b.country} / ${b.service}  (${b.count} كود)`);
-      b.codes.forEach(c => lines.push(c));
+    if (data.merge) {
+      const pairs = data.batches[0].allowed_pairs
+        .map(p => `${p.country}/${p.service}`).join(', ');
+      lines.push(`# 🔗 كود موحّد — يصلح لـ: ${pairs}`);
+      lines.push(`# العدد: ${data.total_count} كود × $${value}`);
       lines.push('');
-    });
+      data.batches[0].codes.forEach(c => lines.push(c));
+      toast(`✅ ${data.total_count} كود موحّد (${data.batches[0].allowed_pairs.length} زوج)`, 'success');
+    } else {
+      data.batches.forEach(b => {
+        lines.push(`# ${b.country} / ${b.service}  (${b.count} كود)`);
+        b.codes.forEach(c => lines.push(c));
+        lines.push('');
+      });
+      toast(`✅ تم توليد ${data.total_count} كود بقيمة $${data.total_value.toFixed(2)}`, 'success');
+    }
     document.getElementById('codes-output').value = lines.join('\n');
     document.getElementById('codes-output-wrap').classList.remove('hidden');
-    toast(`✅ تم توليد ${data.total_count} كود بقيمة $${data.total_value.toFixed(2)}`, 'success');
     loadVouchers();
   } catch (e) {
     toast('❌ خطأ في الاتصال', 'error');
@@ -854,7 +947,7 @@ function downloadCodes() {
 }
 
 // ══════════════════════════════════════════════════════════════
-// Vouchers List
+// Vouchers List — يدعم allowed_pairs ✨ NEW
 // ══════════════════════════════════════════════════════════════
 async function loadVouchers(btn) {
   if (btn) btn.disabled = true;
@@ -866,10 +959,12 @@ async function loadVouchers(btn) {
     const data = await r.json();
     const s = data.summary;
 
+    // ✨ أضف عمود "موحّدة"
     document.getElementById('vouchers-summary').innerHTML = `
       <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700"><div class="text-[10px] text-slate-400">الإجمالي</div><div class="text-lg font-bold">${s.total}</div></div>
       <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700"><div class="text-[10px] text-slate-400">غير مستخدمة</div><div class="text-lg font-bold text-emerald-400">${s.unused}</div></div>
       <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700"><div class="text-[10px] text-slate-400">مستخدمة</div><div class="text-lg font-bold text-blue-400">${s.used}</div></div>
+      <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700"><div class="text-[10px] text-slate-400">موحّدة</div><div class="text-lg font-bold text-amber-400">${s.merged ?? 0}</div></div>
       <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700"><div class="text-[10px] text-slate-400">قيمة غير مستخدمة</div><div class="text-lg font-bold text-amber-400">$${s.total_value_unused.toFixed(2)}</div></div>
     `;
 
@@ -887,15 +982,34 @@ async function loadVouchers(btn) {
         disabled: '<span class="bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full text-[10px] font-bold">معطّل</span>',
       }[v.status] || v.status;
       const date = new Date(v.created_at).toLocaleDateString('ar-EG');
-      const cs = (v.country || v.service)
-        ? `<span class="mono text-[10px]">${escapeHtml(v.country || '—')}/${escapeHtml(v.service || '—')}</span>`
-        : '<span class="text-slate-500">—</span>';
+
+      // ✨ NEW — عرض الأزواج المتعددة
+      let cs;
+      const pairs = v.allowed_pairs || [];
+      if (pairs.length > 1) {
+        const pairsText = pairs.map(p => `${p.country}/${p.service}`).join(', ');
+        cs = `<span class="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full font-bold cursor-help"
+                     title="${escapeHtml(pairsText)}">🔗 ${pairs.length} أزواج</span>`;
+        // أضف tooltip صغير
+        cs += `<div class="text-[9px] text-slate-500 mt-0.5 mono truncate max-w-[180px]" title="${escapeHtml(pairsText)}">${escapeHtml(pairsText)}</div>`;
+      } else if (v.country || v.service) {
+        cs = `<span class="mono text-[10px]">${escapeHtml(v.country || '—')}/${escapeHtml(v.service || '—')}</span>`;
+      } else {
+        cs = '<span class="text-slate-500">—</span>';
+      }
+
+      // ✨ NEW — عرض أي زوج استُخدم عليه (إن كان مستخدماً)
+      let usedOn = '';
+      if (v.used_on && v.used_on.country) {
+        usedOn = `<div class="text-[9px] text-blue-300 mono mt-0.5">↳ ${escapeHtml(v.used_on.country)}/${escapeHtml(v.used_on.service)}</div>`;
+      }
+
       const safeCode = escapeHtml(v.code).replace(/'/g, "\\'");
       return `
         <tr class="hover:bg-slate-700/30 transition-colors">
           <td class="px-3 py-2"><code class="mono text-[11px] bg-slate-900 px-2 py-0.5 rounded">${escapeHtml(v.code)}</code></td>
           <td class="px-3 py-2 font-bold text-amber-400">$${v.value.toFixed(2)}</td>
-          <td class="px-3 py-2">${cs}</td>
+          <td class="px-3 py-2">${cs}${usedOn}</td>
           <td class="px-3 py-2">${statusBadge}</td>
           <td class="px-3 py-2 text-slate-400">${escapeHtml(v.used_by || '—')}</td>
           <td class="px-3 py-2 text-slate-500 text-[10px]">${date}</td>
@@ -1166,6 +1280,7 @@ async function rejectDeposit(id) {
 // ══════════════════════════════════════════════════════════════
 loadAll();
 loadCatalog();
+onMergeToggle();   // ✨ NEW — تفعيل الحالة الأولية لخيار الدمج
 updatePairsCounter();
 setInterval(loadAll, 30000);
 setInterval(() => loadCatalog(true), 5 * 60 * 1000);
