@@ -16,8 +16,12 @@
     @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:.3} }
     .pulse-dot { animation: pulse-dot 2s infinite; }
     /* صندوق أحمر لغير المتوفر */
-    .cb-unavailable { outline: 2px solid #ef4444; outline-offset: 1px; }
+    .cb-unavailable { outline: 2px solid #ef4444 !important; outline-offset: 1px; }
     .label-unavailable { opacity: 0.65; color: #f87171; }
+    .country-row { cursor: pointer; }
+    .country-row:hover { background: rgba(51, 65, 85, 0.4); }
+    .service-chip { transition: all 0.15s; }
+    .service-chip.unavailable { opacity: 0.55; }
   </style>
 </head>
 <body class="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 min-h-screen text-slate-100">
@@ -43,35 +47,32 @@
 
   <main class="max-w-7xl mx-auto px-4 py-6 space-y-6">
 
-    <!-- ══ Wallet — قيمة كلية واحدة ═══════════════════════ -->
+    <!-- ══ Wallet ══════════════════════════════════════════ -->
     <section>
       <div class="flex items-center justify-between mb-3">
         <h2 class="text-lg font-bold flex items-center gap-2">
           <span class="w-1 h-5 bg-gradient-to-b from-emerald-400 to-teal-500 rounded-full"></span>
           💰 المحفظة
         </h2>
-        <button onclick="loadWallet(this)" class="text-xs font-bold text-blue-400 hover:text-blue-300 border border-slate-700 hover:border-blue-500/50 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5">
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-          </svg>
-          تحديث
-        </button>
+        <button onclick="loadWallet(this)" class="text-xs font-bold text-blue-400 hover:text-blue-300 border border-slate-700 hover:border-blue-500/50 px-3 py-1.5 rounded-lg transition-colors">🔄 تحديث</button>
       </div>
-
       <div class="bg-slate-800 rounded-2xl p-6 border border-slate-700 stat-card text-center">
         <div class="text-sm text-slate-400 mb-1">الرصيد الكلي</div>
         <div id="total-balance" class="text-4xl font-black text-emerald-400">—</div>
       </div>
     </section>
 
-    <!-- ══ Generate Vouchers (دول + خدمات) ═════════════════ -->
+    <!-- ══ Generate Vouchers ═══════════════════════════════ -->
     <section class="bg-slate-800 rounded-2xl border border-slate-700 p-5">
       <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h2 class="text-lg font-bold flex items-center gap-2">
           <span class="w-1 h-5 bg-gradient-to-b from-amber-400 to-orange-500 rounded-full"></span>
           🎟️ توليد أكواد جديدة
         </h2>
-        <button onclick="refreshCatalog(this)" class="text-xs font-bold text-blue-400 hover:text-blue-300 border border-slate-700 hover:border-blue-500/50 px-3 py-1.5 rounded-lg transition-colors">🔄 تحديث الكتالوج</button>
+        <div class="flex items-center gap-2">
+          <span id="catalog-meta" class="text-[10px] text-slate-500"></span>
+          <button onclick="refreshCatalog(this)" class="text-xs font-bold text-blue-400 hover:text-blue-300 border border-slate-700 hover:border-blue-500/50 px-3 py-1.5 rounded-lg transition-colors">🔄 تحديث الكتالوج</button>
+        </div>
       </div>
 
       <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-4">
@@ -97,43 +98,34 @@
         </div>
       </div>
 
-      <!-- دول + خدمات -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4">
-        <div class="bg-slate-900/50 rounded-xl border border-slate-700 p-3">
-          <div class="flex items-center justify-between mb-2">
-            <p class="text-xs font-bold text-slate-300">🌍 الدول</p>
-            <label class="text-[10px] text-slate-400 flex items-center gap-1 cursor-pointer">
-              <input type="checkbox" id="sel-all-countries" onchange="toggleAllCountries(this.checked)" class="accent-amber-500"> تحديد الكل
-            </label>
-          </div>
-          <div id="countries-list" class="max-h-64 overflow-y-auto space-y-1 pr-1">
-            <p class="text-[11px] text-slate-500 text-center py-4">جاري التحميل...</p>
-          </div>
-        </div>
-
-        <div class="bg-slate-900/50 rounded-xl border border-slate-700 p-3">
-          <div class="flex items-center justify-between mb-2">
-            <p class="text-xs font-bold text-slate-300">📦 الخدمات</p>
-            <label class="text-[10px] text-slate-400 flex items-center gap-1 cursor-pointer">
-              <input type="checkbox" id="sel-all-services" onchange="toggleAllServices(this.checked)" class="accent-amber-500"> تحديد الكل
-            </label>
-          </div>
-          <div id="services-list" class="max-h-64 overflow-y-auto space-y-1 pr-1">
-            <p class="text-[11px] text-slate-500 text-center py-4">جاري التحميل...</p>
-          </div>
+      <!-- بحث + ملخص -->
+      <div class="flex items-center gap-2 flex-wrap mb-3">
+        <input type="text" id="catalog-search" placeholder="🔎 ابحث عن دولة أو خدمة..."
+               oninput="filterCatalog(this.value)"
+               class="flex-1 min-w-[220px] px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl focus:border-amber-500 outline-none text-sm">
+        <div class="text-[11px] text-slate-400 whitespace-nowrap">
+          دول: <span id="count-countries" class="font-bold text-amber-400">0</span>
+          · خدمات متاحة: <span id="count-services" class="font-bold text-emerald-400">0</span>
         </div>
       </div>
 
-      <!-- تفاصيل التوفر -->
+      <!-- قائمة الدول والخدمات -->
+      <div class="bg-slate-900/50 rounded-xl border border-slate-700 p-2 mb-4 max-h-[500px] overflow-y-auto">
+        <div id="catalog-tree">
+          <p class="text-[11px] text-slate-500 text-center py-6">جاري تحميل الكتالوج...</p>
+        </div>
+      </div>
+
+      <!-- تفاصيل التوفر المختارة -->
       <div class="bg-slate-900/50 rounded-xl border border-slate-700 p-3 mb-4">
         <div class="flex items-center justify-between mb-2">
-          <p class="text-xs font-bold text-slate-300">🔎 تفاصيل التوفر (بدون سعر)</p>
+          <p class="text-xs font-bold text-slate-300">🔎 تفاصيل الاختيارات</p>
           <div class="flex items-center gap-3 text-[10px]">
             <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded bg-emerald-500"></span> متوفر</span>
             <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded bg-red-500"></span> غير متوفر</span>
           </div>
         </div>
-        <div class="overflow-x-auto max-h-64 overflow-y-auto">
+        <div class="overflow-x-auto max-h-56 overflow-y-auto">
           <table class="w-full text-right text-[11px]">
             <thead class="text-slate-400 border-b border-slate-700 sticky top-0 bg-slate-900/95">
               <tr>
@@ -141,11 +133,12 @@
                 <th class="px-2 py-1.5">الخدمة</th>
                 <th class="px-2 py-1.5">الحالة</th>
                 <th class="px-2 py-1.5">الكمية</th>
-                <th class="px-2 py-1.5">الاستخدام</th>
+                <th class="px-2 py-1.5">المشغل</th>
+                <th class="px-2 py-1.5">التقييم</th>
               </tr>
             </thead>
             <tbody id="details-tbody" class="divide-y divide-slate-700/40">
-              <tr><td colspan="5" class="px-2 py-4 text-center text-slate-500">اختر دولة وخدمة لعرض التفاصيل</td></tr>
+              <tr><td colspan="6" class="px-2 py-4 text-center text-slate-500">اختر دولة وخدمة لعرض التفاصيل</td></tr>
             </tbody>
           </table>
         </div>
@@ -153,7 +146,7 @@
 
       <div class="flex items-center gap-3 flex-wrap mb-4">
         <div class="text-xs text-slate-400">
-          عدد الأزواج المختارة: <span id="pairs-count" class="font-bold text-amber-400">0</span>
+          الأزواج المختارة: <span id="pairs-count" class="font-bold text-amber-400">0</span>
           · إجمالي الأكواد: <span id="total-codes-count" class="font-bold text-amber-400">0</span>
           · إجمالي القيمة: <span id="batch-total" class="font-bold text-amber-400">$0.00</span>
         </div>
@@ -164,11 +157,9 @@
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
           </svg>
-          توليد الأكواد (لكل الأزواج)
+          توليد الأكواد
         </button>
-        <button onclick="generateVouchersFirstPair(this)" class="bg-slate-700 hover:bg-slate-600 text-white font-bold px-4 py-2.5 rounded-xl transition-all text-sm">
-          توليد للزوج الأول فقط
-        </button>
+        <button onclick="clearSelection()" class="bg-slate-700 hover:bg-slate-600 text-white font-bold px-4 py-2.5 rounded-xl transition-all text-sm">مسح التحديد</button>
       </div>
 
       <div id="codes-output-wrap" class="hidden">
@@ -183,7 +174,7 @@
       </div>
     </section>
 
-    <!-- ══ Vouchers Summary & List ═══════════════════════════ -->
+    <!-- ══ Vouchers List ═══════════════════════════════════ -->
     <section class="bg-slate-800 rounded-2xl border border-slate-700 p-5">
       <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h2 class="text-lg font-bold flex items-center gap-2">
@@ -230,7 +221,7 @@
       </div>
     </section>
 
-    <!-- ══ Access Codes (Login Codes) ═════════════════════════ -->
+    <!-- ══ Access Codes ════════════════════════════════════ -->
     <section class="bg-slate-800 rounded-2xl border border-slate-700 p-5">
       <h2 class="text-lg font-bold flex items-center gap-2 mb-4">
         <span class="w-1 h-5 bg-gradient-to-b from-cyan-400 to-sky-500 rounded-full"></span>
@@ -321,7 +312,7 @@
       </div>
     </section>
 
-    <!-- ══ Deposit Requests ══════════════════════════════════ -->
+    <!-- ══ Deposits ════════════════════════════════════════ -->
     <section class="bg-slate-800 rounded-2xl border border-slate-700 p-5">
       <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h2 class="text-lg font-bold flex items-center gap-2">
@@ -362,7 +353,7 @@
     </section>
 
     <footer class="text-center text-[10px] text-slate-500 pt-4 pb-8">
-      <p>جمال سولوشنز · لوحة التحكم · <span id="footer-version">v2.0.0-open</span></p>
+      <p>جمال سولوشنز · لوحة التحكم · <span id="footer-version">v2.1.0-open</span></p>
       <p class="mt-1">آخر تحديث: <span id="last-refresh">—</span></p>
     </footer>
   </main>
@@ -403,6 +394,19 @@ function toast(msg, type = 'info') {
 }
 
 // ══════════════════════════════════════════════════════════════
+// Helpers
+// ══════════════════════════════════════════════════════════════
+function escapeHtml(s) {
+  if (s == null) return '';
+  return String(s)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+// ══════════════════════════════════════════════════════════════
 // Load All
 // ══════════════════════════════════════════════════════════════
 function loadAll() {
@@ -415,7 +419,7 @@ function loadAll() {
 }
 
 // ══════════════════════════════════════════════════════════════
-// Wallet — قيمة كلية واحدة
+// Wallet
 // ══════════════════════════════════════════════════════════════
 async function loadWallet(btn) {
   if (btn) btn.disabled = true;
@@ -433,11 +437,11 @@ async function loadWallet(btn) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// Catalog — دول + خدمات + توفر
+// Catalog
 // ══════════════════════════════════════════════════════════════
-let CATALOG = { countries: [], services: [], availability: {}, note: '' };
-let SELECTED_COUNTRIES = new Set();
-let SELECTED_SERVICES = new Set();
+let CATALOG = { countries: [], ok: false, error: null, markup_percent: 0, fetched_at: null };
+let SELECTED = new Map(); // key = "countrySlug:serviceId" -> {country, service, countryName, serviceName, available, count, operator, rate, flag}
+let SEARCH_FILTER = '';
 
 async function loadCatalog(force = false) {
   try {
@@ -445,17 +449,27 @@ async function loadCatalog(force = false) {
     const r = await adminFetch(url);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     CATALOG = await r.json();
-    renderCountries();
-    renderServices();
-    updateCheckboxStates();
-    renderDetails();
-    if (CATALOG.note) toast('ℹ️ ' + CATALOG.note, 'warning');
+
+    if (!CATALOG.ok) {
+      document.getElementById('catalog-tree').innerHTML = `
+        <div class="text-center py-6">
+          <p class="text-red-400 text-sm font-bold mb-2">⚠️ ${escapeHtml(CATALOG.error || 'فشل تحميل الكتالوج')}</p>
+          <p class="text-[11px] text-slate-500">تأكد من ضبط SIM5_API_KEY</p>
+        </div>
+      `;
+      document.getElementById('catalog-meta').textContent = '';
+      toast('⚠️ ' + (CATALOG.error || 'فشل تحميل الكتالوج'), 'warning');
+      return;
+    }
+
+    renderTree();
+    updateMeta();
+    updatePairsCounter();
+    if (force) toast('✅ تم تحديث الكتالوج', 'success');
   } catch (e) {
     console.error('loadCatalog:', e);
-    document.getElementById('countries-list').innerHTML =
-      '<p class="text-[11px] text-red-400 text-center py-4">فشل تحميل الدول</p>';
-    document.getElementById('services-list').innerHTML =
-      '<p class="text-[11px] text-red-400 text-center py-4">فشل تحميل الخدمات</p>';
+    document.getElementById('catalog-tree').innerHTML =
+      '<p class="text-red-400 text-center py-6">فشل تحميل الكتالوج</p>';
   }
 }
 
@@ -464,167 +478,187 @@ async function refreshCatalog(btn) {
   if (btn) btn.textContent = '⏳ جارٍ التحديث...';
   try {
     await loadCatalog(true);
-    toast('✅ تم تحديث الكتالوج', 'success');
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '🔄 تحديث الكتالوج'; }
   }
 }
 
-function availabilityKey(country, service) {
-  return country + ':' + service;
+function updateMeta() {
+  const meta = document.getElementById('catalog-meta');
+  if (!CATALOG.fetched_at) { meta.textContent = ''; return; }
+  const d = new Date(CATALOG.fetched_at);
+  meta.textContent = `آخر تحديث: ${d.toLocaleTimeString('ar-EG')} · هامش: ${CATALOG.markup_percent || 0}%`;
+  document.getElementById('count-countries').textContent = CATALOG.countries.length;
+  document.getElementById('count-services').textContent =
+    CATALOG.countries.reduce((sum, c) => sum + (c.services_count || 0), 0);
 }
 
-function availabilityOf(country, service) {
-  return CATALOG.availability[availabilityKey(country, service)] || null;
+function filterCatalog(q) {
+  SEARCH_FILTER = (q || '').toLowerCase().trim();
+  renderTree();
 }
 
-function isAvailable(country, service) {
-  const a = availabilityOf(country, service);
-  return !!(a && a.available);
-}
-
-function renderCountries() {
-  const box = document.getElementById('countries-list');
-  if (!CATALOG.countries.length) {
-    box.innerHTML = '<p class="text-[11px] text-slate-500 text-center py-4">لا توجد دول</p>';
+function renderTree() {
+  const tree = document.getElementById('catalog-tree');
+  const countries = CATALOG.countries || [];
+  if (!countries.length) {
+    tree.innerHTML = '<p class="text-[11px] text-slate-500 text-center py-6">لا توجد دول</p>';
     return;
   }
-  box.innerHTML = CATALOG.countries.map(c => `
-    <label class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-700/40 cursor-pointer country-label" data-code="${c.code}">
-      <input type="checkbox" class="accent-amber-500 country-cb" value="${c.code}"
-             onchange="onCountryToggle('${c.code}', this.checked)">
-      <span class="text-[12px]">${escapeHtml(c.name)}</span>
-      <span class="mono text-[10px] text-slate-500">${escapeHtml(c.code)}</span>
-    </label>
-  `).join('');
-}
 
-function renderServices() {
-  const box = document.getElementById('services-list');
-  if (!CATALOG.services.length) {
-    box.innerHTML = '<p class="text-[11px] text-slate-500 text-center py-4">لا توجد خدمات</p>';
-    return;
+  const q = SEARCH_FILTER;
+  let html = '';
+  let shown = 0;
+
+  countries.forEach(c => {
+    const countryMatch = !q || c.name.toLowerCase().includes(q) || c.slug.toLowerCase().includes(q) || (c.code || '').toLowerCase().includes(q);
+    const matchingServices = q
+      ? c.services.filter(s => s.id.toLowerCase().includes(q) || s.name.toLowerCase().includes(q))
+      : c.services;
+
+    if (!countryMatch && matchingServices.length === 0) return;
+    shown++;
+
+    const services = countryMatch ? c.services : matchingServices;
+    const availCount = services.filter(s => s.available).length;
+
+    html += `
+      <div class="mb-1 border border-slate-700/50 rounded-lg overflow-hidden" data-country="${escapeHtml(c.slug)}">
+        <div class="country-row flex items-center justify-between px-3 py-2 bg-slate-800/60"
+             onclick="toggleCountry('${escapeHtml(c.slug)}')">
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="text-base">${c.flag || '🏳️'}</span>
+            <span class="font-bold text-[12px] truncate">${escapeHtml(c.name)}</span>
+            <span class="mono text-[10px] text-slate-500">${escapeHtml(c.code || '')}</span>
+            ${c.prefix ? `<span class="mono text-[10px] text-slate-500">+${escapeHtml(c.prefix)}</span>` : ''}
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-[10px] text-emerald-400 font-bold">${availCount}</span>
+            <span class="text-[10px] text-slate-500">/ ${services.length}</span>
+            ${c.min_price != null ? `<span class="text-[10px] text-amber-400 mono">$${c.min_price.toFixed(2)}</span>` : ''}
+            <svg class="w-3.5 h-3.5 text-slate-400 country-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </div>
+        </div>
+        <div class="country-services hidden bg-slate-900/40 p-2 space-y-1" data-services="${escapeHtml(c.slug)}">
+          ${services.map(s => renderServiceRow(c, s)).join('')}
+        </div>
+      </div>
+    `;
+  });
+
+  if (shown === 0) {
+    html = '<p class="text-[11px] text-slate-500 text-center py-6">لا نتائج مطابقة للبحث</p>';
   }
-  box.innerHTML = CATALOG.services.map(s => `
-    <label class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-700/40 cursor-pointer service-label" data-code="${s.code}">
-      <input type="checkbox" class="accent-amber-500 service-cb" value="${s.code}"
-             onchange="onServiceToggle('${s.code}', this.checked)">
-      <span class="text-[12px]">${escapeHtml(s.name)}</span>
-      <span class="mono text-[10px] text-slate-500">${escapeHtml(s.code)}</span>
+  tree.innerHTML = html;
+}
+
+function renderServiceRow(c, s) {
+  const key = `${c.slug}:${s.id}`;
+  const isSel = SELECTED.has(key);
+  const availableClass = s.available ? '' : 'unavailable';
+  const labelClass = s.available ? '' : 'label-unavailable';
+  return `
+    <label class="flex items-center justify-between gap-2 px-2 py-1.5 rounded-md hover:bg-slate-700/40 cursor-pointer service-chip ${availableClass}">
+      <div class="flex items-center gap-2 min-w-0">
+        <input type="checkbox" class="accent-amber-500 service-cb ${s.available ? '' : 'cb-unavailable'}"
+               data-country="${escapeHtml(c.slug)}" data-service="${escapeHtml(s.id)}"
+               ${isSel ? 'checked' : ''}
+               onchange="onServiceToggle('${escapeHtml(c.slug)}', '${escapeHtml(s.id)}', this.checked)">
+        <span class="text-sm">${s.icon || '📱'}</span>
+        <span class="text-[11px] font-bold truncate ${labelClass}">${escapeHtml(s.name)}</span>
+      </div>
+      <div class="flex items-center gap-2 text-[10px]">
+        ${s.available
+          ? `<span class="text-emerald-400 font-bold">${s.count}</span>
+             <span class="text-slate-500 mono">$${(s.cost || 0).toFixed(2)}</span>`
+          : `<span class="text-red-400">غير متوفر</span>`}
+      </div>
     </label>
-  `).join('');
+  `;
 }
 
-function onCountryToggle(code, checked) {
-  if (checked) SELECTED_COUNTRIES.add(code); else SELECTED_COUNTRIES.delete(code);
-  updateCheckboxStates();
-  renderDetails();
-  updatePairsCounter();
+function toggleCountry(slug) {
+  const box = document.querySelector(`[data-services="${CSS.escape(slug)}"]`);
+  const chevron = document.querySelector(`[data-country="${CSS.escape(slug)}"] .country-chevron`);
+  if (!box) return;
+  const isHidden = box.classList.contains('hidden');
+  box.classList.toggle('hidden', !isHidden);
+  if (chevron) chevron.style.transform = isHidden ? 'rotate(180deg)' : '';
 }
 
-function onServiceToggle(code, checked) {
-  if (checked) SELECTED_SERVICES.add(code); else SELECTED_SERVICES.delete(code);
-  updateCheckboxStates();
-  renderDetails();
-  updatePairsCounter();
-}
-
-function updateCheckboxStates() {
-  // الدول: أحمر إذا لم تتوفر مع أي خدمة مختارة
-  document.querySelectorAll('.country-cb').forEach(cb => {
-    const c = cb.value;
-    const label = cb.closest('.country-label');
-    let mark = false;
-    if (SELECTED_SERVICES.size > 0) {
-      let any = false;
-      SELECTED_SERVICES.forEach(s => { if (isAvailable(c, s)) any = true; });
-      mark = !any;
-    }
-    applyUnavailableStyle(cb, label, mark);
-  });
-
-  // الخدمات: أحمر إذا لم تتوفر مع أي دولة مختارة
-  document.querySelectorAll('.service-cb').forEach(cb => {
-    const s = cb.value;
-    const label = cb.closest('.service-label');
-    let mark = false;
-    if (SELECTED_COUNTRIES.size > 0) {
-      let any = false;
-      SELECTED_COUNTRIES.forEach(c => { if (isAvailable(c, s)) any = true; });
-      mark = !any;
-    }
-    applyUnavailableStyle(cb, label, mark);
-  });
-}
-
-function applyUnavailableStyle(cb, label, mark) {
-  if (mark) {
-    cb.classList.add('cb-unavailable');
-    if (label) label.classList.add('label-unavailable');
+function onServiceToggle(countrySlug, serviceId, checked) {
+  const key = `${countrySlug}:${serviceId}`;
+  if (checked) {
+    const country = CATALOG.countries.find(c => c.slug === countrySlug);
+    const service = country?.services.find(s => s.id === serviceId);
+    if (!country || !service) return;
+    SELECTED.set(key, {
+      countrySlug,
+      serviceId,
+      countryName: country.name,
+      serviceName: service.name,
+      flag: country.flag,
+      available: !!service.available,
+      count: service.count || 0,
+      operator: service.operator,
+      rate: service.rate,
+      cost: service.cost,
+    });
   } else {
-    cb.classList.remove('cb-unavailable');
-    if (label) label.classList.remove('label-unavailable');
+    SELECTED.delete(key);
   }
-}
-
-function toggleAllCountries(checked) {
-  document.querySelectorAll('.country-cb').forEach(cb => {
-    cb.checked = checked;
-    if (checked) SELECTED_COUNTRIES.add(cb.value); else SELECTED_COUNTRIES.delete(cb.value);
-  });
-  updateCheckboxStates();
   renderDetails();
   updatePairsCounter();
+  updateCheckboxStyle(countrySlug, serviceId, checked);
 }
 
-function toggleAllServices(checked) {
-  document.querySelectorAll('.service-cb').forEach(cb => {
-    cb.checked = checked;
-    if (checked) SELECTED_SERVICES.add(cb.value); else SELECTED_SERVICES.delete(cb.value);
-  });
-  updateCheckboxStates();
+function updateCheckboxStyle(countrySlug, serviceId, checked) {
+  const cb = document.querySelector(
+    `input.service-cb[data-country="${CSS.escape(countrySlug)}"][data-service="${CSS.escape(serviceId)}"]`
+  );
+  if (!cb) return;
+  // تحديث الشكل الأحمر فقط للخدمات غير المتوفرة (ثابت)
+  // لا نغيّر شيئاً بناءً على الدول المختارة هنا لأن الكتالوج مسطّح
+}
+
+function clearSelection() {
+  SELECTED.clear();
+  document.querySelectorAll('input.service-cb').forEach(cb => { cb.checked = false; });
   renderDetails();
   updatePairsCounter();
 }
 
 function renderDetails() {
   const tbody = document.getElementById('details-tbody');
-  const pairs = [];
-  SELECTED_COUNTRIES.forEach(c => {
-    SELECTED_SERVICES.forEach(s => pairs.push([c, s]));
-  });
+  const rows = Array.from(SELECTED.values());
 
-  if (!pairs.length) {
-    tbody.innerHTML = '<tr><td colspan="5" class="px-2 py-4 text-center text-slate-500">اختر دولة وخدمة لعرض التفاصيل</td></tr>';
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="px-2 py-4 text-center text-slate-500">اختر خدمة واحدة على الأقل</td></tr>';
     return;
   }
 
-  const countryName = Object.fromEntries(CATALOG.countries.map(c => [c.code, c.name]));
-  const serviceName = Object.fromEntries(CATALOG.services.map(s => [s.code, s.name]));
-
-  tbody.innerHTML = pairs.map(([c, s]) => {
-    const a = availabilityOf(c, s) || {};
-    const available = !!a.available;
-    const statusLabel = available
+  tbody.innerHTML = rows.map(r => {
+    const statusLabel = r.available
       ? '<span class="bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full text-[10px] font-bold">متوفر</span>'
       : '<span class="bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full text-[10px] font-bold">غير متوفر</span>';
-    const usage = (a.in_use != null)
-      ? `<span class="text-amber-400 font-bold">${a.in_use}</span>`
-      : '<span class="text-slate-500">—</span>';
+    const rateLabel = r.rate != null ? `<span class="text-amber-400 mono">${r.rate}</span>` : '<span class="text-slate-500">—</span>';
     return `
       <tr class="hover:bg-slate-700/20">
-        <td class="px-2 py-1.5">${escapeHtml(countryName[c] || c)} <span class="mono text-[10px] text-slate-500">${escapeHtml(c)}</span></td>
-        <td class="px-2 py-1.5">${escapeHtml(serviceName[s] || s)} <span class="mono text-[10px] text-slate-500">${escapeHtml(s)}</span></td>
+        <td class="px-2 py-1.5">${r.flag || '🏳️'} ${escapeHtml(r.countryName)}</td>
+        <td class="px-2 py-1.5">${escapeHtml(r.serviceName)}</td>
         <td class="px-2 py-1.5">${statusLabel}</td>
-        <td class="px-2 py-1.5">${a.count ?? 0}</td>
-        <td class="px-2 py-1.5">${usage}</td>
+        <td class="px-2 py-1.5">${r.count}</td>
+        <td class="px-2 py-1.5 mono text-[10px]">${escapeHtml(r.operator || '—')}</td>
+        <td class="px-2 py-1.5">${rateLabel}</td>
       </tr>
     `;
   }).join('');
 }
 
 function updatePairsCounter() {
-  const pairs = SELECTED_COUNTRIES.size * SELECTED_SERVICES.size;
+  const pairs = SELECTED.size;
   const count = parseInt(document.getElementById('v-count').value, 10) || 0;
   const value = parseFloat(document.getElementById('v-value').value) || 0;
   document.getElementById('pairs-count').textContent = pairs;
@@ -639,14 +673,6 @@ function updatePairsCounter() {
 // ══════════════════════════════════════════════════════════════
 // Generate Vouchers
 // ══════════════════════════════════════════════════════════════
-function collectPairs() {
-  const pairs = [];
-  SELECTED_COUNTRIES.forEach(c => {
-    SELECTED_SERVICES.forEach(s => pairs.push([c, s]));
-  });
-  return pairs;
-}
-
 async function generateVouchers(btn) {
   const count = parseInt(document.getElementById('v-count').value, 10);
   const value = parseFloat(document.getElementById('v-value').value);
@@ -657,13 +683,12 @@ async function generateVouchers(btn) {
   if (!value || value < 1) { toast('القيمة يجب أن تكون ≥ $1', 'error'); return; }
   if (!days || days < 1) { toast('الصلاحية يجب أن تكون ≥ يوم', 'error'); return; }
 
-  const pairs = collectPairs();
-  if (!pairs.length) { toast('اختر دولة وخدمة على الأقل', 'warning'); return; }
+  const rows = Array.from(SELECTED.values());
+  if (!rows.length) { toast('اختر خدمة واحدة على الأقل', 'warning'); return; }
 
-  // تحقق من التوفر
-  const unavailable = pairs.filter(([c, s]) => !isAvailable(c, s));
+  const unavailable = rows.filter(r => !r.available);
   if (unavailable.length) {
-    toast(`❌ ${unavailable.length} زوج غير متوفر — أزل التحديد أو غيّر الاختيار`, 'error');
+    toast(`❌ ${unavailable.length} خدمة غير متوفرة — أزل التحديد`, 'error');
     return;
   }
 
@@ -672,11 +697,12 @@ async function generateVouchers(btn) {
   btn.innerHTML = '⏳ جارٍ التوليد...';
 
   try {
+    // كل خدمة = طلب مستقل (كل كود مستقل بذاته)
     const body = {
       value,
       expires_days: days,
       note,
-      pairs: pairs.map(([country, service]) => ({ country, service, count })),
+      pairs: rows.map(r => ({ country: r.countrySlug, service: r.serviceId, count })),
     };
     const r = await adminFetch('/api/v1/admin/vouchers/generate-multi', {
       method: 'POST',
@@ -687,7 +713,7 @@ async function generateVouchers(btn) {
       toast('❌ ' + (data.detail || 'فشل التوليد'), 'error');
       return;
     }
-    // نعرض كل الأكواد (مجمعة)
+
     const lines = [];
     data.batches.forEach(b => {
       lines.push(`# ${b.country} / ${b.service}  (${b.count} كود)`);
@@ -697,52 +723,6 @@ async function generateVouchers(btn) {
     document.getElementById('codes-output').value = lines.join('\n');
     document.getElementById('codes-output-wrap').classList.remove('hidden');
     toast(`✅ تم توليد ${data.total_count} كود بقيمة $${data.total_value.toFixed(2)}`, 'success');
-    loadVouchers();
-  } catch (e) {
-    toast('❌ خطأ في الاتصال', 'error');
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = originalText;
-  }
-}
-
-async function generateVouchersFirstPair(btn) {
-  const count = parseInt(document.getElementById('v-count').value, 10);
-  const value = parseFloat(document.getElementById('v-value').value);
-  const days = parseInt(document.getElementById('v-days').value, 10);
-  const note = document.getElementById('v-note').value;
-
-  const pairs = collectPairs();
-  if (!pairs.length) { toast('اختر دولة وخدمة على الأقل', 'warning'); return; }
-  const [country, service] = pairs[0];
-  if (!isAvailable(country, service)) {
-    toast('❌ الزوج الأول غير متوفر', 'error');
-    return;
-  }
-  if (!count || count < 1 || count > 1000) { toast('العدد يجب أن يكون 1-1000', 'error'); return; }
-  if (!value || value < 1) { toast('القيمة يجب أن تكون ≥ $1', 'error'); return; }
-  if (!days || days < 1) { toast('الصلاحية يجب أن تكون ≥ يوم', 'error'); return; }
-
-  const originalText = btn.innerHTML;
-  btn.disabled = true;
-  btn.innerHTML = '⏳ جارٍ التوليد...';
-
-  try {
-    const r = await adminFetch('/api/v1/admin/vouchers/generate', {
-      method: 'POST',
-      body: JSON.stringify({
-        count, value, expires_days: days, note,
-        country, service,
-      }),
-    });
-    const data = await r.json();
-    if (!r.ok) {
-      toast('❌ ' + (data.detail || 'فشل التوليد'), 'error');
-      return;
-    }
-    document.getElementById('codes-output').value = data.codes.join('\n');
-    document.getElementById('codes-output-wrap').classList.remove('hidden');
-    toast(`✅ تم توليد ${data.count} كود بقيمة $${data.total_value.toFixed(2)}`, 'success');
     loadVouchers();
   } catch (e) {
     toast('❌ خطأ في الاتصال', 'error');
@@ -774,7 +754,7 @@ function downloadCodes() {
 }
 
 // ══════════════════════════════════════════════════════════════
-// Load Vouchers
+// Vouchers List
 // ══════════════════════════════════════════════════════════════
 async function loadVouchers(btn) {
   if (btn) btn.disabled = true;
@@ -819,7 +799,7 @@ async function loadVouchers(btn) {
           <td class="px-3 py-2 text-slate-400">${escapeHtml(v.used_by || '—')}</td>
           <td class="px-3 py-2 text-slate-500 text-[10px]">${date}</td>
           <td class="px-3 py-2">
-            <button onclick="copyOneCode('${v.code.replace(/'/g, "\\'")}')"
+            <button onclick="copyOneCode('${escapeHtml(v.code).replace(/'/g, "\\'")}')"
                     class="text-[10px] font-bold text-cyan-400 hover:text-cyan-300 border border-cyan-500/30 hover:border-cyan-500 px-2 py-1 rounded-lg transition-colors">📋 نسخ</button>
           </td>
           <td class="px-3 py-2">
@@ -885,12 +865,8 @@ async function generateAccessCode(btn) {
     const r = await adminFetch('/api/v1/admin/access-codes/generate', {
       method: 'POST',
       body: JSON.stringify({
-        label,
-        expires_days: days,
-        max_uses: uses,
-        preset_name: name,
-        preset_email: email,
-        preset_balance: balance,
+        label, expires_days: days, max_uses: uses,
+        preset_name: name, preset_email: email, preset_balance: balance,
       }),
     });
     const data = await r.json();
@@ -1082,19 +1058,6 @@ async function rejectDeposit(id) {
   } catch (e) {
     toast('❌ خطأ في الاتصال', 'error');
   }
-}
-
-// ══════════════════════════════════════════════════════════════
-// Helpers
-// ══════════════════════════════════════════════════════════════
-function escapeHtml(s) {
-  if (s == null) return '';
-  return String(s)
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
 }
 
 // ══════════════════════════════════════════════════════════════
