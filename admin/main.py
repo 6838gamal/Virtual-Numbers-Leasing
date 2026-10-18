@@ -60,6 +60,15 @@ from shared_storage import (  # type: ignore
     STORE_FILE,
 )
 
+# استيراد اختياري لـ store_status (متوفّر في النسخة المحسّنة من shared_storage)
+try:
+    from shared_storage import store_status as _store_status  # type: ignore
+    _HAS_STORE_STATUS = True
+except ImportError:
+    _store_status = None
+    _HAS_STORE_STATUS = False
+
+
 STORE: dict = load_store()
 print(f"[admin] 💾 store loaded from {STORE_FILE}")
 
@@ -67,9 +76,23 @@ print(f"[admin] 💾 store loaded from {STORE_FILE}")
 def _store_file_info() -> dict:
     """
     يعيد معلومات آمنة عن STORE_FILE بغض النظر عن نوعه:
-      - Path (تخزين ملف محلي)
-      - str  (DSN لـ PostgreSQL)
+      - يستخدم store_status() إن كانت متاحة (النسخة المحسّنة).
+      - وإلا، يعود للتحقق اليدوي (Path أو DSN).
     """
+    if _HAS_STORE_STATUS:
+        try:
+            st = _store_status()
+            return {
+                "path": st.get("target", str(STORE_FILE)),
+                "exists": st.get("exists", True),
+                "kind": st.get("backend", "unknown"),
+                "version": st.get("version"),
+                "size_bytes": st.get("size_bytes"),
+            }
+        except Exception as e:
+            print(f"[admin] ⚠️  store_status فشل: {type(e).__name__}: {e}")
+
+    # Fallback: تحقق يدوي
     if isinstance(STORE_FILE, Path):
         return {
             "path": str(STORE_FILE),
@@ -80,7 +103,7 @@ def _store_file_info() -> dict:
     is_dsn = ("://" in s) or ("@/" in s)
     return {
         "path": s,
-        "exists": True,             # DSN لا يوجد كملف، نعتبره "موجود"
+        "exists": True,
         "kind": "dsn" if is_dsn else "string",
     }
 
@@ -422,7 +445,7 @@ def _now_iso() -> str:
 # ══════════════════════════════════════════════════════════════
 # 5) App
 # ══════════════════════════════════════════════════════════════
-app = FastAPI(title="Jamal Solutions — Admin Panel", version="2.2.1-open")
+app = FastAPI(title="Jamal Solutions — Admin Panel", version="2.2.2-open")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 if STATIC_DIR.exists():
@@ -490,7 +513,7 @@ async def admin_panel(request: Request):
 async def health():
     _refresh()
     _info = _store_file_info()
-    return {
+    out = {
         "status": "ok",
         "app": "admin",
         "version": app.version,
@@ -509,6 +532,12 @@ async def health():
             "orders": len(STORE["orders"]),
         },
     }
+    # أضف حقول إضافية إن كانت store_status متاحة
+    if _info.get("version") is not None:
+        out["store_version"] = _info["version"]
+    if _info.get("size_bytes") is not None:
+        out["store_size_bytes"] = _info["size_bytes"]
+    return out
 
 
 # ══════════════════════════════════════════════════════════════
@@ -890,10 +919,14 @@ async def admin_backup(request: Request):
 
     # حالات: Path / str / dict / None
     if isinstance(result, Path):
+        try:
+            size = result.stat().st_size
+        except OSError:
+            size = None
         return {
             "ok": True,
             "path": str(result),
-            "size": result.stat().st_size,
+            "size": size,
             "kind": "file",
         }
     if isinstance(result, dict):
@@ -930,6 +963,11 @@ async def _startup_log():
     print(f"[admin] store file    = {_info['path']}")
     print(f"[admin] store kind    = {_info['kind']}")
     print(f"[admin] store ready   = {'✅' if _info['exists'] else '❌'}")
+    if _info.get("version") is not None:
+        print(f"[admin] store version = {_info['version']}")
+    if _info.get("size_bytes") is not None:
+        print(f"[admin] store size    = {_info['size_bytes']} bytes")
+    print(f"[admin] store_status  = {'✅' if _HAS_STORE_STATUS else '⚠️  fallback'}")
     print(f"[admin] templates     = {TEMPLATES_DIR}")
     print(f"[admin] admin.html    = {'✅' if (TEMPLATES_DIR / 'admin.html').exists() else '❌ مفقود'}")
     print(f"[admin] static        = {STATIC_DIR} (exists={STATIC_DIR.exists()})")
