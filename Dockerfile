@@ -21,6 +21,7 @@ RUN pip install --upgrade pip && \
 # App code
 COPY app/       ./app/
 COPY templates/ ./templates/
+COPY shared_storage.py  ./shared_storage.py
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
