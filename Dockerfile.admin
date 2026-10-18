@@ -19,6 +19,7 @@ RUN pip install --no-cache-dir \
 
 # ننسخ كل المشروع (main.py + templates/ + admin/)
 COPY . /app
+COPY shared_storage.py  ./shared_storage.py
 
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
