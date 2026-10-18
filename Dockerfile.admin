@@ -1,4 +1,3 @@
-# Dockerfile.admin — في جذر المستودع
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -8,24 +7,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir \
-    "fastapi>=0.110" \
-    "uvicorn[standard]>=0.27" \
-    "jinja2>=3.1" \
-    "python-multipart>=0.0.9" \
-    "pydantic>=2.6" \
-    "httpx>=0.27" \
-    "sse-starlette>=2.0" \
-    "itsdangerous>=2.2"
+# ننسخ ملف المتطلبات أولاً للاستفادة من Docker layer cache
+COPY requirements-admin.txt ./requirements-admin.txt
+RUN pip install --no-cache-dir -r requirements-admin.txt
 
-# ننسخ ما يحتاجه الأدمن فقط (بدون بيانات محلية)
 COPY shared_storage.py  ./shared_storage.py
 COPY admin/             ./admin/
-# لو admin.html يحتاج ستاتيك من app/static أو templates/ مشتركة:
-# COPY templates/       ./templates/
-# COPY app/static/      ./app/static/
 
-# مجلد البيانات الدائم (يُركّب عليه Render Disk عند /var/data)
 RUN mkdir -p /var/data
 
 RUN useradd -m -u 1000 appuser \
