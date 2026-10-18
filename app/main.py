@@ -2,11 +2,12 @@
 Jamal Solutions — Virtual Numbers Platform
 Customer Portal (FastAPI + Jinja2 + SSE + 5SIM + Access-Code Login)
 
-✅ 1.7.0 — مخزن مشترك عبر shared_storage.py:
+✅ 1.7.1 — مخزن مشترك عبر shared_storage.py:
 - STORE يُحمَّل من DATA_DIR/store.json (افتراضي: project/data/store.json).
 - _refresh() قبل كل قراءة/تعديل — لرؤية أكواد الأدمن والإيداعات المعتمدة.
 - _persist_now() بعد كل تعديل — ليتمكن الأدمن من رؤية الشراء/الاستهلاك فوراً.
-- متوافق مع Render (DATA_DIR=/var/data + Disk).
+- متوافق مع Render (DATA_DIR=/var/data + Disk) أو PostgreSQL عبر DATABASE_URL.
+- _store_file_info() — معلومات موحّدة عن حالة المخزن (file/Postgres).
 - الشاشة الوحيدة /buy، تسجيل الدخول بالكود.
 """
 from __future__ import annotations
@@ -65,8 +66,56 @@ from shared_storage import (  # type: ignore
     STORE_FILE,
 )
 
+# استيراد اختياري لـ store_status (متوفّر في النسخة المحسّنة من shared_storage)
+try:
+    from shared_storage import store_status as _store_status  # type: ignore
+    _HAS_STORE_STATUS = True
+except ImportError:
+    _store_status = None
+    _HAS_STORE_STATUS = False
+
+
 STORE: dict[str, Any] = load_store()
 print(f"[app] 💾 store loaded from {STORE_FILE}")
+
+
+def _store_file_info() -> dict:
+    """
+    يعيد معلومات آمنة عن STORE_FILE بغض النظر عن نوعه:
+      - يستخدم store_status() إن كانت متاحة (النسخة المحسّنة).
+      - وإلا، يعود للتحقق اليدوي (Path أو DSN).
+    """
+    if _HAS_STORE_STATUS:
+        try:
+            st = _store_status()
+            return {
+                "path": st.get("target", str(STORE_FILE)),
+                "exists": st.get("exists", True),
+                "kind": st.get("backend", "unknown"),
+                "version": st.get("version"),
+                "size_bytes": st.get("size_bytes"),
+            }
+        except Exception as e:
+            print(f"[app] ⚠️  store_status فشل: {type(e).__name__}: {e}")
+
+    # Fallback: تحقق يدوي
+    if isinstance(STORE_FILE, Path):
+        return {
+            "path": str(STORE_FILE),
+            "exists": STORE_FILE.exists(),
+            "kind": "file",
+            "version": None,
+            "size_bytes": None,
+        }
+    s = str(STORE_FILE)
+    is_dsn = ("://" in s) or ("@/" in s)
+    return {
+        "path": s,
+        "exists": True,
+        "kind": "dsn" if is_dsn else "string",
+        "version": None,
+        "size_bytes": None,
+    }
 
 
 def _persist() -> None:
@@ -540,7 +589,14 @@ async def lifespan(app: FastAPI):
 
     print("✅ تسجيل الدخول بالكود مفعّل.")
     print("✅ الشاشة الوحيدة: /buy")
-    print(f"✅ المخزن المشترك: {STORE_FILE}")
+
+    _info = _store_file_info()
+    print(f"✅ المخزن المشترك: {_info['path']} (kind={_info['kind']}, ready={'✅' if _info['exists'] else '❌'})")
+    if _info.get("version") is not None:
+        print(f"✅ store version: {_info['version']}")
+    if _info.get("size_bytes") is not None:
+        print(f"✅ store size: {_info['size_bytes']} bytes")
+    print(f"✅ store_status: {'✅' if _HAS_STORE_STATUS else '⚠️  fallback'}")
 
     if SIM5_ENABLED:
         print(f"✅ 5SIM مفعّل — Base: {SIM5_BASE}")
@@ -583,7 +639,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Jamal Solutions — Customer Portal",
     description="Virtual Numbers Platform",
-    version="1.7.0",
+    version="1.7.1",
     lifespan=lifespan,
 )
 
@@ -952,12 +1008,20 @@ class AccessCodeCreate(BaseModel):
 # ══════════════════════════════════════════════════════════════
 @app.get("/health")
 async def health():
-    return {
+    _info = _store_file_info()
+    out = {
         "status": "ok",
         "uptime": _fmt_uptime(time.time() - START_TIME),
         "timestamp": _now_iso(),
-        "store_file": str(STORE_FILE),
+        "store_file": _info["path"],
+        "store_kind": _info["kind"],
+        "store_ready": _info["exists"],
     }
+    if _info.get("version") is not None:
+        out["store_version"] = _info["version"]
+    if _info.get("size_bytes") is not None:
+        out["store_size_bytes"] = _info["size_bytes"]
+    return out
 
 
 @app.get("/api/v1/system/health-check")
@@ -986,7 +1050,9 @@ async def system_version():
             })
         except Sim5Error as e:
             sim5_info.update({"ok": False, "error": e.message, "error_code": e.status})
-    return {
+
+    _info = _store_file_info()
+    out = {
         "version": app.version,
         "features": {
             "vouchers": True,
@@ -1004,8 +1070,12 @@ async def system_version():
         "vouchers_in_store": len(STORE["vouchers"]),
         "access_codes_in_store": len(STORE["access_codes"]),
         "uptime": _fmt_uptime(time.time() - START_TIME),
-        "store_file": str(STORE_FILE),
+        "store_file": _info["path"],
+        "store_kind": _info["kind"],
     }
+    if _info.get("version") is not None:
+        out["store_version"] = _info["version"]
+    return out
 
 
 @app.get("/api/v1/system/sim5-profile")
@@ -1066,6 +1136,9 @@ async def status_page(request: Request):
         except Sim5Error as e:
             sim5_status = f"⚠️ خطأ [{e.status}] {e.message}"
 
+    _info = _store_file_info()
+    store_kind_str = f"{_info['kind']} — {'✅' if _info['exists'] else '❌'}"
+
     html = f"""<!doctype html>
 <html lang="ar" dir="rtl">
 <head>
@@ -1096,6 +1169,9 @@ async def status_page(request: Request):
       <span>أكواد شحن: <b>{len(STORE['vouchers'])}</b></span>
       <span>أكواد دخول: <b>{len(STORE['access_codes'])}</b></span>
       <span>هامش: <b>{FIVESIM_MARKUP_PERCENT}%</b></span>
+    </div>
+    <div class="meta">
+      <span>المخزن: <b>{store_kind_str}</b></span>
     </div>
     <h1>🔌 5SIM</h1>
     <div class="meta"><span>{sim5_status}</span></div>
