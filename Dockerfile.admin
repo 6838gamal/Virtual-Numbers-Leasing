@@ -3,7 +3,8 @@ FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    DATA_DIR=/var/data
 
 WORKDIR /app
 
@@ -17,15 +18,22 @@ RUN pip install --no-cache-dir \
     "sse-starlette>=2.0" \
     "itsdangerous>=2.2"
 
-# ننسخ كل المشروع (main.py + templates/ + admin/)
-COPY . /app
+# ننسخ ما يحتاجه الأدمن فقط (بدون بيانات محلية)
 COPY shared_storage.py  ./shared_storage.py
+COPY admin/             ./admin/
+# لو admin.html يحتاج ستاتيك من app/static أو templates/ مشتركة:
+# COPY templates/       ./templates/
+# COPY app/static/      ./app/static/
 
-RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+# مجلد البيانات الدائم (يُركّب عليه Render Disk عند /var/data)
+RUN mkdir -p /var/data
+
+RUN useradd -m -u 1000 appuser \
+    && chown -R appuser:appuser /app /var/data
+
 USER appuser
 
 EXPOSE 8001
 
-# نعمل من /app/admin حيث main.py الأدمن
 WORKDIR /app/admin
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001", "--workers", "1"]
