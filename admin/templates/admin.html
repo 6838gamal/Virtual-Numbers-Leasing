@@ -15,11 +15,13 @@
     .stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,0.15); }
     @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:.3} }
     .pulse-dot { animation: pulse-dot 2s infinite; }
+    /* صندوق أحمر لغير المتوفر */
+    .cb-unavailable { outline: 2px solid #ef4444; outline-offset: 1px; }
+    .label-unavailable { opacity: 0.65; color: #f87171; }
   </style>
 </head>
 <body class="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 min-h-screen text-slate-100">
 
-<!-- ══ Main Panel (ظاهر دائماً — بدون تسجيل دخول) ══════════════ -->
 <div id="admin-panel">
   <header class="glass border-b border-slate-700 sticky top-0 z-40">
     <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
@@ -41,12 +43,12 @@
 
   <main class="max-w-7xl mx-auto px-4 py-6 space-y-6">
 
-    <!-- ══ Owner Wallet ══════════════════════════════════════ -->
+    <!-- ══ Wallet — قيمة كلية واحدة ═══════════════════════ -->
     <section>
       <div class="flex items-center justify-between mb-3">
         <h2 class="text-lg font-bold flex items-center gap-2">
           <span class="w-1 h-5 bg-gradient-to-b from-emerald-400 to-teal-500 rounded-full"></span>
-          💰 محفظة المالك
+          💰 المحفظة
         </h2>
         <button onclick="loadWallet(this)" class="text-xs font-bold text-blue-400 hover:text-blue-300 border border-slate-700 hover:border-blue-500/50 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -56,82 +58,116 @@
         </button>
       </div>
 
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-3" id="wallet-stats">
-        <div class="bg-slate-800 rounded-2xl p-4 border border-slate-700 stat-card">
-          <div class="text-xs text-slate-400 mb-1">إجمالي الأرباح</div>
-          <div class="text-2xl font-bold text-emerald-400">—</div>
-        </div>
-        <div class="bg-slate-800 rounded-2xl p-4 border border-slate-700 stat-card">
-          <div class="text-xs text-slate-400 mb-1">إجمالي الإيرادات</div>
-          <div class="text-2xl font-bold text-blue-400">—</div>
-        </div>
-        <div class="bg-slate-800 rounded-2xl p-4 border border-slate-700 stat-card">
-          <div class="text-xs text-slate-400 mb-1">محجوز لـ 5SIM</div>
-          <div class="text-2xl font-bold text-amber-400">—</div>
-        </div>
-        <div class="bg-slate-800 rounded-2xl p-4 border border-slate-700 stat-card">
-          <div class="text-xs text-slate-400 mb-1">رصيد 5SIM</div>
-          <div class="text-2xl font-bold text-purple-400" id="sim5-balance">—</div>
-        </div>
-      </div>
-
-      <div class="mt-3 bg-slate-800/50 rounded-xl p-3 border border-slate-700 text-xs">
-        <div class="flex items-center gap-3 flex-wrap">
-          <span class="text-slate-400">هامش الربح:</span>
-          <span id="markup-display" class="font-bold text-emerald-400">—</span>
-          <span class="text-slate-500">·</span>
-          <span class="text-slate-400">رصيد 5SIM المُجمّد:</span>
-          <span id="sim5-frozen" class="font-bold text-amber-400">—</span>
-        </div>
-      </div>
-
-      <div id="sim5-alert" class="hidden mt-3 bg-red-500/10 border-2 border-red-500/40 rounded-xl p-4">
-        <div class="flex items-start gap-3">
-          <span class="text-2xl">⚠️</span>
-          <div class="flex-1">
-            <p class="font-bold text-red-300 text-sm">رصيد 5SIM منخفض!</p>
-            <p class="text-xs text-red-200 mt-1">يُنصح بشحن حسابك في 5SIM لتجنّب توقف الشراء.</p>
-            <a href="https://5sim.net" target="_blank" class="inline-block mt-2 text-xs bg-red-500 hover:bg-red-600 text-white font-bold px-3 py-1.5 rounded-lg">فتح 5SIM ←</a>
-          </div>
-        </div>
+      <div class="bg-slate-800 rounded-2xl p-6 border border-slate-700 stat-card text-center">
+        <div class="text-sm text-slate-400 mb-1">الرصيد الكلي</div>
+        <div id="total-balance" class="text-4xl font-black text-emerald-400">—</div>
       </div>
     </section>
 
-    <!-- ══ Generate Vouchers ═════════════════════════════════ -->
+    <!-- ══ Generate Vouchers (دول + خدمات) ═════════════════ -->
     <section class="bg-slate-800 rounded-2xl border border-slate-700 p-5">
-      <h2 class="text-lg font-bold flex items-center gap-2 mb-4">
-        <span class="w-1 h-5 bg-gradient-to-b from-amber-400 to-orange-500 rounded-full"></span>
-        🎟️ توليد أكواد جديدة
-      </h2>
+      <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <h2 class="text-lg font-bold flex items-center gap-2">
+          <span class="w-1 h-5 bg-gradient-to-b from-amber-400 to-orange-500 rounded-full"></span>
+          🎟️ توليد أكواد جديدة
+        </h2>
+        <button onclick="refreshCatalog(this)" class="text-xs font-bold text-blue-400 hover:text-blue-300 border border-slate-700 hover:border-blue-500/50 px-3 py-1.5 rounded-lg transition-colors">🔄 تحديث الكتالوج</button>
+      </div>
 
       <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-4">
         <div>
-          <label class="text-xs font-bold text-slate-400 mb-1.5 block">العدد</label>
-          <input type="number" id="v-count" value="10" min="1" max="1000" class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:border-amber-500 outline-none text-sm">
+          <label class="text-xs font-bold text-slate-400 mb-1.5 block">العدد (لكل زوج)</label>
+          <input type="number" id="v-count" value="10" min="1" max="1000"
+                 class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:border-amber-500 outline-none text-sm">
         </div>
         <div>
           <label class="text-xs font-bold text-slate-400 mb-1.5 block">القيمة ($)</label>
-          <input type="number" id="v-value" value="5" min="1" step="0.5" class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:border-amber-500 outline-none text-sm">
+          <input type="number" id="v-value" value="5" min="1" step="0.5"
+                 class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:border-amber-500 outline-none text-sm">
         </div>
         <div>
           <label class="text-xs font-bold text-slate-400 mb-1.5 block">الصلاحية (أيام)</label>
-          <input type="number" id="v-days" value="30" min="1" max="365" class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:border-amber-500 outline-none text-sm">
+          <input type="number" id="v-days" value="30" min="1" max="365"
+                 class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:border-amber-500 outline-none text-sm">
         </div>
         <div>
           <label class="text-xs font-bold text-slate-400 mb-1.5 block">ملاحظة</label>
-          <input type="text" id="v-note" placeholder="بيع لوكيل..." class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:border-amber-500 outline-none text-sm">
+          <input type="text" id="v-note" placeholder="بيع لوكيل..."
+                 class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:border-amber-500 outline-none text-sm">
+        </div>
+      </div>
+
+      <!-- دول + خدمات -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4">
+        <div class="bg-slate-900/50 rounded-xl border border-slate-700 p-3">
+          <div class="flex items-center justify-between mb-2">
+            <p class="text-xs font-bold text-slate-300">🌍 الدول</p>
+            <label class="text-[10px] text-slate-400 flex items-center gap-1 cursor-pointer">
+              <input type="checkbox" id="sel-all-countries" onchange="toggleAllCountries(this.checked)" class="accent-amber-500"> تحديد الكل
+            </label>
+          </div>
+          <div id="countries-list" class="max-h-64 overflow-y-auto space-y-1 pr-1">
+            <p class="text-[11px] text-slate-500 text-center py-4">جاري التحميل...</p>
+          </div>
+        </div>
+
+        <div class="bg-slate-900/50 rounded-xl border border-slate-700 p-3">
+          <div class="flex items-center justify-between mb-2">
+            <p class="text-xs font-bold text-slate-300">📦 الخدمات</p>
+            <label class="text-[10px] text-slate-400 flex items-center gap-1 cursor-pointer">
+              <input type="checkbox" id="sel-all-services" onchange="toggleAllServices(this.checked)" class="accent-amber-500"> تحديد الكل
+            </label>
+          </div>
+          <div id="services-list" class="max-h-64 overflow-y-auto space-y-1 pr-1">
+            <p class="text-[11px] text-slate-500 text-center py-4">جاري التحميل...</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- تفاصيل التوفر -->
+      <div class="bg-slate-900/50 rounded-xl border border-slate-700 p-3 mb-4">
+        <div class="flex items-center justify-between mb-2">
+          <p class="text-xs font-bold text-slate-300">🔎 تفاصيل التوفر (بدون سعر)</p>
+          <div class="flex items-center gap-3 text-[10px]">
+            <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded bg-emerald-500"></span> متوفر</span>
+            <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded bg-red-500"></span> غير متوفر</span>
+          </div>
+        </div>
+        <div class="overflow-x-auto max-h-64 overflow-y-auto">
+          <table class="w-full text-right text-[11px]">
+            <thead class="text-slate-400 border-b border-slate-700 sticky top-0 bg-slate-900/95">
+              <tr>
+                <th class="px-2 py-1.5">الدولة</th>
+                <th class="px-2 py-1.5">الخدمة</th>
+                <th class="px-2 py-1.5">الحالة</th>
+                <th class="px-2 py-1.5">الكمية</th>
+                <th class="px-2 py-1.5">الاستخدام</th>
+              </tr>
+            </thead>
+            <tbody id="details-tbody" class="divide-y divide-slate-700/40">
+              <tr><td colspan="5" class="px-2 py-4 text-center text-slate-500">اختر دولة وخدمة لعرض التفاصيل</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
 
       <div class="flex items-center gap-3 flex-wrap mb-4">
         <div class="text-xs text-slate-400">
-          إجمالي قيمة الدفعة: <span id="batch-total" class="font-bold text-amber-400">$50.00</span>
+          عدد الأزواج المختارة: <span id="pairs-count" class="font-bold text-amber-400">0</span>
+          · إجمالي الأكواد: <span id="total-codes-count" class="font-bold text-amber-400">0</span>
+          · إجمالي القيمة: <span id="batch-total" class="font-bold text-amber-400">$0.00</span>
         </div>
+      </div>
+
+      <div class="flex items-center gap-2 flex-wrap mb-4">
         <button onclick="generateVouchers(this)" class="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-bold px-6 py-2.5 rounded-xl transition-all shadow-lg text-sm flex items-center gap-2">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
           </svg>
-          توليد الأكواد
+          توليد الأكواد (لكل الأزواج)
+        </button>
+        <button onclick="generateVouchersFirstPair(this)" class="bg-slate-700 hover:bg-slate-600 text-white font-bold px-4 py-2.5 rounded-xl transition-all text-sm">
+          توليد للزوج الأول فقط
         </button>
       </div>
 
@@ -143,7 +179,7 @@
             <button onclick="downloadCodes()" class="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg font-bold transition-colors">⬇️ تنزيل TXT</button>
           </div>
         </div>
-        <textarea id="codes-output" readonly rows="8" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl mono text-xs outline-none" dir="ltr"></textarea>
+        <textarea id="codes-output" readonly rows="10" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl mono text-xs outline-none" dir="ltr"></textarea>
       </div>
     </section>
 
@@ -179,14 +215,16 @@
             <tr class="text-slate-400 font-bold">
               <th class="px-3 py-2.5">الكود</th>
               <th class="px-3 py-2.5">القيمة</th>
+              <th class="px-3 py-2.5">الدولة/الخدمة</th>
               <th class="px-3 py-2.5">الحالة</th>
               <th class="px-3 py-2.5">المستخدم</th>
               <th class="px-3 py-2.5">تاريخ الإنشاء</th>
+              <th class="px-3 py-2.5">نسخ</th>
               <th class="px-3 py-2.5"></th>
             </tr>
           </thead>
           <tbody id="vouchers-tbody" class="divide-y divide-slate-700/50">
-            <tr><td colspan="6" class="px-3 py-8 text-center text-slate-500">لا توجد بيانات</td></tr>
+            <tr><td colspan="8" class="px-3 py-8 text-center text-slate-500">لا توجد بيانات</td></tr>
           </tbody>
         </table>
       </div>
@@ -324,7 +362,7 @@
     </section>
 
     <footer class="text-center text-[10px] text-slate-500 pt-4 pb-8">
-      <p>جمال سولوشنز · لوحة التحكم · <span id="footer-version">v1.9.0-open</span></p>
+      <p>جمال سولوشنز · لوحة التحكم · <span id="footer-version">v2.0.0-open</span></p>
       <p class="mt-1">آخر تحديث: <span id="last-refresh">—</span></p>
     </footer>
   </main>
@@ -334,7 +372,7 @@
 
 <script>
 // ══════════════════════════════════════════════════════════════
-// 🔓 بدون تسجيل دخول — الوصول مفتوح
+// 🔓 بدون تسجيل دخول
 // ══════════════════════════════════════════════════════════════
 function adminFetch(url, opts = {}) {
   return fetch(url, {
@@ -377,7 +415,7 @@ function loadAll() {
 }
 
 // ══════════════════════════════════════════════════════════════
-// Load Wallet
+// Wallet — قيمة كلية واحدة
 // ══════════════════════════════════════════════════════════════
 async function loadWallet(btn) {
   if (btn) btn.disabled = true;
@@ -385,39 +423,354 @@ async function loadWallet(btn) {
     const r = await adminFetch('/api/v1/admin/wallet');
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
-    const w = data.owner_wallet;
-
-    document.getElementById('wallet-stats').innerHTML = `
-      <div class="bg-slate-800 rounded-2xl p-4 border border-slate-700 stat-card">
-        <div class="text-xs text-slate-400 mb-1">إجمالي الأرباح</div>
-        <div class="text-2xl font-bold text-emerald-400">$${w.total_profit.toFixed(2)}</div>
-      </div>
-      <div class="bg-slate-800 rounded-2xl p-4 border border-slate-700 stat-card">
-        <div class="text-xs text-slate-400 mb-1">إجمالي الإيرادات</div>
-        <div class="text-2xl font-bold text-blue-400">$${w.total_revenue.toFixed(2)}</div>
-      </div>
-      <div class="bg-slate-800 rounded-2xl p-4 border border-slate-700 stat-card">
-        <div class="text-xs text-slate-400 mb-1">محجوز لـ 5SIM</div>
-        <div class="text-2xl font-bold text-amber-400">$${w.reserved_for_5sim.toFixed(2)}</div>
-      </div>
-      <div class="bg-slate-800 rounded-2xl p-4 border border-slate-700 stat-card">
-        <div class="text-xs text-slate-400 mb-1">رصيد 5SIM</div>
-        <div class="text-2xl font-bold text-purple-400">${data.sim5.balance ?? '—'}</div>
-      </div>
-    `;
-    document.getElementById('sim5-balance').textContent = data.sim5.balance ?? '—';
-    document.getElementById('sim5-frozen').textContent = data.sim5.frozen ?? '—';
-    document.getElementById('markup-display').textContent = (data.markup_percent || 0) + '%';
-
-    const sim5Bal = parseFloat(data.sim5.balance || 0);
-    const alertEl = document.getElementById('sim5-alert');
-    if (sim5Bal < 5 && !data.sim5.error) alertEl.classList.remove('hidden');
-    else alertEl.classList.add('hidden');
+    const v = data.total_balance ?? 0;
+    document.getElementById('total-balance').textContent = '$' + v.toFixed(2);
   } catch (e) {
     console.error('loadWallet:', e);
   } finally {
     if (btn) btn.disabled = false;
   }
+}
+
+// ══════════════════════════════════════════════════════════════
+// Catalog — دول + خدمات + توفر
+// ══════════════════════════════════════════════════════════════
+let CATALOG = { countries: [], services: [], availability: {}, note: '' };
+let SELECTED_COUNTRIES = new Set();
+let SELECTED_SERVICES = new Set();
+
+async function loadCatalog(force = false) {
+  try {
+    const url = force ? '/api/v1/admin/catalog/refresh' : '/api/v1/admin/catalog';
+    const r = await adminFetch(url);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    CATALOG = await r.json();
+    renderCountries();
+    renderServices();
+    updateCheckboxStates();
+    renderDetails();
+    if (CATALOG.note) toast('ℹ️ ' + CATALOG.note, 'warning');
+  } catch (e) {
+    console.error('loadCatalog:', e);
+    document.getElementById('countries-list').innerHTML =
+      '<p class="text-[11px] text-red-400 text-center py-4">فشل تحميل الدول</p>';
+    document.getElementById('services-list').innerHTML =
+      '<p class="text-[11px] text-red-400 text-center py-4">فشل تحميل الخدمات</p>';
+  }
+}
+
+async function refreshCatalog(btn) {
+  if (btn) btn.disabled = true;
+  if (btn) btn.textContent = '⏳ جارٍ التحديث...';
+  try {
+    await loadCatalog(true);
+    toast('✅ تم تحديث الكتالوج', 'success');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🔄 تحديث الكتالوج'; }
+  }
+}
+
+function availabilityKey(country, service) {
+  return country + ':' + service;
+}
+
+function availabilityOf(country, service) {
+  return CATALOG.availability[availabilityKey(country, service)] || null;
+}
+
+function isAvailable(country, service) {
+  const a = availabilityOf(country, service);
+  return !!(a && a.available);
+}
+
+function renderCountries() {
+  const box = document.getElementById('countries-list');
+  if (!CATALOG.countries.length) {
+    box.innerHTML = '<p class="text-[11px] text-slate-500 text-center py-4">لا توجد دول</p>';
+    return;
+  }
+  box.innerHTML = CATALOG.countries.map(c => `
+    <label class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-700/40 cursor-pointer country-label" data-code="${c.code}">
+      <input type="checkbox" class="accent-amber-500 country-cb" value="${c.code}"
+             onchange="onCountryToggle('${c.code}', this.checked)">
+      <span class="text-[12px]">${escapeHtml(c.name)}</span>
+      <span class="mono text-[10px] text-slate-500">${escapeHtml(c.code)}</span>
+    </label>
+  `).join('');
+}
+
+function renderServices() {
+  const box = document.getElementById('services-list');
+  if (!CATALOG.services.length) {
+    box.innerHTML = '<p class="text-[11px] text-slate-500 text-center py-4">لا توجد خدمات</p>';
+    return;
+  }
+  box.innerHTML = CATALOG.services.map(s => `
+    <label class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-700/40 cursor-pointer service-label" data-code="${s.code}">
+      <input type="checkbox" class="accent-amber-500 service-cb" value="${s.code}"
+             onchange="onServiceToggle('${s.code}', this.checked)">
+      <span class="text-[12px]">${escapeHtml(s.name)}</span>
+      <span class="mono text-[10px] text-slate-500">${escapeHtml(s.code)}</span>
+    </label>
+  `).join('');
+}
+
+function onCountryToggle(code, checked) {
+  if (checked) SELECTED_COUNTRIES.add(code); else SELECTED_COUNTRIES.delete(code);
+  updateCheckboxStates();
+  renderDetails();
+  updatePairsCounter();
+}
+
+function onServiceToggle(code, checked) {
+  if (checked) SELECTED_SERVICES.add(code); else SELECTED_SERVICES.delete(code);
+  updateCheckboxStates();
+  renderDetails();
+  updatePairsCounter();
+}
+
+function updateCheckboxStates() {
+  // الدول: أحمر إذا لم تتوفر مع أي خدمة مختارة
+  document.querySelectorAll('.country-cb').forEach(cb => {
+    const c = cb.value;
+    const label = cb.closest('.country-label');
+    let mark = false;
+    if (SELECTED_SERVICES.size > 0) {
+      let any = false;
+      SELECTED_SERVICES.forEach(s => { if (isAvailable(c, s)) any = true; });
+      mark = !any;
+    }
+    applyUnavailableStyle(cb, label, mark);
+  });
+
+  // الخدمات: أحمر إذا لم تتوفر مع أي دولة مختارة
+  document.querySelectorAll('.service-cb').forEach(cb => {
+    const s = cb.value;
+    const label = cb.closest('.service-label');
+    let mark = false;
+    if (SELECTED_COUNTRIES.size > 0) {
+      let any = false;
+      SELECTED_COUNTRIES.forEach(c => { if (isAvailable(c, s)) any = true; });
+      mark = !any;
+    }
+    applyUnavailableStyle(cb, label, mark);
+  });
+}
+
+function applyUnavailableStyle(cb, label, mark) {
+  if (mark) {
+    cb.classList.add('cb-unavailable');
+    if (label) label.classList.add('label-unavailable');
+  } else {
+    cb.classList.remove('cb-unavailable');
+    if (label) label.classList.remove('label-unavailable');
+  }
+}
+
+function toggleAllCountries(checked) {
+  document.querySelectorAll('.country-cb').forEach(cb => {
+    cb.checked = checked;
+    if (checked) SELECTED_COUNTRIES.add(cb.value); else SELECTED_COUNTRIES.delete(cb.value);
+  });
+  updateCheckboxStates();
+  renderDetails();
+  updatePairsCounter();
+}
+
+function toggleAllServices(checked) {
+  document.querySelectorAll('.service-cb').forEach(cb => {
+    cb.checked = checked;
+    if (checked) SELECTED_SERVICES.add(cb.value); else SELECTED_SERVICES.delete(cb.value);
+  });
+  updateCheckboxStates();
+  renderDetails();
+  updatePairsCounter();
+}
+
+function renderDetails() {
+  const tbody = document.getElementById('details-tbody');
+  const pairs = [];
+  SELECTED_COUNTRIES.forEach(c => {
+    SELECTED_SERVICES.forEach(s => pairs.push([c, s]));
+  });
+
+  if (!pairs.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="px-2 py-4 text-center text-slate-500">اختر دولة وخدمة لعرض التفاصيل</td></tr>';
+    return;
+  }
+
+  const countryName = Object.fromEntries(CATALOG.countries.map(c => [c.code, c.name]));
+  const serviceName = Object.fromEntries(CATALOG.services.map(s => [s.code, s.name]));
+
+  tbody.innerHTML = pairs.map(([c, s]) => {
+    const a = availabilityOf(c, s) || {};
+    const available = !!a.available;
+    const statusLabel = available
+      ? '<span class="bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full text-[10px] font-bold">متوفر</span>'
+      : '<span class="bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full text-[10px] font-bold">غير متوفر</span>';
+    const usage = (a.in_use != null)
+      ? `<span class="text-amber-400 font-bold">${a.in_use}</span>`
+      : '<span class="text-slate-500">—</span>';
+    return `
+      <tr class="hover:bg-slate-700/20">
+        <td class="px-2 py-1.5">${escapeHtml(countryName[c] || c)} <span class="mono text-[10px] text-slate-500">${escapeHtml(c)}</span></td>
+        <td class="px-2 py-1.5">${escapeHtml(serviceName[s] || s)} <span class="mono text-[10px] text-slate-500">${escapeHtml(s)}</span></td>
+        <td class="px-2 py-1.5">${statusLabel}</td>
+        <td class="px-2 py-1.5">${a.count ?? 0}</td>
+        <td class="px-2 py-1.5">${usage}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function updatePairsCounter() {
+  const pairs = SELECTED_COUNTRIES.size * SELECTED_SERVICES.size;
+  const count = parseInt(document.getElementById('v-count').value, 10) || 0;
+  const value = parseFloat(document.getElementById('v-value').value) || 0;
+  document.getElementById('pairs-count').textContent = pairs;
+  document.getElementById('total-codes-count').textContent = pairs * count;
+  document.getElementById('batch-total').textContent = '$' + (pairs * count * value).toFixed(2);
+}
+['v-count', 'v-value'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('input', updatePairsCounter);
+});
+
+// ══════════════════════════════════════════════════════════════
+// Generate Vouchers
+// ══════════════════════════════════════════════════════════════
+function collectPairs() {
+  const pairs = [];
+  SELECTED_COUNTRIES.forEach(c => {
+    SELECTED_SERVICES.forEach(s => pairs.push([c, s]));
+  });
+  return pairs;
+}
+
+async function generateVouchers(btn) {
+  const count = parseInt(document.getElementById('v-count').value, 10);
+  const value = parseFloat(document.getElementById('v-value').value);
+  const days = parseInt(document.getElementById('v-days').value, 10);
+  const note = document.getElementById('v-note').value;
+
+  if (!count || count < 1 || count > 1000) { toast('العدد يجب أن يكون 1-1000', 'error'); return; }
+  if (!value || value < 1) { toast('القيمة يجب أن تكون ≥ $1', 'error'); return; }
+  if (!days || days < 1) { toast('الصلاحية يجب أن تكون ≥ يوم', 'error'); return; }
+
+  const pairs = collectPairs();
+  if (!pairs.length) { toast('اختر دولة وخدمة على الأقل', 'warning'); return; }
+
+  // تحقق من التوفر
+  const unavailable = pairs.filter(([c, s]) => !isAvailable(c, s));
+  if (unavailable.length) {
+    toast(`❌ ${unavailable.length} زوج غير متوفر — أزل التحديد أو غيّر الاختيار`, 'error');
+    return;
+  }
+
+  const originalText = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '⏳ جارٍ التوليد...';
+
+  try {
+    const body = {
+      value,
+      expires_days: days,
+      note,
+      pairs: pairs.map(([country, service]) => ({ country, service, count })),
+    };
+    const r = await adminFetch('/api/v1/admin/vouchers/generate-multi', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    const data = await r.json();
+    if (!r.ok) {
+      toast('❌ ' + (data.detail || 'فشل التوليد'), 'error');
+      return;
+    }
+    // نعرض كل الأكواد (مجمعة)
+    const lines = [];
+    data.batches.forEach(b => {
+      lines.push(`# ${b.country} / ${b.service}  (${b.count} كود)`);
+      b.codes.forEach(c => lines.push(c));
+      lines.push('');
+    });
+    document.getElementById('codes-output').value = lines.join('\n');
+    document.getElementById('codes-output-wrap').classList.remove('hidden');
+    toast(`✅ تم توليد ${data.total_count} كود بقيمة $${data.total_value.toFixed(2)}`, 'success');
+    loadVouchers();
+  } catch (e) {
+    toast('❌ خطأ في الاتصال', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalText;
+  }
+}
+
+async function generateVouchersFirstPair(btn) {
+  const count = parseInt(document.getElementById('v-count').value, 10);
+  const value = parseFloat(document.getElementById('v-value').value);
+  const days = parseInt(document.getElementById('v-days').value, 10);
+  const note = document.getElementById('v-note').value;
+
+  const pairs = collectPairs();
+  if (!pairs.length) { toast('اختر دولة وخدمة على الأقل', 'warning'); return; }
+  const [country, service] = pairs[0];
+  if (!isAvailable(country, service)) {
+    toast('❌ الزوج الأول غير متوفر', 'error');
+    return;
+  }
+  if (!count || count < 1 || count > 1000) { toast('العدد يجب أن يكون 1-1000', 'error'); return; }
+  if (!value || value < 1) { toast('القيمة يجب أن تكون ≥ $1', 'error'); return; }
+  if (!days || days < 1) { toast('الصلاحية يجب أن تكون ≥ يوم', 'error'); return; }
+
+  const originalText = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '⏳ جارٍ التوليد...';
+
+  try {
+    const r = await adminFetch('/api/v1/admin/vouchers/generate', {
+      method: 'POST',
+      body: JSON.stringify({
+        count, value, expires_days: days, note,
+        country, service,
+      }),
+    });
+    const data = await r.json();
+    if (!r.ok) {
+      toast('❌ ' + (data.detail || 'فشل التوليد'), 'error');
+      return;
+    }
+    document.getElementById('codes-output').value = data.codes.join('\n');
+    document.getElementById('codes-output-wrap').classList.remove('hidden');
+    toast(`✅ تم توليد ${data.count} كود بقيمة $${data.total_value.toFixed(2)}`, 'success');
+    loadVouchers();
+  } catch (e) {
+    toast('❌ خطأ في الاتصال', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalText;
+  }
+}
+
+function copyCodes() {
+  const t = document.getElementById('codes-output');
+  t.select();
+  navigator.clipboard.writeText(t.value).then(
+    () => toast('✅ تم النسخ', 'success'),
+    () => { document.execCommand('copy'); toast('✅ تم النسخ', 'success'); }
+  );
+}
+
+function downloadCodes() {
+  const codes = document.getElementById('codes-output').value;
+  const blob = new Blob([codes], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'vouchers_' + new Date().toISOString().slice(0, 10) + '.txt';
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('⬇️ تم التنزيل', 'success');
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -442,7 +795,7 @@ async function loadVouchers(btn) {
 
     const tbody = document.getElementById('vouchers-tbody');
     if (!data.vouchers.length) {
-      tbody.innerHTML = '<tr><td colspan="6" class="px-3 py-8 text-center text-slate-500">لا توجد أكواد</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="px-3 py-8 text-center text-slate-500">لا توجد أكواد</td></tr>';
       return;
     }
 
@@ -454,13 +807,21 @@ async function loadVouchers(btn) {
         disabled: '<span class="bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full text-[10px] font-bold">معطّل</span>',
       }[v.status] || v.status;
       const date = new Date(v.created_at).toLocaleDateString('ar-EG');
+      const cs = (v.country || v.service)
+        ? `<span class="mono text-[10px]">${escapeHtml(v.country || '—')}/${escapeHtml(v.service || '—')}</span>`
+        : '<span class="text-slate-500">—</span>';
       return `
         <tr class="hover:bg-slate-700/30 transition-colors">
-          <td class="px-3 py-2"><code class="mono text-[11px] bg-slate-900 px-2 py-0.5 rounded">${v.code}</code></td>
+          <td class="px-3 py-2"><code class="mono text-[11px] bg-slate-900 px-2 py-0.5 rounded">${escapeHtml(v.code)}</code></td>
           <td class="px-3 py-2 font-bold text-amber-400">$${v.value.toFixed(2)}</td>
+          <td class="px-3 py-2">${cs}</td>
           <td class="px-3 py-2">${statusBadge}</td>
-          <td class="px-3 py-2 text-slate-400">${v.used_by || '—'}</td>
+          <td class="px-3 py-2 text-slate-400">${escapeHtml(v.used_by || '—')}</td>
           <td class="px-3 py-2 text-slate-500 text-[10px]">${date}</td>
+          <td class="px-3 py-2">
+            <button onclick="copyOneCode('${v.code.replace(/'/g, "\\'")}')"
+                    class="text-[10px] font-bold text-cyan-400 hover:text-cyan-300 border border-cyan-500/30 hover:border-cyan-500 px-2 py-1 rounded-lg transition-colors">📋 نسخ</button>
+          </td>
           <td class="px-3 py-2">
             ${v.status === 'unused' ? `<button onclick="disableVoucher(${v.id})" class="text-[10px] font-bold text-red-400 hover:text-red-300 border border-red-500/30 hover:border-red-500 px-2 py-1 rounded-lg transition-colors">تعطيل</button>` : ''}
           </td>
@@ -474,8 +835,36 @@ async function loadVouchers(btn) {
   }
 }
 
+function copyOneCode(code) {
+  navigator.clipboard.writeText(code).then(
+    () => toast('✅ تم نسخ الكود', 'success'),
+    () => {
+      const t = document.createElement('textarea');
+      t.value = code; document.body.appendChild(t);
+      t.select(); document.execCommand('copy'); document.body.removeChild(t);
+      toast('✅ تم النسخ', 'success');
+    }
+  );
+}
+
+async function disableVoucher(id) {
+  if (!confirm('هل أنت متأكد من تعطيل هذا الكود؟')) return;
+  try {
+    const r = await adminFetch(`/api/v1/admin/vouchers/${id}/disable`, { method: 'POST' });
+    if (r.ok) {
+      toast('✅ تم تعطيل الكود', 'success');
+      loadVouchers();
+    } else {
+      const d = await r.json();
+      toast('❌ ' + (d.detail || 'فشل'), 'error');
+    }
+  } catch (e) {
+    toast('❌ خطأ في الاتصال', 'error');
+  }
+}
+
 // ══════════════════════════════════════════════════════════════
-// Access Codes (Login Codes)
+// Access Codes
 // ══════════════════════════════════════════════════════════════
 async function generateAccessCode(btn) {
   const label = document.getElementById('ac-label').value.trim();
@@ -524,8 +913,10 @@ async function generateAccessCode(btn) {
 function copyAccessCode() {
   const t = document.getElementById('ac-output');
   t.select();
-  document.execCommand('copy');
-  toast('✅ تم النسخ', 'success');
+  navigator.clipboard.writeText(t.value).then(
+    () => toast('✅ تم النسخ', 'success'),
+    () => { document.execCommand('copy'); toast('✅ تم النسخ', 'success'); }
+  );
 }
 
 async function loadAccessCodes(btn) {
@@ -561,8 +952,8 @@ async function loadAccessCodes(btn) {
       const exp = new Date(c.expires_at).toLocaleDateString('ar-EG');
       return `
         <tr class="hover:bg-slate-700/30 transition-colors">
-          <td class="px-3 py-2"><code class="mono text-[11px] bg-slate-900 px-2 py-0.5 rounded text-cyan-300">${c.code}</code></td>
-          <td class="px-3 py-2 text-slate-400 text-[10px]">${c.label || '—'}</td>
+          <td class="px-3 py-2"><code class="mono text-[11px] bg-slate-900 px-2 py-0.5 rounded text-cyan-300">${escapeHtml(c.code)}</code></td>
+          <td class="px-3 py-2 text-slate-400 text-[10px]">${escapeHtml(c.label || '—')}</td>
           <td class="px-3 py-2 text-[11px]">${c.uses_count} / ${c.max_uses}</td>
           <td class="px-3 py-2 font-bold text-amber-400">$${(c.preset_balance || 0).toFixed(2)}</td>
           <td class="px-3 py-2">${statusBadge}</td>
@@ -600,7 +991,7 @@ async function deleteAccessCode(id) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// Load Deposits
+// Deposits
 // ══════════════════════════════════════════════════════════════
 async function loadDeposits(btn) {
   if (btn) btn.disabled = true;
@@ -641,13 +1032,13 @@ async function loadDeposits(btn) {
         <tr class="hover:bg-slate-700/30 transition-colors">
           <td class="px-3 py-2 text-slate-500">#${d.id}</td>
           <td class="px-3 py-2">
-            <div class="font-bold text-[11px]">${d.customer_name || '—'}</div>
-            <div class="text-[10px] text-slate-500 mono" dir="ltr">${d.customer_email || '—'}</div>
+            <div class="font-bold text-[11px]">${escapeHtml(d.customer_name || '—')}</div>
+            <div class="text-[10px] text-slate-500 mono" dir="ltr">${escapeHtml(d.customer_email || '—')}</div>
           </td>
           <td class="px-3 py-2 font-bold text-emerald-400">$${d.amount.toFixed(2)}</td>
-          <td class="px-3 py-2 text-[10px]"><span class="bg-slate-700 px-2 py-0.5 rounded">${d.method}</span></td>
-          <td class="px-3 py-2"><code class="mono text-[10px] bg-slate-900 px-1.5 py-0.5 rounded block max-w-[150px] truncate" title="${d.reference}" dir="ltr">${d.reference}</code></td>
-          <td class="px-3 py-2 text-slate-500 text-[10px]">${d.date}</td>
+          <td class="px-3 py-2 text-[10px]"><span class="bg-slate-700 px-2 py-0.5 rounded">${escapeHtml(d.method)}</span></td>
+          <td class="px-3 py-2"><code class="mono text-[10px] bg-slate-900 px-1.5 py-0.5 rounded block max-w-[150px] truncate" title="${escapeHtml(d.reference)}" dir="ltr">${escapeHtml(d.reference)}</code></td>
+          <td class="px-3 py-2 text-slate-500 text-[10px]">${escapeHtml(d.date)}</td>
           <td class="px-3 py-2">${statusBadge}</td>
           <td class="px-3 py-2">${actions}</td>
         </tr>
@@ -657,80 +1048,6 @@ async function loadDeposits(btn) {
     console.error('loadDeposits:', e);
   } finally {
     if (btn) btn.disabled = false;
-  }
-}
-
-// ══════════════════════════════════════════════════════════════
-// Generate Vouchers
-// ══════════════════════════════════════════════════════════════
-async function generateVouchers(btn) {
-  const count = parseInt(document.getElementById('v-count').value, 10);
-  const value = parseFloat(document.getElementById('v-value').value);
-  const days = parseInt(document.getElementById('v-days').value, 10);
-  const note = document.getElementById('v-note').value;
-
-  if (!count || count < 1 || count > 1000) { toast('العدد يجب أن يكون 1-1000', 'error'); return; }
-  if (!value || value < 1) { toast('القيمة يجب أن تكون ≥ $1', 'error'); return; }
-  if (!days || days < 1) { toast('الصلاحية يجب أن تكون ≥ يوم', 'error'); return; }
-
-  const originalText = btn.innerHTML;
-  btn.disabled = true;
-  btn.innerHTML = '⏳ جارٍ التوليد...';
-
-  try {
-    const r = await adminFetch('/api/v1/admin/vouchers/generate', {
-      method: 'POST',
-      body: JSON.stringify({ count, value, expires_days: days, note }),
-    });
-    const data = await r.json();
-    if (!r.ok) {
-      toast('❌ ' + (data.detail || 'فشل التوليد'), 'error');
-      return;
-    }
-    document.getElementById('codes-output').value = data.codes.join('\n');
-    document.getElementById('codes-output-wrap').classList.remove('hidden');
-    toast(`✅ تم توليد ${data.count} كود بقيمة $${data.total_value.toFixed(2)}`, 'success');
-    loadVouchers();
-  } catch (e) {
-    toast('❌ خطأ في الاتصال', 'error');
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = originalText;
-  }
-}
-
-function copyCodes() {
-  const t = document.getElementById('codes-output');
-  t.select();
-  document.execCommand('copy');
-  toast('✅ تم النسخ', 'success');
-}
-
-function downloadCodes() {
-  const codes = document.getElementById('codes-output').value;
-  const blob = new Blob([codes], { type: 'text/plain' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'vouchers_' + new Date().toISOString().slice(0, 10) + '.txt';
-  a.click();
-  URL.revokeObjectURL(url);
-  toast('⬇️ تم التنزيل', 'success');
-}
-
-async function disableVoucher(id) {
-  if (!confirm('هل أنت متأكد من تعطيل هذا الكود؟')) return;
-  try {
-    const r = await adminFetch(`/api/v1/admin/vouchers/${id}/disable`, { method: 'POST' });
-    if (r.ok) {
-      toast('✅ تم تعطيل الكود', 'success');
-      loadVouchers();
-    } else {
-      const d = await r.json();
-      toast('❌ ' + (d.detail || 'فشل'), 'error');
-    }
-  } catch (e) {
-    toast('❌ خطأ في الاتصال', 'error');
   }
 }
 
@@ -767,22 +1084,27 @@ async function rejectDeposit(id) {
   }
 }
 
-function updateBatchTotal() {
-  const count = parseInt(document.getElementById('v-count').value, 10) || 0;
-  const value = parseFloat(document.getElementById('v-value').value) || 0;
-  document.getElementById('batch-total').textContent = '$' + (count * value).toFixed(2);
+// ══════════════════════════════════════════════════════════════
+// Helpers
+// ══════════════════════════════════════════════════════════════
+function escapeHtml(s) {
+  if (s == null) return '';
+  return String(s)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
 }
-['v-count', 'v-value'].forEach(id => {
-  const el = document.getElementById(id);
-  if (el) el.addEventListener('input', updateBatchTotal);
-});
-updateBatchTotal();
 
 // ══════════════════════════════════════════════════════════════
-// تشغيل فوري عند تحميل الصفحة + تحديث كل 30 ثانية
+// Bootstrap
 // ══════════════════════════════════════════════════════════════
 loadAll();
+loadCatalog();
+updatePairsCounter();
 setInterval(loadAll, 30000);
+setInterval(() => loadCatalog(true), 5 * 60 * 1000);
 </script>
 </body>
 </html>
