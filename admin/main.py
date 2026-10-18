@@ -16,6 +16,12 @@ Jamal Solutions — Admin Panel (standalone + shared storage)
 
 ⚠️  workers=1 لكلا التطبيقين.
 ⚠️  بدون تسجيل دخول — لا تنشرها على إنترنت عام.
+
+✨ v2.3.0 — دعم الكود الموحّد (Multi-Pair Voucher):
+    - كود واحد يصلح لأكثر من زوج (دولة/خدمة)
+    - allowed_pairs في كل voucher
+    - endpoint /vouchers/check للتحقق المسبق
+    - وضع merge في generate-multi
 """
 from __future__ import annotations
 
@@ -60,7 +66,6 @@ from shared_storage import (  # type: ignore
     STORE_FILE,
 )
 
-# استيراد اختياري لـ store_status (متوفّر في النسخة المحسّنة من shared_storage)
 try:
     from shared_storage import store_status as _store_status  # type: ignore
     _HAS_STORE_STATUS = True
@@ -74,11 +79,6 @@ print(f"[admin] 💾 store loaded from {STORE_FILE}")
 
 
 def _store_file_info() -> dict:
-    """
-    يعيد معلومات آمنة عن STORE_FILE بغض النظر عن نوعه:
-      - يستخدم store_status() إن كانت متاحة (النسخة المحسّنة).
-      - وإلا، يعود للتحقق اليدوي (Path أو DSN).
-    """
     if _HAS_STORE_STATUS:
         try:
             st = _store_status()
@@ -92,7 +92,6 @@ def _store_file_info() -> dict:
         except Exception as e:
             print(f"[admin] ⚠️  store_status فشل: {type(e).__name__}: {e}")
 
-    # Fallback: تحقق يدوي
     if isinstance(STORE_FILE, Path):
         return {
             "path": str(STORE_FILE),
@@ -371,11 +370,32 @@ def _create_vouchers_batch(
     note: str = "",
     country: Optional[str] = None,
     service: Optional[str] = None,
+    allowed_pairs: Optional[list[dict]] = None,   # ✨ NEW
 ) -> list[dict]:
+    """
+    ينشئ دفعة أكواد.
+
+    - allowed_pairs (✨ NEW): قائمة [{"country":..., "service":...}, ...]
+      كود واحد يصلح لأي من هذه الأزواج. متوافق مع الأكواد القديمة.
+    - country/service (قديم): زوج واحد فقط. يُستخدم إن كانت allowed_pairs فارغة.
+    """
     prefix = os.getenv("VOUCHER_PREFIX", "JS").strip().upper()
     batch_id = f"batch_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
     now = datetime.now(timezone.utc)
     expires = now + timedelta(days=expires_days)
+
+    # ✨ تطبيع allowed_pairs
+    pairs: list[dict] = []
+    if allowed_pairs:
+        for p in allowed_pairs:
+            c = (p.get("country") or "").strip()
+            s = (p.get("service") or "").strip()
+            if c and s:
+                pairs.append({"country": c, "service": s})
+    # 🔧 توافق عكسي: لو مفيش pairs وعندنا country+service، اعتبرهم زوج واحد
+    if not pairs and country and service:
+        pairs = [{"country": country, "service": service}]
+
     created: list[dict] = []
     for _ in range(count):
         while True:
@@ -386,6 +406,10 @@ def _create_vouchers_batch(
             )
             if not any(v["code"] == code for v in STORE["vouchers"]):
                 break
+
+        # ✨ للتوافق: خزّن country/service المفردين لو كان الزوج واحداً
+        single = pairs[0] if len(pairs) == 1 else None
+
         v = {
             "id": len(STORE["vouchers"]) + 1,
             "code": code,
@@ -393,12 +417,17 @@ def _create_vouchers_batch(
             "status": "unused",
             "batch_id": batch_id,
             "note": note,
-            "country": country or None,
-            "service": service or None,
+            # 🔧 حقول قديمة — تبقى للتوافق العكسي
+            "country": single["country"] if single else (country or None),
+            "service": single["service"] if single else (service or None),
+            # ✨ جديد: قائمة الأزواج المسموحة
+            "allowed_pairs": pairs,
             "created_at": now.isoformat(),
             "expires_at": expires.isoformat(),
             "used_by": None,
             "used_at": None,
+            # ✨ جديد: أي زوج تم استخدام الكود عليه فعلاً
+            "used_on": None,
         }
         STORE["vouchers"].append(v)
         created.append(v)
@@ -442,10 +471,24 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _normalize_pairs(v: dict) -> list[dict]:
+    """
+    ✨ NEW — يعيد قائمة الأزواج المسموحة لكود، مع التوافق العكسي:
+    - إن وُجد allowed_pairs نستخدمها.
+    - وإلا، نستخدم country/service المفردين (كود قديم).
+    """
+    pairs = v.get("allowed_pairs") or []
+    if pairs:
+        return pairs
+    if v.get("country") and v.get("service"):
+        return [{"country": v["country"], "service": v["service"]}]
+    return []
+
+
 # ══════════════════════════════════════════════════════════════
 # 5) App
 # ══════════════════════════════════════════════════════════════
-app = FastAPI(title="Jamal Solutions — Admin Panel", version="2.2.2-open")
+app = FastAPI(title="Jamal Solutions — Admin Panel", version="2.3.0-open")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 if STATIC_DIR.exists():
@@ -468,13 +511,22 @@ class AdminLoginIn(BaseModel):
     password: str = ""
 
 
+class AllowedPair(BaseModel):
+    """✨ NEW — زوج مسموح به داخل كود موحّد."""
+    country: str = Field(..., min_length=1)
+    service: str = Field(..., min_length=1)
+
+
 class VoucherBatchCreate(BaseModel):
     count: int = Field(..., ge=1, le=1000)
     value: float = Field(..., ge=1)
     expires_days: int = Field(30, ge=1, le=365)
     note: str = ""
+    # 🔧 للتوافق القديم — تُستخدم إن كانت allowed_pairs فارغة
     country: str = ""
     service: str = ""
+    # ✨ NEW — قائمة أزواج متعددة لكود واحد
+    allowed_pairs: list[AllowedPair] = Field(default_factory=list)
 
 
 class VoucherPair(BaseModel):
@@ -484,10 +536,27 @@ class VoucherPair(BaseModel):
 
 
 class VoucherMultiCreate(BaseModel):
+    """
+    ✨ يدعم وضعين:
+    - merge=False (افتراضي): كود منفصل لكل زوج في pairs.
+    - merge=True: كود واحد لكل count، يصلح لأي من allowed_pairs.
+    """
     value: float = Field(..., ge=1)
     expires_days: int = Field(30, ge=1, le=365)
     note: str = ""
-    pairs: list[VoucherPair] = Field(..., min_length=1)
+    # الوضع القديم
+    pairs: list[VoucherPair] = Field(default_factory=list)
+    # ✨ وضع الدمج
+    merge: bool = False
+    count: int = Field(1, ge=1, le=1000)
+    allowed_pairs: list[AllowedPair] = Field(default_factory=list)
+
+
+class VoucherCheckIn(BaseModel):
+    """✨ NEW — للتحقق من صلاحية كود لزوج معيّن."""
+    code: str = Field(..., min_length=1)
+    country: str = Field(..., min_length=1)
+    service: str = Field(..., min_length=1)
 
 
 class AccessCodeCreate(BaseModel):
@@ -513,6 +582,11 @@ async def admin_panel(request: Request):
 async def health():
     _refresh()
     _info = _store_file_info()
+    # ✨ إحصاء الأكواد الموحّدة
+    merged_count = sum(
+        1 for v in STORE["vouchers"]
+        if len(_normalize_pairs(v)) > 1
+    )
     out = {
         "status": "ok",
         "app": "admin",
@@ -526,13 +600,17 @@ async def health():
         "catalog_cached": _SIM5_CACHE["prices"]["data"] is not None,
         "counts": {
             "vouchers": len(STORE["vouchers"]),
+            "merged_vouchers": merged_count,       # ✨ NEW
             "access_codes": len(STORE["access_codes"]),
             "deposits": len(STORE["deposits"]),
             "customers": len(STORE["customers"]),
             "orders": len(STORE["orders"]),
         },
+        "features": {
+            "multi_pair_vouchers": True,           # ✨ NEW
+            "voucher_check_endpoint": True,        # ✨ NEW
+        },
     }
-    # أضف حقول إضافية إن كانت store_status متاحة
     if _info.get("version") is not None:
         out["store_version"] = _info["version"]
     if _info.get("size_bytes") is not None:
@@ -674,17 +752,35 @@ async def admin_list_vouchers(
         "total_value_used": round(
             sum(v["value"] for v in vouchers if v["status"] == "used"), 2
         ),
+        # ✨ NEW
+        "merged": sum(1 for v in vouchers if len(_normalize_pairs(v)) > 1),
     }
-    return {"summary": summary, "vouchers": filtered}
+
+    # ✨ NEW — أضف معلومات موحّدة لكل voucher للعرض
+    out = []
+    for v in filtered:
+        pairs = _normalize_pairs(v)
+        out.append({
+            **v,
+            # املأ حقول العرض للتوافق مع الواجهة الحالية
+            "country": v.get("country") or (pairs[0]["country"] if len(pairs) == 1 else None),
+            "service": v.get("service") or (pairs[0]["service"] if len(pairs) == 1 else None),
+            "allowed_pairs": pairs,
+            "is_merged": len(pairs) > 1,
+        })
+
+    return {"summary": summary, "vouchers": out}
 
 
 # ══════════════════════════════════════════════════════════════
-# 11) Vouchers — generate (دفعة واحدة)
+# 11) Vouchers — generate (دفعة واحدة، مع دعم allowed_pairs)
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/admin/vouchers/generate")
 async def admin_generate_vouchers(payload: VoucherBatchCreate, request: Request):
     _check_admin(request)
     _refresh()
+
+    # ✨ دعم allowed_pairs أو country/service المفردين
     created = _create_vouchers_batch(
         count=payload.count,
         value=payload.value,
@@ -692,8 +788,10 @@ async def admin_generate_vouchers(payload: VoucherBatchCreate, request: Request)
         note=payload.note,
         country=payload.country or None,
         service=payload.service or None,
+        allowed_pairs=[p.model_dump() for p in payload.allowed_pairs] or None,
     )
     _persist_now()
+    pairs_out = _normalize_pairs(created[0]) if created else []
     return {
         "ok": True,
         "count": len(created),
@@ -702,16 +800,61 @@ async def admin_generate_vouchers(payload: VoucherBatchCreate, request: Request)
         "codes": [v["code"] for v in created],
         "country": payload.country or None,
         "service": payload.service or None,
+        "allowed_pairs": pairs_out,          # ✨ NEW
+        "is_merged": len(pairs_out) > 1,     # ✨ NEW
     }
 
 
 # ══════════════════════════════════════════════════════════════
-# 12) Vouchers — generate multi
+# 12) Vouchers — generate multi (يدعم merge)
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/admin/vouchers/generate-multi")
 async def admin_generate_vouchers_multi(payload: VoucherMultiCreate, request: Request):
+    """
+    ✨ يدعم وضعين:
+    - merge=False (افتراضي): كود منفصل لكل زوج في pairs (السلوك القديم).
+    - merge=True: كود واحد (× count) يصلح لأي من allowed_pairs.
+    """
     _check_admin(request)
     _refresh()
+
+    # ── وضع الدمج ✨ NEW ──
+    if payload.merge:
+        if not payload.allowed_pairs:
+            raise HTTPException(400, "allowed_pairs مطلوبة في وضع الدمج")
+        if not payload.count or payload.count < 1:
+            raise HTTPException(400, "count مطلوبة في وضع الدمج (≥1)")
+
+        created = _create_vouchers_batch(
+            count=payload.count,
+            value=payload.value,
+            expires_days=payload.expires_days,
+            note=payload.note,
+            allowed_pairs=[p.model_dump() for p in payload.allowed_pairs],
+        )
+        _persist_now()
+
+        pairs_desc = ", ".join(f"{p.country}/{p.service}" for p in payload.allowed_pairs)
+        return {
+            "ok": True,
+            "merge": True,
+            "total_count": len(created),
+            "total_value": round(sum(v["value"] for v in created), 2),
+            "batches": [{
+                "country": "merged",
+                "service": pairs_desc,
+                "allowed_pairs": [p.model_dump() for p in payload.allowed_pairs],
+                "count": len(created),
+                "batch_id": created[0]["batch_id"] if created else None,
+                "codes": [v["code"] for v in created],
+                "total_value": round(sum(v["value"] for v in created), 2),
+            }],
+        }
+
+    # ── الوضع القديم (كود منفصل لكل زوج) ──
+    if not payload.pairs:
+        raise HTTPException(400, "pairs مطلوبة (أو استخدم merge=true مع allowed_pairs)")
+
     all_created: list[dict] = []
     batches: list[dict] = []
     for p in payload.pairs:
@@ -735,9 +878,79 @@ async def admin_generate_vouchers_multi(payload: VoucherMultiCreate, request: Re
     _persist_now()
     return {
         "ok": True,
+        "merge": False,
         "total_count": len(all_created),
         "total_value": round(sum(v["value"] for v in all_created), 2),
         "batches": batches,
+    }
+
+
+# ══════════════════════════════════════════════════════════════
+# 12b) Vouchers — check (✨ NEW: تحقق مسبق من صلاحية الكود لزوج)
+# ══════════════════════════════════════════════════════════════
+@app.post("/api/v1/admin/vouchers/check")
+async def admin_check_voucher(payload: VoucherCheckIn, request: Request):
+    """
+    يتحقق أن الكود:
+      - موجود
+      - غير مستخدم/معطّل
+      - غير منتهي
+      - يصلح للزوج (country, service) المطلوب
+
+    لا يستهلك الكود — آمن للاستدعاء من واجهة الزبون.
+    """
+    _check_admin(request)
+    _refresh()
+
+    v = next((x for x in STORE["vouchers"] if x["code"] == payload.code), None)
+    if not v:
+        raise HTTPException(404, "الكود غير موجود")
+
+    if v["status"] != "unused":
+        status_ar = {
+            "used": "مستخدم",
+            "expired": "منتهي",
+            "disabled": "معطّل",
+        }.get(v["status"], v["status"])
+        raise HTTPException(400, f"هذا الكود {status_ar} — لا يمكن استخدامه")
+
+    try:
+        exp = datetime.fromisoformat(v["expires_at"])
+        if exp.tzinfo is None:
+            exp = exp.replace(tzinfo=timezone.utc)
+        if datetime.now(timezone.utc) > exp:
+            v["status"] = "expired"
+            _persist()
+            raise HTTPException(400, "هذا الكود منتهي الصلاحية")
+    except (ValueError, KeyError, TypeError):
+        pass
+
+    pairs = _normalize_pairs(v)
+    if pairs:
+        ok = any(
+            p["country"] == payload.country and p["service"] == payload.service
+            for p in pairs
+        )
+        if not ok:
+            pairs_str = ", ".join(f"{p['country']}/{p['service']}" for p in pairs)
+            raise HTTPException(
+                403,
+                f"هذا الكود لا يصلح لـ {payload.country}/{payload.service}. "
+                f"يصلح لـ: {pairs_str}",
+            )
+
+    return {
+        "ok": True,
+        "code": v["code"],
+        "value": v["value"],
+        "expires_at": v["expires_at"],
+        "allowed_pairs": pairs,
+        "is_merged": len(pairs) > 1,
+        "note": v.get("note", ""),
+        "selected_pair": {
+            "country": payload.country,
+            "service": payload.service,
+        },
     }
 
 
@@ -917,7 +1130,6 @@ async def admin_backup(request: Request):
     result = backup(STORE)
     save_now(STORE)
 
-    # حالات: Path / str / dict / None
     if isinstance(result, Path):
         try:
             size = result.stat().st_size
@@ -956,6 +1168,7 @@ async def http_exc_handler(request: Request, exc: HTTPException):
 async def _startup_log():
     _refresh()
     _info = _store_file_info()
+    merged_count = sum(1 for v in STORE["vouchers"] if len(_normalize_pairs(v)) > 1)
     print("═" * 60)
     print(f"[admin] 🚀 لوحة الأدمن v{app.version}  (🔓 بدون تسجيل دخول)")
     print(f"[admin] root          = {ADMIN_DIR}")
@@ -976,7 +1189,7 @@ async def _startup_log():
     print(f"[admin] MARKUP        = {FIVESIM_MARKUP_PERCENT}%")
     print(f"[admin] CATALOG TTL   = {CATALOG_TTL_SECONDS}s")
     print(f"[admin] owner_wallet  = {STORE['owner_wallet']}")
-    print(f"[admin] vouchers      = {len(STORE['vouchers'])}")
+    print(f"[admin] vouchers      = {len(STORE['vouchers'])}  (merged: {merged_count})")
     print(f"[admin] access_codes  = {len(STORE['access_codes'])}")
     print(f"[admin] customers     = {len(STORE['customers'])}")
     print(f"[admin] orders        = {len(STORE['orders'])}")
