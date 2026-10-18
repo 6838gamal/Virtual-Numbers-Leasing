@@ -3,32 +3,30 @@
 Jamal Solutions — Admin Panel (standalone + persistent storage مشترك)
 
 - GET  /                       → admin.html  (بدون تسجيل دخول)
-- GET  /admin-panel            → admin.html
-- GET  /api/v1/admin/catalog   → الدول والخدمات + التوفر (من 5SIM)
+- GET  /api/v1/admin/catalog   → دول + خدمات + توفر (منطق app/main.py)
 - كل /api/v1/admin/*           → 🔓 مفتوحة (بدون تحقق)
 
-التخزين (مشترك مع app/main.py):
+التخزين المشترك:
     project/data/store.json     ← يُقرأ عند البدء + قبل كل عرض، يُحفظ بعد كل تعديل
     project/data/backups/       ← نسخة احتياطية عند الإغلاق الآمن
 
 التشغيل (من داخل admin/):
     uvicorn main:app --host 127.0.0.1 --port 8001 --workers 1
 
-⚠️  استخدم --workers 1 فقط لكلا التطبيقين (التخزين بالملف).
-⚠️  هذه النسخة مفتوحة بالكامل — لا تنشرها على إنترنت عام.
+⚠️  workers=1 لكلا التطبيقين.
+⚠️  بدون تسجيل دخول — لا تنشرها على إنترنت عام.
 """
 from __future__ import annotations
 
 import asyncio
-import json as _json
 import os
 import secrets
-import time as _time
-import urllib.request as _req
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
+import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -45,7 +43,7 @@ STATIC_DIR = ADMIN_DIR / "static"
 
 
 # ══════════════════════════════════════════════════════════════
-# 2) التخزين الدائم المشترك (JSON)
+# 2) التخزين الدائم المشترك
 # ══════════════════════════════════════════════════════════════
 from storage import (  # type: ignore
     load_store,
@@ -61,27 +59,26 @@ print(f"[admin] 💾 store loaded from {STORE_FILE}")
 
 
 def _persist() -> None:
-    """حفظ مؤجل (debounced)."""
     schedule_save(STORE)
 
 
 def _persist_now() -> None:
-    """حفظ فوري — للعمليات الحسّاسة."""
     save_now(STORE)
 
 
 def _refresh() -> None:
-    """إعادة قراءة store.json من القرص."""
     fresh = reload_from_disk()
     STORE.clear()
     STORE.update(fresh)
 
 
 # ══════════════════════════════════════════════════════════════
-# 2b) إعدادات 5SIM
+# 3) 5SIM — إعدادات (نفس منطق app/main.py)
 # ══════════════════════════════════════════════════════════════
-SIM5_ENABLED = bool(os.getenv("SIM5_API_KEY", "").strip())
-SIM5_BASE = os.getenv("SIM5_BASE", "https://5sim.net").rstrip("/")
+SIM5_BASE = os.getenv("SIM5_BASE", "https://5sim.net/v1").rstrip("/")
+SIM5_API_KEY = os.getenv("SIM5_API_KEY", "").strip()
+SIM5_ENABLED = bool(SIM5_API_KEY)
+
 FIVESIM_MARKUP_PERCENT = float(os.getenv("FIVESIM_MARKUP_PERCENT", "40"))
 
 
@@ -93,189 +90,244 @@ class Sim5Error(Exception):
         super().__init__(f"[{status_code}] {message} ({endpoint})")
 
 
-def _sim5_http_get(path: str, timeout: float = 25.0):
-    """GET متزامن إلى 5SIM مع API key."""
-    api_key = os.getenv("SIM5_API_KEY", "").strip()
-    if not api_key:
-        raise Sim5Error(503, "SIM5_API_KEY غير مضبوط", path)
-    req = _req.Request(
-        f"{SIM5_BASE}{path}",
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Accept": "application/json",
-            "User-Agent": "jamal-solutions-admin/1.0",
-        },
-    )
-    with _req.urlopen(req, timeout=timeout) as r:
-        return _json.loads(r.read().decode("utf-8"))
+def _sim5_explain_400(text: str) -> str:
+    t = text.lower()
+    if "no free phones" in t:
+        return "لا توجد أرقام متاحة حاليًا لهذه الدولة/الخدمة"
+    if "not enough user balance" in t:
+        return "رصيد 5SIM غير كافٍ"
+    if "bad country" in t:
+        return "الدولة غير مدعومة في 5SIM"
+    if "bad operator" in t:
+        return "المشغل غير مدعوم في 5SIM"
+    if "no product" in t:
+        return "الخدمة غير مدعومة في 5SIM"
+    if "server offline" in t:
+        return "خادم 5SIM غير متصل"
+    return f"خطأ من 5SIM: {text[:200]}"
 
 
-async def _sim5_get(path: str, auth: bool = False, timeout: float = 25.0):
-    """نسخة async — نغلّف المتزامن في thread."""
-    if not SIM5_ENABLED:
-        raise Sim5Error(503, "5SIM غير مفعّل", path)
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, lambda: _sim5_http_get(path, timeout))
+async def _sim5_get(path: str, auth: bool = False, timeout: float = 25.0) -> Any:
+    if not SIM5_ENABLED and auth:
+        raise Sim5Error(503, "5SIM غير مفعّل — SIM5_API_KEY غير مضبوط", path)
+
+    url = f"{SIM5_BASE}{path}"
+    headers = {"Accept": "application/json"}
+    if auth and SIM5_API_KEY:
+        headers["Authorization"] = f"Bearer {SIM5_API_KEY}"
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            r = await client.get(url, headers=headers)
+    except httpx.TimeoutException:
+        raise Sim5Error(0, "انتهت مهلة الاتصال بـ 5SIM", path)
+    except httpx.RequestError as e:
+        raise Sim5Error(0, f"فشل الاتصال بـ 5SIM: {type(e).__name__}", path)
+
+    if r.status_code == 200:
+        try:
+            return r.json()
+        except Exception:
+            raise Sim5Error(200, "استجابة 5SIM ليست JSON صالحًا", path)
+
+    if r.status_code == 400:
+        raise Sim5Error(400, _sim5_explain_400(r.text), path)
+    if r.status_code == 401:
+        raise Sim5Error(401, "مفتاح 5SIM غير صالح أو منتهي", path)
+    if r.status_code == 403:
+        raise Sim5Error(403, "لا تملك صلاحية لهذا الإجراء في 5SIM", path)
+    if r.status_code == 404:
+        raise Sim5Error(404, "العنصر غير موجود في 5SIM", path)
+    if r.status_code == 429:
+        raise Sim5Error(429, "تجاوزت حد الطلبات (100/ثانية) — حاول بعد قليل", path)
+    if r.status_code == 503:
+        raise Sim5Error(503, "5SIM مشغول حاليًا أو تجاوزت حد الطلبات", path)
+    raise Sim5Error(r.status_code, f"استجابة غير متوقعة من 5SIM: {r.text[:200]}", path)
 
 
 # ══════════════════════════════════════════════════════════════
-# 2c) كتالوج 5SIM (دول + خدمات + توفر) — مع كاش
+# 3b) أدوات مساعدة (منقولة من app/main.py)
 # ══════════════════════════════════════════════════════════════
-CATALOG_CACHE: dict = {"ts": 0.0, "data": None}
+def _iso_to_flag(iso: str) -> str:
+    if not iso or len(iso) != 2:
+        return "🏳️"
+    return "".join(chr(0x1F1E6 + ord(c) - ord("A")) for c in iso.upper())
+
+
+_SERVICE_ICONS = {
+    "whatsapp": "💬", "telegram": "✈️", "google": "🔍", "facebook": "📘",
+    "twitter": "🐦", "instagram": "📷", "tiktok": "🎵", "amazon": "📦",
+    "snapchat": "👻", "discord": "🎮", "uber": "🚕", "netflix": "🎬",
+    "apple": "🍎", "microsoft": "🪟", "yahoo": "🟣", "steam": "🎮",
+    "binance": "🟡", "coinbase": "🔵", "paypal": "🅿️", "alipay": "🅰️",
+    "wechat": "💚", "line": "💚", "viber": "📞", "signal": "🔒",
+    "tinder": "❤️", "bumble": "🐝", "clubhouse": "🎙️", "twitch": "🎮",
+    "spotify": "🎵", "yandex": "🔴", "vk": "🔵", "ok": "🟠",
+    "airbnb": "🏠", "aliexpress": "🛒", "alibaba": "🏭", "ebay": "🛍️",
+    "walmart": "🛒", "target": "🎯", "bestbuy": "🛒", "costco": "🛒",
+    "openai": "🤖", "chatgpt": "🤖", "claudeai": "🤖", "gemini": "✨",
+    "deepseek": "🐋", "perplexity": "🔎", "poeai": "💬",
+}
+
+
+def _service_icon(slug: str) -> str:
+    return _SERVICE_ICONS.get(slug.lower(), "📱")
+
+
+def _calculate_sale_price(fivesim_cost: float) -> float:
+    if fivesim_cost <= 0:
+        return 0.0
+    markup = fivesim_cost * (FIVESIM_MARKUP_PERCENT / 100.0)
+    return round(fivesim_cost + markup, 2)
+
+
+# ══════════════════════════════════════════════════════════════
+# 3c) كتالوج 5SIM — دمج منطق app/main.py + كاش
+# ══════════════════════════════════════════════════════════════
 CATALOG_TTL_SECONDS = float(os.getenv("CATALOG_TTL_SECONDS", "300"))
-CATALOG_MAX_PAIRS = int(os.getenv("CATALOG_MAX_PAIRS", "60"))
+_SIM5_CACHE: dict[str, dict] = {
+    "prices": {"data": None, "at": 0.0},
+    "countries": {"data": None, "at": 0.0},
+}
+_SIM5_LOCK = asyncio.Lock()
 
 
-def _fetch_countries_sync() -> list:
-    try:
-        raw = _sim5_http_get("/guest/countries")
-        if isinstance(raw, dict):
-            return [
-                {"code": k, "name": (v or {}).get("text") or (v or {}).get("name") or k}
-                for k, v in raw.items()
-                if isinstance(v, dict) and v.get("visible", True)
-            ]
-        if isinstance(raw, list):
-            return [{"code": c, "name": c} for c in raw if isinstance(c, str)]
-        return []
-    except Exception as e:
-        print(f"[admin] catalog countries error: {type(e).__name__}: {e}")
-        return []
+async def _fetch_sim5_countries(force: bool = False) -> dict:
+    now = time.time()
+    cached = _SIM5_CACHE["countries"]
+    if not force and cached["data"] and (now - cached["at"]) < CATALOG_TTL_SECONDS:
+        return cached["data"]
+    async with _SIM5_LOCK:
+        now = time.time()
+        if not force and cached["data"] and (now - cached["at"]) < CATALOG_TTL_SECONDS:
+            return cached["data"]
+        data = await _sim5_get("/guest/countries", auth=False)
+        _SIM5_CACHE["countries"] = {"data": data, "at": time.time()}
+        return data
 
 
-def _fetch_services_sync() -> list:
-    try:
-        raw = _sim5_http_get("/guest/products/any")
-        if isinstance(raw, dict):
-            return [
-                {
-                    "code": k,
-                    "name": (v or {}).get("text") or (v or {}).get("name") or k,
-                    "category": (v or {}).get("category", ""),
-                }
-                for k, v in raw.items()
-            ]
-        if isinstance(raw, list):
-            return [{"code": s, "name": s, "category": ""} for s in raw if isinstance(s, str)]
-        return []
-    except Exception as e:
-        print(f"[admin] catalog services error: {type(e).__name__}: {e}")
-        return []
+async def _fetch_sim5_prices(force: bool = False) -> dict:
+    now = time.time()
+    cached = _SIM5_CACHE["prices"]
+    if not force and cached["data"] and (now - cached["at"]) < CATALOG_TTL_SECONDS:
+        return cached["data"]
+    async with _SIM5_LOCK:
+        now = time.time()
+        if not force and cached["data"] and (now - cached["at"]) < CATALOG_TTL_SECONDS:
+            return cached["data"]
+        data = await _sim5_get("/guest/prices", auth=False)
+        _SIM5_CACHE["prices"] = {"data": data, "at": time.time()}
+        return data
 
 
-def _fetch_availability_sync(country: str, service: str) -> dict:
-    try:
-        raw = _sim5_http_get(f"/guest/products/{country}/{service}")
-        if isinstance(raw, dict):
-            total = 0
-            prices = []
-            for v in raw.values():
-                if isinstance(v, list):
-                    total += len(v)
-                    for p in v:
-                        if isinstance(p, dict) and p.get("price") is not None:
-                            try:
-                                prices.append(float(p["price"]))
-                            except (TypeError, ValueError):
-                                pass
-            min_price = min(prices) if prices else None
-            return {
-                "available": total > 0,
-                "count": total,
-                "min_price": min_price,
-                "in_use": None,
-                "status": "ok" if total > 0 else "out_of_stock",
-            }
-        return {"available": False, "count": 0, "status": "no_data"}
-    except Exception as e:
-        return {
-            "available": False,
-            "count": 0,
-            "status": f"error: {type(e).__name__}",
-        }
-
-
-async def _build_catalog() -> dict:
+async def build_live_catalog(force: bool = False) -> dict:
+    """نفس منطق app/main.py — countries with services list."""
     if not SIM5_ENABLED:
         return {
+            "ok": False,
             "countries": [],
-            "services": [],
-            "availability": {},
-            "note": "SIM5_API_KEY غير مضبوط — لا يمكن جلب الدول/الخدمات",
+            "error": "SIM5_API_KEY غير مضبوط",
+            "error_code": None,
+            "fetched_at": None,
+        }
+    try:
+        raw_countries = await _fetch_sim5_countries(force=force)
+        raw_prices = await _fetch_sim5_prices(force=force)
+    except Sim5Error as e:
+        return {
+            "ok": False,
+            "countries": [],
+            "error": e.message,
+            "error_code": e.status,
+            "fetched_at": None,
         }
 
-    loop = asyncio.get_event_loop()
+    countries_out: list[dict] = []
 
-    # جلب الدول والخدمات بالتوازي
-    countries, services = await asyncio.gather(
-        loop.run_in_executor(None, _fetch_countries_sync),
-        loop.run_in_executor(None, _fetch_services_sync),
-    )
+    for country_slug, cmeta in raw_countries.items():
+        iso_raw = cmeta.get("iso") or {}
+        iso = next(iter(iso_raw.keys()), "").upper() if isinstance(iso_raw, dict) else ""
+        prefix_raw = cmeta.get("prefix") or {}
+        prefix = next(iter(prefix_raw.keys()), "") if isinstance(prefix_raw, dict) else ""
+        name_en = cmeta.get("text_en") or country_slug
 
-    countries = sorted(countries, key=lambda x: x["name"])
-    services = sorted(services, key=lambda x: x["name"])
+        country_prices = raw_prices.get(country_slug) or {}
+        services: list[dict] = []
 
-    # بناء أزواج محدودة للتوفر
-    pairs = []
-    for c in countries:
-        for s in services:
-            pairs.append((c["code"], s["code"]))
-            if len(pairs) >= CATALOG_MAX_PAIRS:
-                break
-        if len(pairs) >= CATALOG_MAX_PAIRS:
-            break
+        for product_slug, operators in country_prices.items():
+            best = None
+            for op_name, info in (operators or {}).items():
+                try:
+                    cost = float(info.get("cost", 0))
+                    count = int(info.get("count", 0))
+                    rate = float(info["rate"]) if info.get("rate") else None
+                except (TypeError, ValueError):
+                    continue
+                if count <= 0 or cost <= 0:
+                    continue
+                if best is None or cost < best["fivesim_cost"]:
+                    best = {
+                        "fivesim_cost": cost,
+                        "cost": _calculate_sale_price(cost),
+                        "count": count,
+                        "rate": rate,
+                        "operator": op_name,
+                    }
 
-    sem = asyncio.Semaphore(6)
+            services.append({
+                "id": product_slug,
+                "name": product_slug,
+                "icon": _service_icon(product_slug),
+                "cost": best["cost"] if best else None,
+                "fivesim_cost": best["fivesim_cost"] if best else None,
+                "count": best["count"] if best else 0,
+                "rate": best["rate"] if best else None,
+                "operator": best["operator"] if best else None,
+                "available": best is not None,
+            })
 
-    async def _one(c, s):
-        async with sem:
-            res = await loop.run_in_executor(None, lambda: _fetch_availability_sync(c, s))
-            return f"{c}:{s}", res
+        services.sort(key=lambda s: (not s["available"], s["cost"] or 999))
+        available_services = [s for s in services if s["available"]]
 
-    availability: dict = {}
-    if pairs:
-        results = await asyncio.gather(*[_one(c, s) for c, s in pairs])
-        for key, res in results:
-            availability[key] = res
+        countries_out.append({
+            "code": iso or country_slug,
+            "slug": country_slug,
+            "name": name_en,
+            "flag": _iso_to_flag(iso),
+            "prefix": prefix,
+            "services": services,
+            "available": sum(s["count"] for s in available_services),
+            "min_price": min((s["cost"] for s in available_services), default=None),
+            "services_count": len(available_services),
+        })
+
+    countries_out.sort(key=lambda c: (-c["services_count"], c["name"]))
 
     return {
-        "countries": countries,
-        "services": services,
-        "availability": availability,
-        "note": "",
+        "ok": True,
+        "countries": countries_out,
+        "error": None,
+        "error_code": None,
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
     }
 
 
-async def _get_catalog(force: bool = False) -> dict:
-    now = _time.time()
-    if (
-        not force
-        and CATALOG_CACHE["data"] is not None
-        and (now - CATALOG_CACHE["ts"]) < CATALOG_TTL_SECONDS
-    ):
-        return CATALOG_CACHE["data"]
-    data = await _build_catalog()
-    CATALOG_CACHE["ts"] = now
-    CATALOG_CACHE["data"] = data
-    return data
-
-
 # ══════════════════════════════════════════════════════════════
-# 2d) مولّدات الأكواد
+# 4) مولّدات الأكواد
 # ══════════════════════════════════════════════════════════════
 def _create_vouchers_batch(
-    count,
-    value,
-    expires_days=30,
-    note="",
+    count: int,
+    value: float,
+    expires_days: int = 30,
+    note: str = "",
     country: Optional[str] = None,
     service: Optional[str] = None,
-):
+) -> list[dict]:
     prefix = os.getenv("VOUCHER_PREFIX", "JS").strip().upper()
     batch_id = f"batch_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
     now = datetime.now(timezone.utc)
     expires = now + timedelta(days=expires_days)
-    created = []
+    created: list[dict] = []
     for _ in range(count):
         while True:
             code = (
@@ -305,9 +357,13 @@ def _create_vouchers_batch(
 
 
 def _create_access_code(
-    label="", expires_days=30, max_uses=1,
-    preset_name="", preset_email="", preset_balance=0.0,
-):
+    label: str = "",
+    expires_days: int = 30,
+    max_uses: int = 1,
+    preset_name: str = "",
+    preset_email: str = "",
+    preset_balance: float = 0.0,
+) -> dict:
     prefix = os.getenv("ACCESS_CODE_PREFIX", "JS-LOGIN").strip().upper()
     while True:
         code = f"{prefix}-{secrets.token_hex(6).upper()}"
@@ -338,28 +394,25 @@ def _now_iso() -> str:
 
 
 # ══════════════════════════════════════════════════════════════
-# 3) App + Templates
+# 5) App
 # ══════════════════════════════════════════════════════════════
-app = FastAPI(title="Jamal Solutions — Admin Panel", version="2.0.0-open")
+app = FastAPI(title="Jamal Solutions — Admin Panel", version="2.1.0-open")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
-# ══════════════════════════════════════════════════════════════
-# 4) إعدادات الأدمن — 🔓 مفتوح
-# ══════════════════════════════════════════════════════════════
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@virtual-num.com").strip().lower()
 
 
 def _check_admin(request: Request) -> None:
-    """🔓 بدون تسجيل دخول — لا تفعل شيئاً."""
+    """🔓 بدون تسجيل دخول."""
     return
 
 
 # ══════════════════════════════════════════════════════════════
-# 5) Pydantic models
+# 6) Pydantic models
 # ══════════════════════════════════════════════════════════════
 class AdminLoginIn(BaseModel):
     email: str = ""
@@ -398,7 +451,7 @@ class AccessCodeCreate(BaseModel):
 
 
 # ══════════════════════════════════════════════════════════════
-# 6) Pages
+# 7) Pages
 # ══════════════════════════════════════════════════════════════
 @app.get("/", response_class=HTMLResponse)
 @app.get("/login", response_class=HTMLResponse)
@@ -415,20 +468,11 @@ async def health():
         "app": "admin",
         "version": app.version,
         "auth": "open",
-        "root": str(ADMIN_DIR),
         "store_file": str(STORE_FILE),
         "store_file_exists": STORE_FILE.exists(),
-        "templates_dir": str(TEMPLATES_DIR),
-        "admin_template": (TEMPLATES_DIR / "admin.html").exists(),
-        "static_dir_exists": STATIC_DIR.exists(),
         "sim5_enabled": SIM5_ENABLED,
         "sim5_base": SIM5_BASE,
-        "catalog_cached": CATALOG_CACHE["data"] is not None,
-        "catalog_cache_age_sec": (
-            round(_time.time() - CATALOG_CACHE["ts"], 1)
-            if CATALOG_CACHE["data"] is not None else None
-        ),
-        "store_keys": sorted(STORE.keys()),
+        "catalog_cached": _SIM5_CACHE["prices"]["data"] is not None,
         "counts": {
             "vouchers": len(STORE["vouchers"]),
             "access_codes": len(STORE["access_codes"]),
@@ -440,7 +484,7 @@ async def health():
 
 
 # ══════════════════════════════════════════════════════════════
-# 7) Auth endpoints — 🔓 توافقية فقط
+# 8) Auth (توافقي)
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/admin/login")
 async def admin_login(payload: AdminLoginIn = None):
@@ -458,44 +502,76 @@ async def admin_logout(request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# 7b) 5SIM Catalog
+# 8b) 5SIM Catalog — منطق app/main.py
 # ══════════════════════════════════════════════════════════════
 @app.get("/api/v1/admin/catalog")
-async def admin_catalog(request: Request):
+async def admin_catalog(request: Request, force: bool = False):
     _check_admin(request)
-    data = await _get_catalog(force=False)
-    return {"ok": True, **data}
+    result = await build_live_catalog(force=force)
+    return {
+        "ok": result["ok"],
+        "source": "5sim",
+        "markup_percent": FIVESIM_MARKUP_PERCENT,
+        "fetched_at": result["fetched_at"],
+        "error": result["error"],
+        "error_code": result["error_code"],
+        "countries": result["countries"],
+    }
 
 
 @app.get("/api/v1/admin/catalog/refresh")
 async def admin_catalog_refresh(request: Request):
     _check_admin(request)
-    data = await _get_catalog(force=True)
-    return {"ok": True, **data}
+    result = await build_live_catalog(force=True)
+    return {
+        "ok": result["ok"],
+        "source": "5sim",
+        "markup_percent": FIVESIM_MARKUP_PERCENT,
+        "fetched_at": result["fetched_at"],
+        "error": result["error"],
+        "error_code": result["error_code"],
+        "countries": result["countries"],
+    }
+
+
+@app.get("/api/v1/admin/sim5-profile")
+async def admin_sim5_profile(request: Request):
+    _check_admin(request)
+    if not SIM5_ENABLED:
+        raise HTTPException(503, "5SIM غير مفعّل — SIM5_API_KEY غير مضبوط")
+    try:
+        p = await _sim5_get("/user/profile", auth=True)
+    except Sim5Error as e:
+        raise HTTPException(e.status or 503, e.message)
+    return {
+        "ok": True,
+        "balance": p.get("balance"),
+        "frozen_balance": p.get("frozen_balance"),
+        "rating": p.get("rating"),
+        "email": p.get("email"),
+        "vendor": p.get("vendor"),
+    }
 
 
 # ══════════════════════════════════════════════════════════════
-# 8) Wallet — قيمة كلية واحدة
+# 9) Wallet — قيمة كلية واحدة
 # ══════════════════════════════════════════════════════════════
 @app.get("/api/v1/admin/wallet")
 async def admin_owner_wallet(request: Request):
     _check_admin(request)
     _refresh()
-
     ow = STORE["owner_wallet"]
     total = float(ow.get("total_revenue", 0)) + float(ow.get("total_profit", 0))
-
     return {
         "ok": True,
         "total_balance": round(total, 2),
-        # حقول توافقية (لا تُعرض في الواجهة)
         "owner_wallet": ow,
         "markup_percent": FIVESIM_MARKUP_PERCENT,
     }
 
 
 # ══════════════════════════════════════════════════════════════
-# 9) Vouchers — list
+# 10) Vouchers — list
 # ══════════════════════════════════════════════════════════════
 @app.get("/api/v1/admin/vouchers")
 async def admin_list_vouchers(
@@ -507,7 +583,6 @@ async def admin_list_vouchers(
     _refresh()
 
     vouchers = STORE["vouchers"]
-
     now = datetime.now(timezone.utc)
     changed = False
     for v in vouchers:
@@ -547,13 +622,12 @@ async def admin_list_vouchers(
 
 
 # ══════════════════════════════════════════════════════════════
-# 10) Vouchers — generate (دفعة واحدة لزوج واحد)
+# 11) Vouchers — generate (دفعة واحدة)
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/admin/vouchers/generate")
 async def admin_generate_vouchers(payload: VoucherBatchCreate, request: Request):
     _check_admin(request)
     _refresh()
-
     created = _create_vouchers_batch(
         count=payload.count,
         value=payload.value,
@@ -575,15 +649,14 @@ async def admin_generate_vouchers(payload: VoucherBatchCreate, request: Request)
 
 
 # ══════════════════════════════════════════════════════════════
-# 10b) Vouchers — generate multi (عدة أزواج دفعة واحدة)
+# 12) Vouchers — generate multi (كل كود مستقل)
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/admin/vouchers/generate-multi")
 async def admin_generate_vouchers_multi(payload: VoucherMultiCreate, request: Request):
     _check_admin(request)
     _refresh()
-
-    all_created = []
-    batches = []
+    all_created: list[dict] = []
+    batches: list[dict] = []
     for p in payload.pairs:
         created = _create_vouchers_batch(
             count=p.count,
@@ -602,7 +675,6 @@ async def admin_generate_vouchers_multi(payload: VoucherMultiCreate, request: Re
             "codes": [v["code"] for v in created],
             "total_value": round(sum(v["value"] for v in created), 2),
         })
-
     _persist_now()
     return {
         "ok": True,
@@ -613,7 +685,7 @@ async def admin_generate_vouchers_multi(payload: VoucherMultiCreate, request: Re
 
 
 # ══════════════════════════════════════════════════════════════
-# 11) Vouchers — disable
+# 13) Vouchers — disable
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/admin/vouchers/{voucher_id}/disable")
 async def admin_disable_voucher(voucher_id: int, request: Request):
@@ -630,7 +702,7 @@ async def admin_disable_voucher(voucher_id: int, request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# 12) Deposits — list
+# 14) Deposits
 # ══════════════════════════════════════════════════════════════
 @app.get("/api/v1/admin/deposits")
 async def admin_list_deposits(
@@ -639,12 +711,10 @@ async def admin_list_deposits(
 ):
     _check_admin(request)
     _refresh()
-
     deposits = STORE["deposits"]
     if status_filter:
         deposits = [d for d in deposits if d["status"] == status_filter]
     deposits_sorted = sorted(deposits, key=lambda d: d["created_at"], reverse=True)
-
     out = []
     for d in deposits_sorted:
         cust = STORE["customers"].get(d["customer_id"])
@@ -653,7 +723,6 @@ async def admin_list_deposits(
             "customer_email": cust["email"] if cust else None,
             "customer_name": cust["name"] if cust else None,
         })
-
     return {
         "summary": {
             "total": len(STORE["deposits"]),
@@ -665,20 +734,15 @@ async def admin_list_deposits(
     }
 
 
-# ══════════════════════════════════════════════════════════════
-# 13) Deposits — approve
-# ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/admin/deposits/{deposit_id}/approve")
 async def admin_approve_deposit(deposit_id: int, request: Request):
     _check_admin(request)
     _refresh()
-
     deposit = next((d for d in STORE["deposits"] if d["id"] == deposit_id), None)
     if not deposit:
         raise HTTPException(404, "الطلب غير موجود")
     if deposit["status"] != "pending":
         raise HTTPException(400, "تمت مراجعة هذا الطلب مسبقاً")
-
     customer = STORE["customers"].get(deposit["customer_id"])
     if not customer:
         raise HTTPException(404, "الزبون غير موجود")
@@ -697,15 +761,11 @@ async def admin_approve_deposit(deposit_id: int, request: Request):
         "created_at": _now_iso(),
         "date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"),
     })
-
     STORE["owner_wallet"]["total_revenue"] += deposit["amount"]
     _persist_now()
     return {"ok": True, "new_balance": customer["balance"]}
 
 
-# ══════════════════════════════════════════════════════════════
-# 14) Deposits — reject
-# ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/admin/deposits/{deposit_id}/reject")
 async def admin_reject_deposit(deposit_id: int, request: Request, reason: str = ""):
     _check_admin(request)
@@ -721,7 +781,7 @@ async def admin_reject_deposit(deposit_id: int, request: Request, reason: str = 
 
 
 # ══════════════════════════════════════════════════════════════
-# 15) Access codes — generate
+# 15) Access codes
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/admin/access-codes/generate")
 async def admin_generate_access_code(payload: AccessCodeCreate, request: Request):
@@ -746,9 +806,6 @@ async def admin_generate_access_code(payload: AccessCodeCreate, request: Request
     }
 
 
-# ══════════════════════════════════════════════════════════════
-# 16) Access codes — list
-# ══════════════════════════════════════════════════════════════
 @app.get("/api/v1/admin/access-codes")
 async def admin_list_access_codes(
     request: Request,
@@ -756,11 +813,9 @@ async def admin_list_access_codes(
 ):
     _check_admin(request)
     _refresh()
-
     codes = STORE["access_codes"]
     if status_filter:
         codes = [c for c in codes if c["status"] == status_filter]
-
     summary = {
         "total": len(STORE["access_codes"]),
         "active": sum(1 for c in STORE["access_codes"] if c["status"] == "active"),
@@ -771,9 +826,6 @@ async def admin_list_access_codes(
     return {"summary": summary, "codes": list(reversed(codes))}
 
 
-# ══════════════════════════════════════════════════════════════
-# 17) Access codes — disable
-# ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/admin/access-codes/{code_id}/disable")
 async def admin_disable_access_code(code_id: int, request: Request):
     _check_admin(request)
@@ -786,9 +838,6 @@ async def admin_disable_access_code(code_id: int, request: Request):
     return {"ok": True, "status": "disabled"}
 
 
-# ══════════════════════════════════════════════════════════════
-# 18) Access codes — delete
-# ══════════════════════════════════════════════════════════════
 @app.delete("/api/v1/admin/access-codes/{code_id}")
 async def admin_delete_access_code(code_id: int, request: Request):
     _check_admin(request)
@@ -802,7 +851,7 @@ async def admin_delete_access_code(code_id: int, request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# 19) Backup يدوي
+# 16) Backup
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/admin/backup")
 async def admin_backup(request: Request):
@@ -814,7 +863,7 @@ async def admin_backup(request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# 20) JSON error handler
+# 17) Error handler
 # ══════════════════════════════════════════════════════════════
 @app.exception_handler(HTTPException)
 async def http_exc_handler(request: Request, exc: HTTPException):
@@ -822,7 +871,7 @@ async def http_exc_handler(request: Request, exc: HTTPException):
 
 
 # ══════════════════════════════════════════════════════════════
-# 21) Startup / Shutdown
+# 18) Startup / Shutdown
 # ══════════════════════════════════════════════════════════════
 @app.on_event("startup")
 async def _startup_log():
@@ -838,12 +887,19 @@ async def _startup_log():
     print(f"[admin] SIM5          = {SIM5_ENABLED}")
     print(f"[admin] SIM5 base     = {SIM5_BASE}")
     print(f"[admin] MARKUP        = {FIVESIM_MARKUP_PERCENT}%")
-    print(f"[admin] CATALOG TTL   = {CATALOG_TTL_SECONDS}s, MAX_PAIRS = {CATALOG_MAX_PAIRS}")
+    print(f"[admin] CATALOG TTL   = {CATALOG_TTL_SECONDS}s")
     print(f"[admin] owner_wallet  = {STORE['owner_wallet']}")
     print(f"[admin] vouchers      = {len(STORE['vouchers'])}")
     print(f"[admin] access_codes  = {len(STORE['access_codes'])}")
     print(f"[admin] customers     = {len(STORE['customers'])}")
     print(f"[admin] orders        = {len(STORE['orders'])}")
+    if SIM5_ENABLED:
+        try:
+            profile = await _sim5_get("/user/profile", auth=True)
+            print(f"[admin] 5SIM balance  = {profile.get('balance')}")
+            print(f"[admin] 5SIM rating   = {profile.get('rating')}")
+        except Sim5Error as e:
+            print(f"[admin] ⚠️ 5SIM profile: [{e.status}] {e.message}")
     print("═" * 60)
 
 
