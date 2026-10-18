@@ -2,10 +2,11 @@
 Jamal Solutions — Virtual Numbers Platform
 Customer Portal (FastAPI + Jinja2 + SSE + 5SIM + Access-Code Login)
 
-✅ 1.6.0 — مخزن مشترك مع admin/main.py:
-- STORE يُحمَّل من project/data/store.json (عبر admin/storage.py).
+✅ 1.7.0 — مخزن مشترك عبر shared_storage.py:
+- STORE يُحمَّل من DATA_DIR/store.json (افتراضي: project/data/store.json).
 - _refresh() قبل كل قراءة/تعديل — لرؤية أكواد الأدمن والإيداعات المعتمدة.
 - _persist_now() بعد كل تعديل — ليتمكن الأدمن من رؤية الشراء/الاستهلاك فوراً.
+- متوافق مع Render (DATA_DIR=/var/data + Disk).
 - الشاشة الوحيدة /buy، تسجيل الدخول بالكود.
 """
 from __future__ import annotations
@@ -51,13 +52,12 @@ if DEBUG:
 
 
 # ══════════════════════════════════════════════════════════════
-# ⭐ المخزن المشترك (project/data/store.json عبر admin/storage.py)
+# ⭐ المخزن المشترك (shared_storage.py في جذر المشروع)
 # ══════════════════════════════════════════════════════════════
-# نضيف جذر المشروع إلى sys.path حتى يعمل: from admin.storage import ...
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-from admin.storage import (  # type: ignore
+from shared_storage import (  # type: ignore
     load_store,
     schedule_save,
     save_now,
@@ -570,7 +570,6 @@ async def lifespan(app: FastAPI):
             await task
         except asyncio.CancelledError:
             pass
-        # 💾 حفظ آمن عند الإغلاق
         try:
             save_now(STORE)
             print("[app] 💾 store saved on shutdown")
@@ -584,7 +583,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Jamal Solutions — Customer Portal",
     description="Virtual Numbers Platform",
-    version="1.6.0",
+    version="1.7.0",
     lifespan=lifespan,
 )
 
@@ -637,7 +636,7 @@ def _get_customer_from_session(request: Request) -> dict | None:
         },
     }
     STORE["customers"][cid] = customer
-    _persist_now()  # 💾 ليتمكن الأدمن من رؤية العميل الجديد
+    _persist_now()
     print(f"♻️  أُعيد إنشاء العميل #{cid} ({email}) من الجلسة.")
     return customer
 
@@ -1230,7 +1229,7 @@ async def login_page(request: Request):
 
 @app.post("/api/v1/auth/login-with-code")
 async def login_with_code(payload: AccessCodeLogin, request: Request):
-    _refresh()  # ← اقرأ أكواد الأدمن من القرص
+    _refresh()
     record = _validate_access_code(payload.code)
 
     customer = None
@@ -1286,7 +1285,7 @@ async def login_with_code(payload: AccessCodeLogin, request: Request):
     request.session["_last_seen"] = _now_iso()
 
     _consume_access_code(record, customer["id"])
-    _persist_now()  # 💾 استهلاك الكود + العميل الجديد — فوراً للأدمن
+    _persist_now()
 
     return {
         "ok": True,
@@ -1315,8 +1314,7 @@ async def logout(request: Request):
 # ══════════════════════════════════════════════════════════════
 @app.get("/buy", response_class=HTMLResponse)
 async def buy_page(request: Request):
-    """الشاشة الوحيدة للعميل — Stage ديناميكي + modals."""
-    _refresh()  # ← رصيد محدّث (قد اعتمد الأدمن إيداعاً)
+    _refresh()
     customer = await get_current_customer(request)
     cid = customer["id"]
     stats = await get_my_stats(cid)
@@ -1469,7 +1467,7 @@ async def admin_panel(request: Request):
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/wallet/redeem-voucher")
 async def redeem_voucher(payload: VoucherRedeem, request: Request):
-    _refresh()  # ← اقرأ أكواد الشحن من الأدمن
+    _refresh()
     customer = await get_current_customer(request)
     cid = customer["id"]
 
@@ -1494,7 +1492,7 @@ async def redeem_voucher(payload: VoucherRedeem, request: Request):
     })
 
     STORE["owner_wallet"]["total_revenue"] += voucher["value"]
-    _persist_now()  # 💾
+    _persist_now()
 
     return {
         "status": "success",
@@ -1520,7 +1518,7 @@ async def create_deposit_request(payload: DepositRequestCreate, request: Request
         "reviewed_at": None,
     }
     STORE["deposits"].append(deposit)
-    _persist_now()  # 💾 ليظهر في لوحة الأدمن
+    _persist_now()
 
     return {
         "status": "pending",
@@ -1534,7 +1532,7 @@ async def create_deposit_request(payload: DepositRequestCreate, request: Request
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/orders")
 async def create_order(payload: OrderCreate, request: Request):
-    _refresh()  # ← رصيد محدّث (قد اعتمد الأدمن إيداعاً)
+    _refresh()
     customer = await get_current_customer(request)
     cid = customer["id"]
 
@@ -1657,7 +1655,7 @@ async def create_order(payload: OrderCreate, request: Request):
         "date": now.strftime("%Y-%m-%d %H:%M"),
     })
 
-    _persist_now()  # 💾 المهم — الأدمن يرى الطلب والرصيد الجديد فوراً
+    _persist_now()
 
     return {
         "id": order_id,
@@ -1768,7 +1766,7 @@ async def check_order(order_id: int, request: Request):
             if order["status"] == "RECEIVED":
                 n["status"] = "active"
 
-    _persist_now()  # 💾
+    _persist_now()
 
     return {
         "ok": True,
@@ -1839,7 +1837,7 @@ async def cancel_order(order_id: int, request: Request):
         if n.get("sim5_id") == order["sim5_id"]:
             n["status"] = "cancelled"
 
-    _persist_now()  # 💾
+    _persist_now()
 
     return {"ok": True, "status": order["status"], "refund": refund}
 
