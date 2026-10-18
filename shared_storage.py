@@ -1,35 +1,101 @@
 # shared_storage.py
 """
-تخزين دائم مشترك بين app/main.py و admin/main.py.
+تخزين دائم مشترك (PostgreSQL) بين app/main.py و admin/main.py.
 
-- DATA_DIR افتراضياً: project/data (أو من متغير البيئة DATA_DIR).
-- STORE_FILE = DATA_DIR/store.json
-- دوال عامة: load_store, schedule_save, save_now, reload_from_disk, backup
+- يستخدم DATABASE_URL (Postgres).
+- يحفظ store كـ JSONB في جدول واحد (singleton row).
+- نفس الواجهة العامة السابقة: load_store, schedule_save, save_now,
+  reload_from_disk, backup, STORE_FILE (string وهمي للتوافق).
+
+المتغيرات:
+    DATABASE_URL   postgres://user:pass@host:port/db  (مطلوب)
+    STORE_SAVE_DELAY  ثواني (افتراضي 0.8)
+
+التبعيات:
+    psycopg[binary,pool]>=3.2
 """
 from __future__ import annotations
 
 import json
 import os
-import shutil
 import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
-# ══ المسار ══
-PROJECT_ROOT = Path(__file__).resolve().parent
-_default_data = PROJECT_ROOT / "data"
-DATA_DIR = Path(os.getenv("DATA_DIR", str(_default_data)))
-DATA_DIR.mkdir(parents=True, exist_ok=True)
+import psycopg
+from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool
 
-STORE_FILE = DATA_DIR / "store.json"
-BACKUP_DIR = DATA_DIR / "backups"
 
-_LOCK = threading.RLock()
-_SAVE_TIMER: threading.Timer | None = None
+# ══════════════════════════════════════════════════════════════
+# 1) إعدادات
+# ══════════════════════════════════════════════════════════════
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+if not DATABASE_URL:
+    raise RuntimeError(
+        "DATABASE_URL غير مضبوط. مثال:\n"
+        "  postgres://user:pass@host:5432/dbname\n"
+        "أضفه إلى متغيرات البيئة."
+    )
+
+# psycopg 3 يحتاج postgresql:// بدل postgres:// (بعض المنصات تعطي postgres://)
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = "postgresql://" + DATABASE_URL[len("postgres://"):]
+
+# للتوافق فقط — بعض الأكواد تطبع STORE_FILE في /health
+STORE_FILE = DATABASE_URL.split("@")[-1]  # مضلّل قليلاً لكنه يعمل للعرض
+
 _SAVE_DELAY = float(os.getenv("STORE_SAVE_DELAY", "0.8"))
 
+# جدول واحد — صف واحد فقط (id=1)
+_ROW_ID = 1
 
+_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS store_state (
+    id          INTEGER PRIMARY KEY,
+    data        JSONB NOT NULL,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+"""
+
+_UPSERT_SQL = """
+INSERT INTO store_state (id, data, updated_at)
+VALUES (%s, %s, NOW())
+ON CONFLICT (id) DO UPDATE
+SET data = EXCLUDED.data,
+    updated_at = NOW();
+"""
+
+_SELECT_SQL = "SELECT data FROM store_state WHERE id = %s;"
+
+
+# ══════════════════════════════════════════════════════════════
+# 2) Pool + init
+# ══════════════════════════════════════════════════════════════
+_pool = ConnectionPool(
+    conninfo=DATABASE_URL,
+    min_size=1,
+    max_size=int(os.getenv("PG_POOL_MAX", "5")),
+    timeout=float(os.getenv("PG_POOL_TIMEOUT", "10")),
+    kwargs={"autocommit": True},
+    open=True,
+)
+
+
+def _ensure_schema() -> None:
+    with _pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(_TABLE_SQL)
+
+
+_ensure_schema()
+
+
+# ══════════════════════════════════════════════════════════════
+# 3) القاموس الافتراضي
+# ══════════════════════════════════════════════════════════════
 def _default_store() -> dict:
     return {
         "customers": {}, "numbers": [], "orders": [], "sms": [],
@@ -43,25 +109,7 @@ def _default_store() -> dict:
     }
 
 
-def load_store() -> dict:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    if not STORE_FILE.exists():
-        store = _default_store()
-        _write_atomic(store)
-        return store
-    try:
-        with STORE_FILE.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-    except Exception as e:
-        print(f"[storage] ⚠️  store.json تالف ({e}) — أرشفة وإعادة إنشاء")
-        try:
-            bad = DATA_DIR / f"store.corrupt.{int(time.time())}.json"
-            shutil.copy2(STORE_FILE, bad)
-        except Exception:
-            pass
-        data = _default_store()
-        _write_atomic(data)
-
+def _merge_defaults(data: dict) -> dict:
     base = _default_store()
     for k, v in base.items():
         data.setdefault(k, v)
@@ -71,19 +119,48 @@ def load_store() -> dict:
     return data
 
 
-def _write_atomic(store: dict) -> None:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = STORE_FILE.with_suffix(".json.tmp")
-    with tmp.open("w", encoding="utf-8") as f:
-        json.dump(store, f, ensure_ascii=False, indent=2, default=str)
-    os.replace(tmp, STORE_FILE)
+# ══════════════════════════════════════════════════════════════
+# 4) CRUD
+# ══════════════════════════════════════════════════════════════
+def load_store() -> dict:
+    """قراءة الحالة من DB (أو إنشاء الصف الافتراضي)."""
+    with _pool.connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(_SELECT_SQL, (_ROW_ID,))
+            row = cur.fetchone()
+            if row is None:
+                store = _default_store()
+                cur.execute(_UPSERT_SQL, (_ROW_ID, json.dumps(store)))
+                return store
+            data = row["data"]
+            if isinstance(data, str):
+                data = json.loads(data)
+            return _merge_defaults(data)
+
+
+def reload_from_disk() -> dict:
+    """اسم متوافق — يقرأ من DB. يستخدمه _refresh() في الطرفين."""
+    return load_store()
+
+
+def _write_now(store: dict) -> None:
+    with _pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(_UPSERT_SQL, (_ROW_ID, json.dumps(store, default=str)))
+
+
+# ══════════════════════════════════════════════════════════════
+# 5) Debounced save (نفس سلوك الملف)
+# ══════════════════════════════════════════════════════════════
+_LOCK = threading.RLock()
+_SAVE_TIMER: threading.Timer | None = None
 
 
 def _do_save(store: dict) -> None:
     global _SAVE_TIMER
     with _LOCK:
         try:
-            _write_atomic(store)
+            _write_now(store)
         except Exception as e:
             print(f"[storage] ❌ فشل الحفظ: {type(e).__name__}: {e}")
         finally:
@@ -110,20 +187,40 @@ def save_now(store: dict) -> None:
         _do_save(store)
 
 
-def reload_from_disk() -> dict:
-    if not STORE_FILE.exists():
-        return load_store()
-    try:
-        with STORE_FILE.open("r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return load_store()
+# ══════════════════════════════════════════════════════════════
+# 6) Backup (نسخة في DB + ملف محلي للطوارئ)
+# ══════════════════════════════════════════════════════════════
+_BACKUP_DIR = Path(os.getenv("BACKUP_DIR", "/tmp/jamal-backups"))
+_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def backup(store: dict) -> Path:
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    """نسخة احتياطية: يكتب نسخة في جدول backups + ملف محلي."""
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    path = BACKUP_DIR / f"store_{stamp}.json"
-    with path.open("w", encoding="utf-8") as f:
-        json.dump(store, f, ensure_ascii=False, indent=2, default=str)
+    payload = json.dumps(store, ensure_ascii=False, default=str)
+
+    try:
+        with _pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS store_backups (
+                        id          BIGSERIAL PRIMARY KEY,
+                        data        JSONB NOT NULL,
+                        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    );
+                """)
+                cur.execute(
+                    "INSERT INTO store_backups (data) VALUES (%s);",
+                    (payload,),
+                )
+    except Exception as e:
+        print(f"[storage] ⚠️  backup DB فشل: {type(e).__name__}: {e}")
+
+    path = _BACKUP_DIR / f"store_{stamp}.json"
+    try:
+        with path.open("w", encoding="utf-8") as f:
+            f.write(payload)
+    except Exception as e:
+        print(f"[storage] ⚠️  backup ملف فشل: {type(e).__name__}: {e}")
+
     return path
