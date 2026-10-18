@@ -2,22 +2,19 @@
 """
 Jamal Solutions — Admin Panel (standalone + persistent storage مشترك)
 
-- GET  /                       → login.html
-- GET  /login                  → login.html
+- GET  /                       → admin.html  (بدون تسجيل دخول)
 - GET  /admin-panel            → admin.html
-- POST /api/v1/admin/login     → {ok, token}
-- POST /api/v1/admin/logout    → {ok}
-- GET  /api/v1/admin/whoami    → {ok, email, auth}
-- كل /api/v1/admin/*           → محمي بـ X-Admin-Secret = token أو ADMIN_SECRET
+- كل /api/v1/admin/*           → 🔓 مفتوحة (بدون تحقق)
 
 التخزين (مشترك مع app/main.py):
     project/data/store.json     ← يُقرأ عند البدء + قبل كل عرض، يُحفظ بعد كل تعديل
     project/data/backups/       ← نسخة احتياطية عند الإغلاق الآمن
 
 التشغيل (من داخل admin/):
-    uvicorn main:app --host 0.0.0.0 --port 8001 --workers 1
+    uvicorn main:app --host 127.0.0.1 --port 8001 --workers 1
 
 ⚠️  استخدم --workers 1 فقط لكلا التطبيقين (التخزين بالملف).
+⚠️  هذه النسخة مفتوحة بالكامل — لا تنشرها على إنترنت عام.
 """
 from __future__ import annotations
 
@@ -45,7 +42,6 @@ STATIC_DIR = ADMIN_DIR / "static"
 # ══════════════════════════════════════════════════════════════
 # 2) التخزين الدائم المشترك (JSON)
 # ══════════════════════════════════════════════════════════════
-# storage.py بجانب هذا الملف؛ لكن DATA_DIR داخله يشير إلى project/data
 from storage import (  # type: ignore
     load_store,
     schedule_save,
@@ -60,17 +56,17 @@ print(f"[admin] 💾 store loaded from {STORE_FILE}")
 
 
 def _persist() -> None:
-    """حفظ مؤجل (debounced) — سريع، يكفي لمعظم الحالات."""
+    """حفظ مؤجل (debounced)."""
     schedule_save(STORE)
 
 
 def _persist_now() -> None:
-    """حفظ فوري — للعمليات الحسّاسة (توليد أكواد، تعديل رصيد، اعتماد إيداع)."""
+    """حفظ فوري — للعمليات الحسّاسة."""
     save_now(STORE)
 
 
 def _refresh() -> None:
-    """إعادة قراءة store.json من القرص لرؤية تعديلات العميل."""
+    """إعادة قراءة store.json من القرص."""
     fresh = reload_from_disk()
     STORE.clear()
     STORE.update(fresh)
@@ -166,7 +162,7 @@ def _now_iso() -> str:
 # ══════════════════════════════════════════════════════════════
 # 3) App + Templates
 # ══════════════════════════════════════════════════════════════
-app = FastAPI(title="Jamal Solutions — Admin Panel", version="1.9.0")
+app = FastAPI(title="Jamal Solutions — Admin Panel", version="1.9.0-open")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 if STATIC_DIR.exists():
@@ -174,45 +170,22 @@ if STATIC_DIR.exists():
 
 
 # ══════════════════════════════════════════════════════════════
-# 4) إعدادات الأدمن
+# 4) إعدادات الأدمن — 🔓 مفتوح
 # ══════════════════════════════════════════════════════════════
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@virtual-num.com").strip().lower()
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "Virtual123")
-ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH", "").strip()
-ADMIN_SECRET = os.getenv("ADMIN_SECRET", "").strip()
-
-_bcrypt = None
-try:
-    import bcrypt as _bcrypt  # type: ignore
-except Exception:
-    _bcrypt = None
-
-_ADMIN_TOKENS: dict[str, dict] = {}
-
-
-def _issue_admin_token() -> str:
-    tok = secrets.token_urlsafe(32)
-    _ADMIN_TOKENS[tok] = {"issued_at": _now_iso()}
-    return tok
 
 
 def _check_admin(request: Request) -> None:
-    if not ADMIN_SECRET and not ADMIN_EMAIL:
-        raise HTTPException(503, "ADMIN_SECRET أو ADMIN_EMAIL غير مضبوط")
-    provided = request.headers.get("X-Admin-Secret", "")
-    if ADMIN_SECRET and secrets.compare_digest(provided, ADMIN_SECRET):
-        return
-    if provided and provided in _ADMIN_TOKENS:
-        return
-    raise HTTPException(403, "غير مصرح")
+    """🔓 بدون تسجيل دخول — اسم الدالة يبقى للتوافق، لكنها لا تفعل شيئاً."""
+    return
 
 
 # ══════════════════════════════════════════════════════════════
 # 5) Pydantic models
 # ══════════════════════════════════════════════════════════════
 class AdminLoginIn(BaseModel):
-    email: str
-    password: str
+    email: str = ""
+    password: str = ""
 
 
 class VoucherBatchCreate(BaseModel):
@@ -232,14 +205,10 @@ class AccessCodeCreate(BaseModel):
 
 
 # ══════════════════════════════════════════════════════════════
-# 6) Pages
+# 6) Pages — كلها تفتح admin.html مباشرة
 # ══════════════════════════════════════════════════════════════
 @app.get("/", response_class=HTMLResponse)
 @app.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request):
-    return templates.TemplateResponse(request=request, name="login.html", context={})
-
-
 @app.get("/admin-panel", response_class=HTMLResponse)
 async def admin_panel(request: Request):
     return templates.TemplateResponse(request=request, name="admin.html", context={})
@@ -252,17 +221,13 @@ async def health():
         "status": "ok",
         "app": "admin",
         "version": app.version,
+        "auth": "open",
         "root": str(ADMIN_DIR),
         "store_file": str(STORE_FILE),
         "store_file_exists": STORE_FILE.exists(),
         "templates_dir": str(TEMPLATES_DIR),
-        "login_template": (TEMPLATES_DIR / "login.html").exists(),
         "admin_template": (TEMPLATES_DIR / "admin.html").exists(),
         "static_dir_exists": STATIC_DIR.exists(),
-        "admin_email": ADMIN_EMAIL,
-        "password_hash_set": bool(ADMIN_PASSWORD_HASH),
-        "password_plain_set": bool(ADMIN_PASSWORD),
-        "admin_secret_set": bool(ADMIN_SECRET),
         "store_keys": sorted(STORE.keys()),
         "counts": {
             "vouchers": len(STORE["vouchers"]),
@@ -275,45 +240,20 @@ async def health():
 
 
 # ══════════════════════════════════════════════════════════════
-# 7) Auth endpoints
+# 7) Auth endpoints — 🔓 توافقية فقط (الواجهة لا تحتاجها بعد الآن)
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/admin/login")
-async def admin_login(payload: AdminLoginIn):
-    email_in = payload.email.strip().lower()
-    email_ok = secrets.compare_digest(email_in, ADMIN_EMAIL)
-
-    pass_ok = False
-    if email_ok:
-        if ADMIN_PASSWORD_HASH and _bcrypt is not None:
-            try:
-                pass_ok = _bcrypt.checkpw(
-                    payload.password.encode("utf-8"),
-                    ADMIN_PASSWORD_HASH.encode("utf-8"),
-                )
-            except Exception:
-                pass_ok = False
-        else:
-            pass_ok = secrets.compare_digest(payload.password, ADMIN_PASSWORD)
-
-    if not (email_ok and pass_ok):
-        raise HTTPException(403, "البريد أو كلمة المرور غير صحيحة")
-
-    return {"ok": True, "token": _issue_admin_token()}
+async def admin_login(payload: AdminLoginIn = None):
+    return {"ok": True, "token": "open"}
 
 
 @app.get("/api/v1/admin/whoami")
 async def admin_whoami(request: Request):
-    _check_admin(request)
-    provided = request.headers.get("X-Admin-Secret", "")
-    auth_mode = "token" if provided in _ADMIN_TOKENS else "secret"
-    return {"ok": True, "email": ADMIN_EMAIL, "auth": auth_mode}
+    return {"ok": True, "email": ADMIN_EMAIL, "auth": "open"}
 
 
 @app.post("/api/v1/admin/logout")
 async def admin_logout(request: Request):
-    tok = request.headers.get("X-Admin-Secret", "")
-    if tok and tok in _ADMIN_TOKENS:
-        _ADMIN_TOKENS.pop(tok, None)
     return {"ok": True}
 
 
@@ -323,7 +263,7 @@ async def admin_logout(request: Request):
 @app.get("/api/v1/admin/wallet")
 async def admin_owner_wallet(request: Request):
     _check_admin(request)
-    _refresh()  # ← تعديلات العميل (شراء، استرداد، إيداع)
+    _refresh()
 
     ow = STORE["owner_wallet"]
 
@@ -359,7 +299,7 @@ async def admin_list_vouchers(
     batch_id: Optional[str] = None,
 ):
     _check_admin(request)
-    _refresh()  # ← العميل قد استهلك أكواداً
+    _refresh()
 
     vouchers = STORE["vouchers"]
 
@@ -407,7 +347,7 @@ async def admin_list_vouchers(
 @app.post("/api/v1/admin/vouchers/generate")
 async def admin_generate_vouchers(payload: VoucherBatchCreate, request: Request):
     _check_admin(request)
-    _refresh()  # ← اقرأ أحدث نسخة قبل الإضافة (تجنب الكتابة فوق تعديلات العميل)
+    _refresh()
 
     created = _create_vouchers_batch(
         count=payload.count,
@@ -415,7 +355,7 @@ async def admin_generate_vouchers(payload: VoucherBatchCreate, request: Request)
         expires_days=payload.expires_days,
         note=payload.note,
     )
-    _persist_now()  # 💾 فوري — ليتمكن العميل من استهلاك الكود مباشرة
+    _persist_now()
     return {
         "ok": True,
         "count": len(created),
@@ -438,7 +378,7 @@ async def admin_disable_voucher(voucher_id: int, request: Request):
     if v["status"] == "used":
         raise HTTPException(400, "لا يمكن تعطيل كود مستخدم")
     v["status"] = "disabled"
-    _persist_now()  # 💾 فوري
+    _persist_now()
     return {"ok": True, "status": "disabled"}
 
 
@@ -451,7 +391,7 @@ async def admin_list_deposits(
     status_filter: Optional[str] = None,
 ):
     _check_admin(request)
-    _refresh()  # ← العميل قد أضاف طلبات إيداع جديدة
+    _refresh()
 
     deposits = STORE["deposits"]
     if status_filter:
@@ -484,7 +424,7 @@ async def admin_list_deposits(
 @app.post("/api/v1/admin/deposits/{deposit_id}/approve")
 async def admin_approve_deposit(deposit_id: int, request: Request):
     _check_admin(request)
-    _refresh()  # ← اقرأ أحدث نسخة (قد يكون الرصيد تغيّر من شراء)
+    _refresh()
 
     deposit = next((d for d in STORE["deposits"] if d["id"] == deposit_id), None)
     if not deposit:
@@ -512,7 +452,7 @@ async def admin_approve_deposit(deposit_id: int, request: Request):
     })
 
     STORE["owner_wallet"]["total_revenue"] += deposit["amount"]
-    _persist_now()  # 💾 فوري
+    _persist_now()
     return {"ok": True, "new_balance": customer["balance"]}
 
 
@@ -529,7 +469,7 @@ async def admin_reject_deposit(deposit_id: int, request: Request, reason: str = 
     deposit["status"] = "rejected"
     deposit["reviewed_at"] = _now_iso()
     deposit["reject_reason"] = reason
-    _persist_now()  # 💾 فوري
+    _persist_now()
     return {"ok": True, "status": "rejected"}
 
 
@@ -548,7 +488,7 @@ async def admin_generate_access_code(payload: AccessCodeCreate, request: Request
         preset_email=payload.preset_email,
         preset_balance=payload.preset_balance,
     )
-    _persist_now()  # 💾 فوري — ليتمكن العميل من الدخول بالكود
+    _persist_now()
     return {
         "ok": True,
         "id": record["id"],
@@ -568,7 +508,7 @@ async def admin_list_access_codes(
     status_filter: Optional[str] = None,
 ):
     _check_admin(request)
-    _refresh()  # ← العميل قد استهلك كوداً
+    _refresh()
 
     codes = STORE["access_codes"]
     if status_filter:
@@ -595,7 +535,7 @@ async def admin_disable_access_code(code_id: int, request: Request):
     if not record:
         raise HTTPException(404, "الكود غير موجود")
     record["status"] = "disabled"
-    _persist_now()  # 💾 فوري
+    _persist_now()
     return {"ok": True, "status": "disabled"}
 
 
@@ -610,7 +550,7 @@ async def admin_delete_access_code(code_id: int, request: Request):
     STORE["access_codes"] = [c for c in STORE["access_codes"] if c["id"] != code_id]
     if len(STORE["access_codes"]) == before:
         raise HTTPException(404, "الكود غير موجود")
-    _persist_now()  # 💾 فوري
+    _persist_now()
     return {"ok": True, "deleted": True}
 
 
@@ -641,17 +581,13 @@ async def http_exc_handler(request: Request, exc: HTTPException):
 async def _startup_log():
     _refresh()
     print("═" * 60)
-    print(f"[admin] 🚀 لوحة الأدمن v{app.version}")
+    print(f"[admin] 🚀 لوحة الأدمن v{app.version}  (🔓 بدون تسجيل دخول)")
     print(f"[admin] root          = {ADMIN_DIR}")
     print(f"[admin] store file    = {STORE_FILE}")
     print(f"[admin] store exists  = {STORE_FILE.exists()}")
     print(f"[admin] templates     = {TEMPLATES_DIR}")
-    print(f"[admin] login.html    = {'✅' if (TEMPLATES_DIR / 'login.html').exists() else '❌ مفقود'}")
     print(f"[admin] admin.html    = {'✅' if (TEMPLATES_DIR / 'admin.html').exists() else '❌ مفقود'}")
     print(f"[admin] static        = {STATIC_DIR} (exists={STATIC_DIR.exists()})")
-    print(f"[admin] ADMIN_EMAIL   = {ADMIN_EMAIL}")
-    print(f"[admin] hash set      = {bool(ADMIN_PASSWORD_HASH)}")
-    print(f"[admin] secret set    = {bool(ADMIN_SECRET)}")
     print(f"[admin] SIM5          = {SIM5_ENABLED}")
     print(f"[admin] MARKUP        = {FIVESIM_MARKUP_PERCENT}%")
     print(f"[admin] owner_wallet  = {STORE['owner_wallet']}")
