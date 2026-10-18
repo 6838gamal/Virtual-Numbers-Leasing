@@ -8,8 +8,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # ننسخ ملف المتطلبات أولاً للاستفادة من Docker layer cache
-COPY requirements-admin.txt ./requirements-admin.txt
-RUN pip install --no-cache-dir -r requirements-admin.txt
+COPY requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY shared_storage.py  ./shared_storage.py
 COPY admin/             ./admin/
