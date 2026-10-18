@@ -4,6 +4,7 @@ Jamal Solutions — Admin Panel (standalone + persistent storage مشترك)
 
 - GET  /                       → admin.html  (بدون تسجيل دخول)
 - GET  /admin-panel            → admin.html
+- GET  /api/v1/admin/catalog   → الدول والخدمات + التوفر (من 5SIM)
 - كل /api/v1/admin/*           → 🔓 مفتوحة (بدون تحقق)
 
 التخزين (مشترك مع app/main.py):
@@ -18,8 +19,12 @@ Jamal Solutions — Admin Panel (standalone + persistent storage مشترك)
 """
 from __future__ import annotations
 
+import asyncio
+import json as _json
 import os
 import secrets
+import time as _time
+import urllib.request as _req
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
@@ -73,9 +78,10 @@ def _refresh() -> None:
 
 
 # ══════════════════════════════════════════════════════════════
-# 2b) إعدادات 5SIM (للتوافق — الأدمن لا يشتري، فقط يقرأ الرصيد)
+# 2b) إعدادات 5SIM
 # ══════════════════════════════════════════════════════════════
 SIM5_ENABLED = bool(os.getenv("SIM5_API_KEY", "").strip())
+SIM5_BASE = os.getenv("SIM5_BASE", "https://5sim.net").rstrip("/")
 FIVESIM_MARKUP_PERCENT = float(os.getenv("FIVESIM_MARKUP_PERCENT", "40"))
 
 
@@ -87,14 +93,184 @@ class Sim5Error(Exception):
         super().__init__(f"[{status_code}] {message} ({endpoint})")
 
 
+def _sim5_http_get(path: str, timeout: float = 25.0):
+    """GET متزامن إلى 5SIM مع API key."""
+    api_key = os.getenv("SIM5_API_KEY", "").strip()
+    if not api_key:
+        raise Sim5Error(503, "SIM5_API_KEY غير مضبوط", path)
+    req = _req.Request(
+        f"{SIM5_BASE}{path}",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Accept": "application/json",
+            "User-Agent": "jamal-solutions-admin/1.0",
+        },
+    )
+    with _req.urlopen(req, timeout=timeout) as r:
+        return _json.loads(r.read().decode("utf-8"))
+
+
 async def _sim5_get(path: str, auth: bool = False, timeout: float = 25.0):
-    raise Sim5Error(503, "5SIM غير مفعّل (وضع مستقل)", path)
+    """نسخة async — نغلّف المتزامن في thread."""
+    if not SIM5_ENABLED:
+        raise Sim5Error(503, "5SIM غير مفعّل", path)
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, lambda: _sim5_http_get(path, timeout))
 
 
 # ══════════════════════════════════════════════════════════════
-# 2c) مولّدات الأكواد
+# 2c) كتالوج 5SIM (دول + خدمات + توفر) — مع كاش
 # ══════════════════════════════════════════════════════════════
-def _create_vouchers_batch(count, value, expires_days=30, note=""):
+CATALOG_CACHE: dict = {"ts": 0.0, "data": None}
+CATALOG_TTL_SECONDS = float(os.getenv("CATALOG_TTL_SECONDS", "300"))
+CATALOG_MAX_PAIRS = int(os.getenv("CATALOG_MAX_PAIRS", "60"))
+
+
+def _fetch_countries_sync() -> list:
+    try:
+        raw = _sim5_http_get("/guest/countries")
+        if isinstance(raw, dict):
+            return [
+                {"code": k, "name": (v or {}).get("text") or (v or {}).get("name") or k}
+                for k, v in raw.items()
+                if isinstance(v, dict) and v.get("visible", True)
+            ]
+        if isinstance(raw, list):
+            return [{"code": c, "name": c} for c in raw if isinstance(c, str)]
+        return []
+    except Exception as e:
+        print(f"[admin] catalog countries error: {type(e).__name__}: {e}")
+        return []
+
+
+def _fetch_services_sync() -> list:
+    try:
+        raw = _sim5_http_get("/guest/products/any")
+        if isinstance(raw, dict):
+            return [
+                {
+                    "code": k,
+                    "name": (v or {}).get("text") or (v or {}).get("name") or k,
+                    "category": (v or {}).get("category", ""),
+                }
+                for k, v in raw.items()
+            ]
+        if isinstance(raw, list):
+            return [{"code": s, "name": s, "category": ""} for s in raw if isinstance(s, str)]
+        return []
+    except Exception as e:
+        print(f"[admin] catalog services error: {type(e).__name__}: {e}")
+        return []
+
+
+def _fetch_availability_sync(country: str, service: str) -> dict:
+    try:
+        raw = _sim5_http_get(f"/guest/products/{country}/{service}")
+        if isinstance(raw, dict):
+            total = 0
+            prices = []
+            for v in raw.values():
+                if isinstance(v, list):
+                    total += len(v)
+                    for p in v:
+                        if isinstance(p, dict) and p.get("price") is not None:
+                            try:
+                                prices.append(float(p["price"]))
+                            except (TypeError, ValueError):
+                                pass
+            min_price = min(prices) if prices else None
+            return {
+                "available": total > 0,
+                "count": total,
+                "min_price": min_price,
+                "in_use": None,
+                "status": "ok" if total > 0 else "out_of_stock",
+            }
+        return {"available": False, "count": 0, "status": "no_data"}
+    except Exception as e:
+        return {
+            "available": False,
+            "count": 0,
+            "status": f"error: {type(e).__name__}",
+        }
+
+
+async def _build_catalog() -> dict:
+    if not SIM5_ENABLED:
+        return {
+            "countries": [],
+            "services": [],
+            "availability": {},
+            "note": "SIM5_API_KEY غير مضبوط — لا يمكن جلب الدول/الخدمات",
+        }
+
+    loop = asyncio.get_event_loop()
+
+    # جلب الدول والخدمات بالتوازي
+    countries, services = await asyncio.gather(
+        loop.run_in_executor(None, _fetch_countries_sync),
+        loop.run_in_executor(None, _fetch_services_sync),
+    )
+
+    countries = sorted(countries, key=lambda x: x["name"])
+    services = sorted(services, key=lambda x: x["name"])
+
+    # بناء أزواج محدودة للتوفر
+    pairs = []
+    for c in countries:
+        for s in services:
+            pairs.append((c["code"], s["code"]))
+            if len(pairs) >= CATALOG_MAX_PAIRS:
+                break
+        if len(pairs) >= CATALOG_MAX_PAIRS:
+            break
+
+    sem = asyncio.Semaphore(6)
+
+    async def _one(c, s):
+        async with sem:
+            res = await loop.run_in_executor(None, lambda: _fetch_availability_sync(c, s))
+            return f"{c}:{s}", res
+
+    availability: dict = {}
+    if pairs:
+        results = await asyncio.gather(*[_one(c, s) for c, s in pairs])
+        for key, res in results:
+            availability[key] = res
+
+    return {
+        "countries": countries,
+        "services": services,
+        "availability": availability,
+        "note": "",
+    }
+
+
+async def _get_catalog(force: bool = False) -> dict:
+    now = _time.time()
+    if (
+        not force
+        and CATALOG_CACHE["data"] is not None
+        and (now - CATALOG_CACHE["ts"]) < CATALOG_TTL_SECONDS
+    ):
+        return CATALOG_CACHE["data"]
+    data = await _build_catalog()
+    CATALOG_CACHE["ts"] = now
+    CATALOG_CACHE["data"] = data
+    return data
+
+
+# ══════════════════════════════════════════════════════════════
+# 2d) مولّدات الأكواد
+# ══════════════════════════════════════════════════════════════
+def _create_vouchers_batch(
+    count,
+    value,
+    expires_days=30,
+    note="",
+    country: Optional[str] = None,
+    service: Optional[str] = None,
+):
     prefix = os.getenv("VOUCHER_PREFIX", "JS").strip().upper()
     batch_id = f"batch_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
     now = datetime.now(timezone.utc)
@@ -116,6 +292,8 @@ def _create_vouchers_batch(count, value, expires_days=30, note=""):
             "status": "unused",
             "batch_id": batch_id,
             "note": note,
+            "country": country or None,
+            "service": service or None,
             "created_at": now.isoformat(),
             "expires_at": expires.isoformat(),
             "used_by": None,
@@ -162,7 +340,7 @@ def _now_iso() -> str:
 # ══════════════════════════════════════════════════════════════
 # 3) App + Templates
 # ══════════════════════════════════════════════════════════════
-app = FastAPI(title="Jamal Solutions — Admin Panel", version="1.9.0-open")
+app = FastAPI(title="Jamal Solutions — Admin Panel", version="2.0.0-open")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 if STATIC_DIR.exists():
@@ -176,7 +354,7 @@ ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@virtual-num.com").strip().lower()
 
 
 def _check_admin(request: Request) -> None:
-    """🔓 بدون تسجيل دخول — اسم الدالة يبقى للتوافق، لكنها لا تفعل شيئاً."""
+    """🔓 بدون تسجيل دخول — لا تفعل شيئاً."""
     return
 
 
@@ -193,6 +371,21 @@ class VoucherBatchCreate(BaseModel):
     value: float = Field(..., ge=1)
     expires_days: int = Field(30, ge=1, le=365)
     note: str = ""
+    country: str = ""
+    service: str = ""
+
+
+class VoucherPair(BaseModel):
+    country: str
+    service: str
+    count: int = Field(..., ge=1, le=1000)
+
+
+class VoucherMultiCreate(BaseModel):
+    value: float = Field(..., ge=1)
+    expires_days: int = Field(30, ge=1, le=365)
+    note: str = ""
+    pairs: list[VoucherPair] = Field(..., min_length=1)
 
 
 class AccessCodeCreate(BaseModel):
@@ -205,7 +398,7 @@ class AccessCodeCreate(BaseModel):
 
 
 # ══════════════════════════════════════════════════════════════
-# 6) Pages — كلها تفتح admin.html مباشرة
+# 6) Pages
 # ══════════════════════════════════════════════════════════════
 @app.get("/", response_class=HTMLResponse)
 @app.get("/login", response_class=HTMLResponse)
@@ -228,6 +421,13 @@ async def health():
         "templates_dir": str(TEMPLATES_DIR),
         "admin_template": (TEMPLATES_DIR / "admin.html").exists(),
         "static_dir_exists": STATIC_DIR.exists(),
+        "sim5_enabled": SIM5_ENABLED,
+        "sim5_base": SIM5_BASE,
+        "catalog_cached": CATALOG_CACHE["data"] is not None,
+        "catalog_cache_age_sec": (
+            round(_time.time() - CATALOG_CACHE["ts"], 1)
+            if CATALOG_CACHE["data"] is not None else None
+        ),
         "store_keys": sorted(STORE.keys()),
         "counts": {
             "vouchers": len(STORE["vouchers"]),
@@ -240,7 +440,7 @@ async def health():
 
 
 # ══════════════════════════════════════════════════════════════
-# 7) Auth endpoints — 🔓 توافقية فقط (الواجهة لا تحتاجها بعد الآن)
+# 7) Auth endpoints — 🔓 توافقية فقط
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/admin/login")
 async def admin_login(payload: AdminLoginIn = None):
@@ -258,7 +458,24 @@ async def admin_logout(request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# 8) Wallet
+# 7b) 5SIM Catalog
+# ══════════════════════════════════════════════════════════════
+@app.get("/api/v1/admin/catalog")
+async def admin_catalog(request: Request):
+    _check_admin(request)
+    data = await _get_catalog(force=False)
+    return {"ok": True, **data}
+
+
+@app.get("/api/v1/admin/catalog/refresh")
+async def admin_catalog_refresh(request: Request):
+    _check_admin(request)
+    data = await _get_catalog(force=True)
+    return {"ok": True, **data}
+
+
+# ══════════════════════════════════════════════════════════════
+# 8) Wallet — قيمة كلية واحدة
 # ══════════════════════════════════════════════════════════════
 @app.get("/api/v1/admin/wallet")
 async def admin_owner_wallet(request: Request):
@@ -266,25 +483,13 @@ async def admin_owner_wallet(request: Request):
     _refresh()
 
     ow = STORE["owner_wallet"]
-
-    sim5_info: dict = {}
-    if SIM5_ENABLED:
-        try:
-            p = await _sim5_get("/user/profile", auth=True)
-            sim5_info = {"balance": p.get("balance"), "frozen": p.get("frozen_balance")}
-        except Sim5Error as e:
-            sim5_info = {"error": e.message}
-        except Exception as e:
-            sim5_info = {"error": f"{type(e).__name__}: {e}"}
+    total = float(ow.get("total_revenue", 0)) + float(ow.get("total_profit", 0))
 
     return {
+        "ok": True,
+        "total_balance": round(total, 2),
+        # حقول توافقية (لا تُعرض في الواجهة)
         "owner_wallet": ow,
-        "sim5": sim5_info,
-        "vouchers_summary": {
-            "unused_value": sum(
-                v["value"] for v in STORE["vouchers"] if v["status"] == "unused"
-            ),
-        },
         "markup_percent": FIVESIM_MARKUP_PERCENT,
     }
 
@@ -342,7 +547,7 @@ async def admin_list_vouchers(
 
 
 # ══════════════════════════════════════════════════════════════
-# 10) Vouchers — generate
+# 10) Vouchers — generate (دفعة واحدة لزوج واحد)
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/admin/vouchers/generate")
 async def admin_generate_vouchers(payload: VoucherBatchCreate, request: Request):
@@ -354,6 +559,8 @@ async def admin_generate_vouchers(payload: VoucherBatchCreate, request: Request)
         value=payload.value,
         expires_days=payload.expires_days,
         note=payload.note,
+        country=payload.country or None,
+        service=payload.service or None,
     )
     _persist_now()
     return {
@@ -362,6 +569,46 @@ async def admin_generate_vouchers(payload: VoucherBatchCreate, request: Request)
         "batch_id": created[0]["batch_id"] if created else None,
         "total_value": round(sum(v["value"] for v in created), 2),
         "codes": [v["code"] for v in created],
+        "country": payload.country or None,
+        "service": payload.service or None,
+    }
+
+
+# ══════════════════════════════════════════════════════════════
+# 10b) Vouchers — generate multi (عدة أزواج دفعة واحدة)
+# ══════════════════════════════════════════════════════════════
+@app.post("/api/v1/admin/vouchers/generate-multi")
+async def admin_generate_vouchers_multi(payload: VoucherMultiCreate, request: Request):
+    _check_admin(request)
+    _refresh()
+
+    all_created = []
+    batches = []
+    for p in payload.pairs:
+        created = _create_vouchers_batch(
+            count=p.count,
+            value=payload.value,
+            expires_days=payload.expires_days,
+            note=payload.note,
+            country=p.country,
+            service=p.service,
+        )
+        all_created.extend(created)
+        batches.append({
+            "country": p.country,
+            "service": p.service,
+            "count": len(created),
+            "batch_id": created[0]["batch_id"] if created else None,
+            "codes": [v["code"] for v in created],
+            "total_value": round(sum(v["value"] for v in created), 2),
+        })
+
+    _persist_now()
+    return {
+        "ok": True,
+        "total_count": len(all_created),
+        "total_value": round(sum(v["value"] for v in all_created), 2),
+        "batches": batches,
     }
 
 
@@ -589,7 +836,9 @@ async def _startup_log():
     print(f"[admin] admin.html    = {'✅' if (TEMPLATES_DIR / 'admin.html').exists() else '❌ مفقود'}")
     print(f"[admin] static        = {STATIC_DIR} (exists={STATIC_DIR.exists()})")
     print(f"[admin] SIM5          = {SIM5_ENABLED}")
+    print(f"[admin] SIM5 base     = {SIM5_BASE}")
     print(f"[admin] MARKUP        = {FIVESIM_MARKUP_PERCENT}%")
+    print(f"[admin] CATALOG TTL   = {CATALOG_TTL_SECONDS}s, MAX_PAIRS = {CATALOG_MAX_PAIRS}")
     print(f"[admin] owner_wallet  = {STORE['owner_wallet']}")
     print(f"[admin] vouchers      = {len(STORE['vouchers'])}")
     print(f"[admin] access_codes  = {len(STORE['access_codes'])}")
