@@ -21,7 +21,6 @@
     .country-row:hover { background: rgba(51, 65, 85, 0.4); }
     .service-chip { transition: all 0.15s; }
     .service-chip.unavailable { opacity: 0.55; }
-    /* ✨ NEW — تأثير بصري لخيار الدمج */
     #merge-box { transition: all 0.2s; }
     #merge-box.active { border-color: #f59e0b; background: rgba(245, 158, 11, 0.08); }
   </style>
@@ -77,6 +76,17 @@
         </div>
       </div>
 
+      <!-- ✨ شارة نطاق الأسعار -->
+      <div id="price-range-badge" class="mb-3"></div>
+
+      <!-- ✨ تنبيه: الأسعار للأدمن فقط -->
+      <div class="bg-amber-500/10 border border-amber-500/30 rounded-lg p-2 mb-3 flex items-center gap-2">
+        <span>💎</span>
+        <span class="text-[11px] text-amber-300 font-bold">
+          الأسعار أدناه مرئية لك فقط — الزبائن لا يرونها (HIDE_PRICES_FROM_CUSTOMERS)
+        </span>
+      </div>
+
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
         <div>
           <label class="text-xs font-bold text-slate-400 mb-1.5 block">القيمة ($) لكل كود</label>
@@ -95,7 +105,6 @@
         </div>
       </div>
 
-      <!-- بحث + ملخص -->
       <div class="flex items-center gap-2 flex-wrap mb-3">
         <input type="text" id="catalog-search" placeholder="🔎 ابحث عن دولة أو خدمة..."
                oninput="filterCatalog(this.value)"
@@ -106,7 +115,6 @@
         </div>
       </div>
 
-      <!-- قائمة الدول والخدمات -->
       <div class="bg-slate-900/50 rounded-xl border border-slate-700 p-2 mb-4 max-h-[500px] overflow-y-auto">
         <div id="catalog-tree">
           <p class="text-[11px] text-slate-500 text-center py-6">جاري تحميل الكتالوج...</p>
@@ -131,19 +139,22 @@
                 <th class="px-2 py-1.5">الحالة</th>
                 <th class="px-2 py-1.5">المتاح</th>
                 <th class="px-2 py-1.5">المشغل</th>
+                <th class="px-2 py-1.5">سعر 5SIM</th>
+                <th class="px-2 py-1.5">سعر البيع</th>
+                <th class="px-2 py-1.5">الربح</th>
                 <th class="px-2 py-1.5">العدد</th>
-                <th class="px-2 py-1.5 text-center">توليد لهذا فقط</th>
+                <th class="px-2 py-1.5 text-center">توليد</th>
                 <th class="px-2 py-1.5"></th>
               </tr>
             </thead>
             <tbody id="details-tbody" class="divide-y divide-slate-700/40">
-              <tr><td colspan="8" class="px-2 py-4 text-center text-slate-500">اختر خدمة واحدة على الأقل</td></tr>
+              <tr><td colspan="11" class="px-2 py-4 text-center text-slate-500">اختر خدمة واحدة على الأقل</td></tr>
             </tbody>
           </table>
         </div>
       </div>
 
-      <!-- ✨ NEW — خيار الدمج في كود واحد -->
+      <!-- خيار الدمج -->
       <div id="merge-box" class="bg-slate-900/50 rounded-xl border-2 border-slate-700 p-3 mb-4">
         <label class="flex items-start gap-2 cursor-pointer">
           <input type="checkbox" id="merge-mode" checked
@@ -172,6 +183,32 @@
           · إجمالي الأكواد: <span id="total-codes-count" class="font-bold text-amber-400">0</span>
           · إجمالي القيمة: <span id="batch-total" class="font-bold text-amber-400">$0.00</span>
         </div>
+      </div>
+
+      <!-- ✨ صندوق التحليل المالي -->
+      <div id="financial-info" class="hidden bg-gradient-to-r from-slate-900/80 to-slate-800/80 rounded-xl border border-emerald-700/30 p-3 mb-4">
+        <p class="text-xs font-bold text-emerald-400 mb-2">📊 تحليل مالي (تقديري)</p>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div class="bg-slate-900/60 rounded-lg p-2 border border-slate-700">
+            <div class="text-[10px] text-slate-400">تكلفة 5SIM</div>
+            <div id="fivesim-cost-label" class="text-sm font-bold text-red-400">$0.00</div>
+          </div>
+          <div class="bg-slate-900/60 rounded-lg p-2 border border-slate-700">
+            <div class="text-[10px] text-slate-400">سعر البيع</div>
+            <div id="sale-price-label" class="text-sm font-bold text-amber-400">$0.00</div>
+          </div>
+          <div class="bg-slate-900/60 rounded-lg p-2 border border-slate-700">
+            <div class="text-[10px] text-slate-400">الربح المتوقع</div>
+            <div id="profit-label" class="text-sm font-bold text-emerald-400">$0.00</div>
+          </div>
+          <div class="bg-slate-900/60 rounded-lg p-2 border border-slate-700">
+            <div class="text-[10px] text-slate-400">هامش الربح</div>
+            <div id="profit-pct-label" class="text-sm font-bold text-cyan-400">0%</div>
+          </div>
+        </div>
+        <p class="text-[9px] text-slate-500 mt-2">
+          ⚠️ السعر الفعلي قد يتغير لحظة الشراء من 5SIM. هذه تقديرات للعرض فقط.
+        </p>
       </div>
 
       <div class="flex items-center gap-2 flex-wrap mb-4">
@@ -219,7 +256,6 @@
         <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700"><div class="text-[10px] text-slate-400">الإجمالي</div><div class="text-lg font-bold">—</div></div>
         <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700"><div class="text-[10px] text-slate-400">غير مستخدمة</div><div class="text-lg font-bold text-emerald-400">—</div></div>
         <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700"><div class="text-[10px] text-slate-400">مستخدمة</div><div class="text-lg font-bold text-blue-400">—</div></div>
-        <!-- ✨ NEW — إحصاء الأكواد الموحّدة -->
         <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700"><div class="text-[10px] text-slate-400">موحّدة</div><div class="text-lg font-bold text-amber-400">—</div></div>
         <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700"><div class="text-[10px] text-slate-400">قيمة غير مستخدمة</div><div class="text-lg font-bold text-amber-400">—</div></div>
       </div>
@@ -377,7 +413,7 @@
     </section>
 
     <footer class="text-center text-[10px] text-slate-500 pt-4 pb-8">
-      <p>جمال سولوشنز · لوحة التحكم · <span id="footer-version">v2.3.0-open</span></p>
+      <p>جمال سولوشنز · لوحة التحكم · <span id="footer-version">v2.4.0-open</span></p>
       <p class="mt-1">آخر تحديث: <span id="last-refresh">—</span></p>
     </footer>
   </main>
@@ -428,6 +464,16 @@ function escapeHtml(s) {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
+}
+
+function fmtPrice(v) {
+  if (v == null) return '—';
+  return '$' + Number(v).toFixed(2);
+}
+
+function fmtFivesim(v) {
+  if (v == null) return '—';
+  return '$' + Number(v).toFixed(3);
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -511,10 +557,36 @@ function updateMeta() {
   const meta = document.getElementById('catalog-meta');
   if (!CATALOG.fetched_at) { meta.textContent = ''; return; }
   const d = new Date(CATALOG.fetched_at);
-  meta.textContent = `آخر تحديث: ${d.toLocaleTimeString('ar-EG')}`;
-  document.getElementById('count-countries').textContent = CATALOG.countries.length;
-  document.getElementById('count-services').textContent =
-    CATALOG.countries.reduce((sum, c) => sum + (c.services_count || 0), 0);
+
+  const totalCountries = CATALOG.countries.length;
+  const totalServices = CATALOG.countries.reduce((sum, c) => sum + (c.services_count || 0), 0);
+
+  const allPrices = [];
+  CATALOG.countries.forEach(c => {
+    (c.services || []).forEach(s => {
+      if (s.available && s.cost != null) allPrices.push(s.cost);
+    });
+  });
+  const minPrice = allPrices.length ? Math.min(...allPrices) : 0;
+  const maxPrice = allPrices.length ? Math.max(...allPrices) : 0;
+
+  meta.innerHTML = `
+    آخر تحديث: ${d.toLocaleTimeString('ar-EG')}
+    ${allPrices.length ? `<span class="text-amber-400"> · نطاق: $${minPrice.toFixed(2)} – $${maxPrice.toFixed(2)}</span>` : ''}
+  `;
+
+  document.getElementById('count-countries').textContent = totalCountries;
+  document.getElementById('count-services').textContent = totalServices;
+
+  // شارة نطاق الأسعار
+  const priceRangeBadge = document.getElementById('price-range-badge');
+  if (priceRangeBadge && allPrices.length) {
+    priceRangeBadge.innerHTML = `
+      <span class="inline-flex items-center gap-1 bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] font-bold px-3 py-1.5 rounded-lg">
+        💰 نطاق الأسعار: $${minPrice.toFixed(2)} – $${maxPrice.toFixed(2)} · ${allPrices.length} خدمة متاحة
+      </span>
+    `;
+  }
 }
 
 function filterCatalog(q) {
@@ -546,17 +618,51 @@ function renderTree() {
     const services = countryMatch ? c.services : matchingServices;
     const availCount = services.filter(s => s.available).length;
 
+    // حساب أرخص سعر ومتوسط الأسعار
+    const availableWithPrice = services.filter(s => s.available && s.cost != null);
+    let minPrice = null;
+    let avgPrice = null;
+    let totalProfit = 0;
+    let profitCount = 0;
+
+    if (availableWithPrice.length) {
+      minPrice = Math.min(...availableWithPrice.map(s => s.cost));
+      const sum = availableWithPrice.reduce((acc, s) => acc + s.cost, 0);
+      avgPrice = sum / availableWithPrice.length;
+
+      availableWithPrice.forEach(s => {
+        if (s.fivesim_cost != null) {
+          totalProfit += (s.cost - s.fivesim_cost);
+          profitCount++;
+        }
+      });
+    }
+    const avgProfit = profitCount ? totalProfit / profitCount : null;
+
+    const priceLine = minPrice != null
+      ? `<div class="text-[10px] text-amber-400 font-bold mt-0.5">
+           من <span class="text-amber-300">$${minPrice.toFixed(2)}</span>
+           <span class="text-slate-500 font-normal">· متوسط $${avgPrice.toFixed(2)}</span>
+           ${avgProfit != null ? `<span class="text-emerald-500">· +$${avgProfit.toFixed(2)}</span>` : ''}
+         </div>`
+      : `<div class="text-[10px] text-red-400 mt-0.5">لا أسعار متاحة</div>`;
+
     html += `
       <div class="mb-1 border border-slate-700/50 rounded-lg overflow-hidden" data-country="${escapeHtml(c.slug)}">
         <div class="country-row flex items-center justify-between px-3 py-2 bg-slate-800/60"
              onclick="toggleCountry('${escapeHtml(c.slug)}')">
-          <div class="flex items-center gap-2 min-w-0">
+          <div class="flex items-center gap-2 min-w-0 flex-1">
             <span class="text-base">${c.flag || '🏳️'}</span>
-            <span class="font-bold text-[12px] truncate">${escapeHtml(c.name)}</span>
-            <span class="mono text-[10px] text-slate-500">${escapeHtml(c.code || '')}</span>
-            ${c.prefix ? `<span class="mono text-[10px] text-slate-500">+${escapeHtml(c.prefix)}</span>` : ''}
+            <div class="min-w-0">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="font-bold text-[12px]">${escapeHtml(c.name)}</span>
+                <span class="mono text-[10px] text-slate-500">${escapeHtml(c.code || '')}</span>
+                ${c.prefix ? `<span class="mono text-[10px] text-slate-500">+${escapeHtml(c.prefix)}</span>` : ''}
+              </div>
+              ${priceLine}
+            </div>
           </div>
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-2 flex-shrink-0">
             <span class="text-[10px] text-emerald-400 font-bold">${availCount}</span>
             <span class="text-[10px] text-slate-500">/ ${services.length}</span>
             <svg class="w-3.5 h-3.5 text-slate-400 country-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -590,9 +696,31 @@ function renderServiceRow(c, s) {
   const isSel = SELECTED.has(key);
   const availableClass = s.available ? '' : 'unavailable';
   const labelClass = s.available ? '' : 'label-unavailable';
+
+  const salePrice = s.cost != null ? Number(s.cost) : null;
+  const fivesimPrice = s.fivesim_cost != null ? Number(s.fivesim_cost) : null;
+  const profit = (salePrice != null && fivesimPrice != null)
+    ? (salePrice - fivesimPrice)
+    : null;
+
+  let priceHtml = '';
+  if (s.available && salePrice != null) {
+    priceHtml = `
+      <div class="text-left leading-tight">
+        <div class="text-[12px] font-black text-emerald-400">$${salePrice.toFixed(2)}</div>
+        <div class="text-[9px] text-slate-500">
+          5SIM: $${fivesimPrice != null ? fivesimPrice.toFixed(3) : '?'}
+          ${profit != null ? `<span class="text-amber-400"> (+$${profit.toFixed(2)})</span>` : ''}
+        </div>
+      </div>
+    `;
+  } else {
+    priceHtml = `<span class="text-[10px] text-red-400">غير متوفر</span>`;
+  }
+
   return `
     <label class="flex items-center justify-between gap-2 px-2 py-1.5 rounded-md hover:bg-slate-700/40 cursor-pointer service-chip ${availableClass}">
-      <div class="flex items-center gap-2 min-w-0">
+      <div class="flex items-center gap-2 min-w-0 flex-1">
         <input type="checkbox" class="accent-amber-500 service-cb ${s.available ? '' : 'cb-unavailable'}"
                data-country="${escapeHtml(c.slug)}" data-service="${escapeHtml(s.id)}"
                ${isSel ? 'checked' : ''}
@@ -600,10 +728,11 @@ function renderServiceRow(c, s) {
         <span class="text-sm">${s.icon || '📱'}</span>
         <span class="text-[11px] font-bold truncate ${labelClass}">${escapeHtml(s.name)}</span>
       </div>
-      <div class="flex items-center gap-2 text-[10px]">
+      <div class="flex items-center gap-3 text-[10px]">
         ${s.available
-          ? `<span class="text-emerald-400 font-bold">${s.count} متاح</span>`
-          : `<span class="text-red-400">غير متوفر</span>`}
+          ? `<span class="text-emerald-400 font-bold whitespace-nowrap">${s.count} متاح</span>`
+          : `<span class="text-red-400 whitespace-nowrap">—</span>`}
+        ${priceHtml}
       </div>
     </label>
   `;
@@ -634,6 +763,8 @@ function onServiceToggle(countrySlug, serviceId, checked) {
       count: service.count || 0,
       operator: service.operator,
       rate: service.rate,
+      salePrice: service.cost != null ? Number(service.cost) : null,
+      fivesimPrice: service.fivesim_cost != null ? Number(service.fivesim_cost) : null,
       pairCount: 1,
     });
   } else {
@@ -676,7 +807,7 @@ function renderDetails() {
   const rows = Array.from(SELECTED.entries());
 
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="8" class="px-2 py-4 text-center text-slate-500">اختر خدمة واحدة على الأقل</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" class="px-2 py-4 text-center text-slate-500">اختر خدمة واحدة على الأقل</td></tr>';
     return;
   }
 
@@ -685,6 +816,17 @@ function renderDetails() {
       ? '<span class="bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full text-[10px] font-bold">متوفر</span>'
       : '<span class="bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full text-[10px] font-bold">غير متوفر</span>';
 
+    const salePrice = r.salePrice != null ? r.salePrice : null;
+    const fivesimPrice = r.fivesimPrice != null ? r.fivesimPrice : null;
+    const profit = (salePrice != null && fivesimPrice != null)
+      ? (salePrice - fivesimPrice)
+      : null;
+
+    const profitBadge = profit != null
+      ? `<span class="text-emerald-400 font-bold">+$${profit.toFixed(2)}</span>
+         <span class="text-slate-500 text-[9px]">(${((profit / fivesimPrice) * 100).toFixed(0)}%)</span>`
+      : '—';
+
     return `
       <tr class="hover:bg-slate-700/20">
         <td class="px-2 py-1.5">${r.flag || '🏳️'} ${escapeHtml(r.countryName)}</td>
@@ -692,6 +834,9 @@ function renderDetails() {
         <td class="px-2 py-1.5">${statusLabel}</td>
         <td class="px-2 py-1.5 font-bold ${r.available ? 'text-emerald-400' : 'text-slate-500'}">${r.count ?? 0}</td>
         <td class="px-2 py-1.5 mono text-[10px]">${escapeHtml(r.operator || '—')}</td>
+        <td class="px-2 py-1.5 mono text-[10px] text-slate-400">${fivesimPrice != null ? '$' + fivesimPrice.toFixed(3) : '—'}</td>
+        <td class="px-2 py-1.5 font-bold text-amber-400">${salePrice != null ? '$' + salePrice.toFixed(2) : '—'}</td>
+        <td class="px-2 py-1.5">${profitBadge}</td>
         <td class="px-2 py-1.5">
           <input type="number" min="1" max="1000" value="${r.pairCount ?? 1}"
                  class="w-16 px-2 py-1 bg-slate-900 border border-slate-700 rounded-md text-[11px] outline-none focus:border-amber-500"
@@ -715,7 +860,6 @@ function renderDetails() {
   }).join('');
 }
 
-// ✨ NEW — عدّل updatePairsCounter لدعم وضع الدمج
 function isMergeMode() {
   const el = document.getElementById('merge-mode');
   return el ? el.checked : false;
@@ -738,17 +882,60 @@ function updatePairsCounter() {
 
   let totalCodes = 0;
   if (merge) {
-    // في وضع الدمج: العدد = أكبر "عدد" بين الأزواج
     totalCodes = rows.length ? Math.max(...rows.map(r => parseInt(r.pairCount, 10) || 1)) : 0;
   } else {
     totalCodes = rows.reduce((s, r) => s + (parseInt(r.pairCount, 10) || 0), 0);
   }
 
+  // حساب التكاليف والأرباح
+  let totalFivesimCost = 0;
+  let totalSalePrice = 0;
+  let availableRows = 0;
+
+  if (merge) {
+    let maxFivesimCost = 0;
+    let maxSalePrice = 0;
+    rows.forEach(r => {
+      if (r.available && r.fivesimPrice != null) {
+        maxFivesimCost = Math.max(maxFivesimCost, r.fivesimPrice);
+        maxSalePrice = Math.max(maxSalePrice, r.salePrice || 0);
+      }
+    });
+    totalFivesimCost = maxFivesimCost * totalCodes;
+    totalSalePrice = maxSalePrice * totalCodes;
+    availableRows = rows.filter(r => r.available).length;
+  } else {
+    rows.forEach(r => {
+      const n = parseInt(r.pairCount, 10) || 0;
+      if (r.available && r.fivesimPrice != null) {
+        totalFivesimCost += r.fivesimPrice * n;
+        totalSalePrice += (r.salePrice || 0) * n;
+        availableRows++;
+      }
+    });
+  }
+
+  const totalProfit = totalSalePrice - totalFivesimCost;
+
   document.getElementById('pairs-count').textContent = rows.length;
   document.getElementById('total-codes-count').textContent = totalCodes;
   document.getElementById('batch-total').textContent = '$' + (totalCodes * value).toFixed(2);
 
-  // ✨ NEW — عرض معلومات الدمج
+  // صندوق التحليل المالي
+  const financialEl = document.getElementById('financial-info');
+  if (financialEl) {
+    if (totalCodes > 0 && availableRows > 0) {
+      financialEl.classList.remove('hidden');
+      document.getElementById('fivesim-cost-label').textContent = '$' + totalFivesimCost.toFixed(2);
+      document.getElementById('sale-price-label').textContent = '$' + totalSalePrice.toFixed(2);
+      document.getElementById('profit-label').textContent = '$' + totalProfit.toFixed(2);
+      const profitPct = totalFivesimCost > 0 ? (totalProfit / totalFivesimCost) * 100 : 0;
+      document.getElementById('profit-pct-label').textContent = profitPct.toFixed(0) + '%';
+    } else {
+      financialEl.classList.add('hidden');
+    }
+  }
+
   const info = document.getElementById('merge-info');
   if (merge && rows.length) {
     info.classList.remove('hidden');
@@ -819,7 +1006,7 @@ async function generateForPair(key, btn) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// Generate — يدعم وضع الدمج ✨ NEW
+// Generate — يدعم وضع الدمج
 // ══════════════════════════════════════════════════════════════
 async function generateVouchers(btn) {
   const value = parseFloat(document.getElementById('v-value').value);
@@ -839,10 +1026,8 @@ async function generateVouchers(btn) {
     return;
   }
 
-  // ── بناء body حسب الوضع ──
   let body;
   if (merge) {
-    // ✨ وضع الدمج: كود واحد يصلح لكل الأزواج
     const maxCount = Math.max(...rows.map(r => parseInt(r.pairCount, 10) || 1));
     if (maxCount < 1 || maxCount > 1000) {
       toast('العدد يجب أن يكون 1-1000', 'error');
@@ -860,7 +1045,6 @@ async function generateVouchers(btn) {
       })),
     };
   } else {
-    // الوضع القديم: كود منفصل لكل زوج
     for (const r of rows) {
       const n = parseInt(r.pairCount, 10);
       if (!n || n < 1 || n > 1000) {
@@ -896,7 +1080,6 @@ async function generateVouchers(btn) {
       return;
     }
 
-    // ── عرض الأكواد ──
     const lines = [];
     if (data.merge) {
       const pairs = data.batches[0].allowed_pairs
@@ -947,7 +1130,7 @@ function downloadCodes() {
 }
 
 // ══════════════════════════════════════════════════════════════
-// Vouchers List — يدعم allowed_pairs ✨ NEW
+// Vouchers List
 // ══════════════════════════════════════════════════════════════
 async function loadVouchers(btn) {
   if (btn) btn.disabled = true;
@@ -959,7 +1142,6 @@ async function loadVouchers(btn) {
     const data = await r.json();
     const s = data.summary;
 
-    // ✨ أضف عمود "موحّدة"
     document.getElementById('vouchers-summary').innerHTML = `
       <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700"><div class="text-[10px] text-slate-400">الإجمالي</div><div class="text-lg font-bold">${s.total}</div></div>
       <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700"><div class="text-[10px] text-slate-400">غير مستخدمة</div><div class="text-lg font-bold text-emerald-400">${s.unused}</div></div>
@@ -983,14 +1165,12 @@ async function loadVouchers(btn) {
       }[v.status] || v.status;
       const date = new Date(v.created_at).toLocaleDateString('ar-EG');
 
-      // ✨ NEW — عرض الأزواج المتعددة
       let cs;
       const pairs = v.allowed_pairs || [];
       if (pairs.length > 1) {
         const pairsText = pairs.map(p => `${p.country}/${p.service}`).join(', ');
         cs = `<span class="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full font-bold cursor-help"
                      title="${escapeHtml(pairsText)}">🔗 ${pairs.length} أزواج</span>`;
-        // أضف tooltip صغير
         cs += `<div class="text-[9px] text-slate-500 mt-0.5 mono truncate max-w-[180px]" title="${escapeHtml(pairsText)}">${escapeHtml(pairsText)}</div>`;
       } else if (v.country || v.service) {
         cs = `<span class="mono text-[10px]">${escapeHtml(v.country || '—')}/${escapeHtml(v.service || '—')}</span>`;
@@ -998,7 +1178,6 @@ async function loadVouchers(btn) {
         cs = '<span class="text-slate-500">—</span>';
       }
 
-      // ✨ NEW — عرض أي زوج استُخدم عليه (إن كان مستخدماً)
       let usedOn = '';
       if (v.used_on && v.used_on.country) {
         usedOn = `<div class="text-[9px] text-blue-300 mono mt-0.5">↳ ${escapeHtml(v.used_on.country)}/${escapeHtml(v.used_on.service)}</div>`;
@@ -1280,7 +1459,7 @@ async function rejectDeposit(id) {
 // ══════════════════════════════════════════════════════════════
 loadAll();
 loadCatalog();
-onMergeToggle();   // ✨ NEW — تفعيل الحالة الأولية لخيار الدمج
+onMergeToggle();
 updatePairsCounter();
 setInterval(loadAll, 30000);
 setInterval(() => loadCatalog(true), 5 * 60 * 1000);
