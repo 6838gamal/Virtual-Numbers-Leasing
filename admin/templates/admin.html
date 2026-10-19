@@ -15,14 +15,12 @@
     .stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,0.15); }
     @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:.3} }
     .pulse-dot { animation: pulse-dot 2s infinite; }
-    .cb-unavailable { outline: 2px solid #ef4444 !important; outline-offset: 1px; }
-    .label-unavailable { opacity: 0.65; color: #f87171; }
     .country-row { cursor: pointer; }
     .country-row:hover { background: rgba(51, 65, 85, 0.4); }
     .service-chip { transition: all 0.15s; }
     .service-chip.unavailable { opacity: 0.55; }
-    #merge-box { transition: all 0.2s; }
-    #merge-box.active { border-color: #f59e0b; background: rgba(245, 158, 11, 0.08); }
+    .cb-unavailable { outline: 2px solid #ef4444 !important; outline-offset: 1px; }
+    .label-unavailable { opacity: 0.65; color: #f87171; }
   </style>
 </head>
 <body class="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 min-h-screen text-slate-100">
@@ -48,7 +46,7 @@
 
   <main class="max-w-7xl mx-auto px-4 py-6 space-y-6">
 
-    <!-- ══ Wallet ══════════════════════════════════════════ -->
+    <!-- ══ Wallet ══ -->
     <section>
       <div class="flex items-center justify-between mb-3">
         <h2 class="text-lg font-bold flex items-center gap-2">
@@ -63,12 +61,12 @@
       </div>
     </section>
 
-    <!-- ══ Generate Vouchers ═══════════════════════════════ -->
+    <!-- ══ Generate Vouchers (Matrix Mode) ══ -->
     <section class="bg-slate-800 rounded-2xl border border-slate-700 p-5">
       <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h2 class="text-lg font-bold flex items-center gap-2">
           <span class="w-1 h-5 bg-gradient-to-b from-amber-400 to-orange-500 rounded-full"></span>
-          🎟️ توليد أكواد جديدة
+          🎟️ توليد أكواد مرن
         </h2>
         <div class="flex items-center gap-2">
           <span id="catalog-meta" class="text-[10px] text-slate-500"></span>
@@ -76,151 +74,197 @@
         </div>
       </div>
 
-      <!-- ✨ شارة نطاق الأسعار -->
       <div id="price-range-badge" class="mb-3"></div>
 
-      <!-- ✨ تنبيه: الأسعار للأدمن فقط -->
-      <div class="bg-amber-500/10 border border-amber-500/30 rounded-lg p-2 mb-3 flex items-center gap-2">
-        <span>💎</span>
-        <span class="text-[11px] text-amber-300 font-bold">
-          الأسعار أدناه مرئية لك فقط — الزبائن لا يرونها (HIDE_PRICES_FROM_CUSTOMERS)
-        </span>
+      <!-- ═══ الخطوة 1: اختيار الدول ═══ -->
+      <div class="bg-slate-900/50 rounded-xl border border-slate-700 p-4 mb-4">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <span class="w-6 h-6 rounded-full bg-blue-500 text-white text-xs font-bold flex items-center justify-center">1</span>
+            <h3 class="text-sm font-bold text-slate-200">اختر الدول (متعدد)</h3>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="selectAllCountries()" class="text-[10px] bg-blue-500/20 text-blue-300 border border-blue-500/40 hover:bg-blue-500/30 px-2 py-1 rounded-lg font-bold">تحديد الكل</button>
+            <button onclick="clearAllCountries()" class="text-[10px] bg-slate-700 text-slate-300 hover:bg-slate-600 px-2 py-1 rounded-lg font-bold">مسح</button>
+          </div>
+        </div>
+
+        <div class="mb-2">
+          <input type="text" id="country-search" placeholder="🔎 ابحث عن دولة..."
+                 oninput="filterCountryPicker(this.value)"
+                 class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg focus:border-blue-500 outline-none text-xs">
+        </div>
+
+        <div id="country-picker" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 max-h-56 overflow-y-auto p-1">
+          <p class="text-[11px] text-slate-500 text-center py-4 col-span-full">جاري التحميل...</p>
+        </div>
+
+        <div class="mt-2 text-[10px] text-slate-400">
+          المختار: <span id="selected-countries-count" class="font-bold text-blue-400">0</span> دولة
+        </div>
       </div>
 
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-        <div>
-          <label class="text-xs font-bold text-slate-400 mb-1.5 block">القيمة ($) لكل كود</label>
-          <input type="number" id="v-value" value="5" min="1" step="0.5"
-                 class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:border-amber-500 outline-none text-sm">
+      <!-- ═══ الخطوة 2: اختيار البرامج ═══ -->
+      <div class="bg-slate-900/50 rounded-xl border border-slate-700 p-4 mb-4">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <span class="w-6 h-6 rounded-full bg-purple-500 text-white text-xs font-bold flex items-center justify-center">2</span>
+            <h3 class="text-sm font-bold text-slate-200">اختر البرامج (متعدد)</h3>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="selectAllServices()" class="text-[10px] bg-purple-500/20 text-purple-300 border border-purple-500/40 hover:bg-purple-500/30 px-2 py-1 rounded-lg font-bold">تحديد الكل</button>
+            <button onclick="clearAllServices()" class="text-[10px] bg-slate-700 text-slate-300 hover:bg-slate-600 px-2 py-1 rounded-lg font-bold">مسح</button>
+          </div>
         </div>
-        <div>
-          <label class="text-xs font-bold text-slate-400 mb-1.5 block">الصلاحية (أيام)</label>
-          <input type="number" id="v-days" value="30" min="1" max="365"
-                 class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:border-amber-500 outline-none text-sm">
+
+        <div class="mb-2">
+          <input type="text" id="service-search" placeholder="🔎 ابحث عن برنامج..."
+                 oninput="filterServicePicker(this.value)"
+                 class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg focus:border-purple-500 outline-none text-xs">
         </div>
-        <div>
-          <label class="text-xs font-bold text-slate-400 mb-1.5 block">ملاحظة</label>
+
+        <div id="service-picker" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 max-h-56 overflow-y-auto p-1">
+          <p class="text-[11px] text-slate-500 text-center py-4 col-span-full">اختر دولة أولاً</p>
+        </div>
+
+        <div class="mt-2 text-[10px] text-slate-400">
+          المختار: <span id="selected-services-count" class="font-bold text-purple-400">0</span> برنامج
+        </div>
+      </div>
+
+      <!-- ═══ الخطوة 3: المصفوفة ═══ -->
+      <div id="matrix-section" class="hidden bg-slate-900/50 rounded-xl border border-slate-700 p-4 mb-4">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <span class="w-6 h-6 rounded-full bg-emerald-500 text-white text-xs font-bold flex items-center justify-center">3</span>
+            <h3 class="text-sm font-bold text-slate-200">مصفوفة الأزواج (دولة × برنامج)</h3>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="selectAllAvailablePairs()" class="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30 px-2 py-1 rounded-lg font-bold">✅ تحديد المتوفر فقط</button>
+            <button onclick="clearAllPairs()" class="text-[10px] bg-slate-700 text-slate-300 hover:bg-slate-600 px-2 py-1 rounded-lg font-bold">مسح</button>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table id="matrix-table" class="w-full text-xs border-collapse">
+            <thead id="matrix-thead"></thead>
+            <tbody id="matrix-tbody"></tbody>
+          </table>
+        </div>
+
+        <div class="mt-3 text-[10px] text-slate-400 flex items-center gap-3 flex-wrap">
+          <span>الخلايا المحددة: <span id="selected-pairs-count" class="font-bold text-emerald-400">0</span></span>
+          <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded bg-emerald-500"></span> متوفر ومحدد</span>
+          <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded bg-slate-600"></span> متوفر غير محدد</span>
+          <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded bg-red-500"></span> غير متوفر</span>
+        </div>
+      </div>
+
+      <!-- ═══ الخطوة 4: وضع التوليد + الإعدادات ═══ -->
+      <div id="mode-section" class="hidden bg-slate-900/50 rounded-xl border border-slate-700 p-4 mb-4">
+        <div class="flex items-center gap-2 mb-3">
+          <span class="w-6 h-6 rounded-full bg-amber-500 text-white text-xs font-bold flex items-center justify-center">4</span>
+          <h3 class="text-sm font-bold text-slate-200">اختر وضع التوليد</h3>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+          <label class="cursor-pointer">
+            <input type="radio" name="gen-mode" value="merged" checked class="peer hidden" onchange="onModeChange()">
+            <div class="peer-checked:border-amber-500 peer-checked:bg-amber-500/10 border-2 border-slate-700 rounded-xl p-3 transition-all hover:border-slate-600">
+              <div class="flex items-center gap-2 mb-1">
+                <span class="text-lg">🔗</span>
+                <span class="text-xs font-bold text-amber-400">كود موحّد كلي</span>
+              </div>
+              <p class="text-[10px] text-slate-400">كود واحد يصلح لكل الأزواج المحددة</p>
+              <p class="text-[9px] text-slate-500 mt-1" id="merged-preview">—</p>
+            </div>
+          </label>
+
+          <label class="cursor-pointer">
+            <input type="radio" name="gen-mode" value="groups" class="peer hidden" onchange="onModeChange()">
+            <div class="peer-checked:border-purple-500 peer-checked:bg-purple-500/10 border-2 border-slate-700 rounded-xl p-3 transition-all hover:border-slate-600">
+              <div class="flex items-center gap-2 mb-1">
+                <span class="text-lg">📦</span>
+                <span class="text-xs font-bold text-purple-400">مجموعات</span>
+              </div>
+              <p class="text-[10px] text-slate-400">كل دولة → كود موحّد بكل برامجها</p>
+              <p class="text-[9px] text-slate-500 mt-1" id="groups-preview">—</p>
+            </div>
+          </label>
+
+          <label class="cursor-pointer">
+            <input type="radio" name="gen-mode" value="separate" class="peer hidden" onchange="onModeChange()">
+            <div class="peer-checked:border-blue-500 peer-checked:bg-blue-500/10 border-2 border-slate-700 rounded-xl p-3 transition-all hover:border-slate-600">
+              <div class="flex items-center gap-2 mb-1">
+                <span class="text-lg">📋</span>
+                <span class="text-xs font-bold text-blue-400">منفصل</span>
+              </div>
+              <p class="text-[10px] text-slate-400">كود منفصل لكل زوج (الوضع القديم)</p>
+              <p class="text-[9px] text-slate-500 mt-1" id="separate-preview">—</p>
+            </div>
+          </label>
+        </div>
+
+        <!-- إعدادات مشتركة -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+          <div>
+            <label class="text-xs font-bold text-slate-400 mb-1.5 block">القيمة ($) لكل كود</label>
+            <input type="number" id="v-value" value="5" min="1" step="0.5"
+                   class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:border-amber-500 outline-none text-sm">
+          </div>
+          <div>
+            <label class="text-xs font-bold text-slate-400 mb-1.5 block">الصلاحية (أيام)</label>
+            <input type="number" id="v-days" value="30" min="1" max="365"
+                   class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:border-amber-500 outline-none text-sm">
+          </div>
+          <div>
+            <label class="text-xs font-bold text-slate-400 mb-1.5 block">عدد الأكواد لكل وحدة</label>
+            <input type="number" id="v-count" value="1" min="1" max="1000"
+                   class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:border-amber-500 outline-none text-sm">
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <label class="text-xs font-bold text-slate-400 mb-1.5 block">ملاحظة (اختياري)</label>
           <input type="text" id="v-note" placeholder="بيع لوكيل..."
                  class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:border-amber-500 outline-none text-sm">
         </div>
-      </div>
 
-      <div class="flex items-center gap-2 flex-wrap mb-3">
-        <input type="text" id="catalog-search" placeholder="🔎 ابحث عن دولة أو خدمة..."
-               oninput="filterCatalog(this.value)"
-               class="flex-1 min-w-[220px] px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl focus:border-amber-500 outline-none text-sm">
-        <div class="text-[11px] text-slate-400 whitespace-nowrap">
-          دول: <span id="count-countries" class="font-bold text-amber-400">0</span>
-          · خدمات متاحة: <span id="count-services" class="font-bold text-emerald-400">0</span>
-        </div>
-      </div>
-
-      <div class="bg-slate-900/50 rounded-xl border border-slate-700 p-2 mb-4 max-h-[500px] overflow-y-auto">
-        <div id="catalog-tree">
-          <p class="text-[11px] text-slate-500 text-center py-6">جاري تحميل الكتالوج...</p>
-        </div>
-      </div>
-
-      <!-- تفاصيل الاختيارات -->
-      <div class="bg-slate-900/50 rounded-xl border border-slate-700 p-3 mb-4">
-        <div class="flex items-center justify-between mb-2">
-          <p class="text-xs font-bold text-slate-300">🔎 الاختيارات</p>
-          <div class="flex items-center gap-3 text-[10px]">
-            <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded bg-emerald-500"></span> متوفر</span>
-            <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded bg-red-500"></span> غير متوفر</span>
-          </div>
-        </div>
-        <div class="overflow-x-auto max-h-64 overflow-y-auto">
-          <table class="w-full text-right text-[11px]">
-            <thead class="text-slate-400 border-b border-slate-700 sticky top-0 bg-slate-900/95">
-              <tr>
-                <th class="px-2 py-1.5">الدولة</th>
-                <th class="px-2 py-1.5">الخدمة</th>
-                <th class="px-2 py-1.5">الحالة</th>
-                <th class="px-2 py-1.5">المتاح</th>
-                <th class="px-2 py-1.5">المشغل</th>
-                <th class="px-2 py-1.5">سعر 5SIM</th>
-                <th class="px-2 py-1.5">سعر البيع</th>
-                <th class="px-2 py-1.5">الربح</th>
-                <th class="px-2 py-1.5">العدد</th>
-                <th class="px-2 py-1.5 text-center">توليد</th>
-                <th class="px-2 py-1.5"></th>
-              </tr>
-            </thead>
-            <tbody id="details-tbody" class="divide-y divide-slate-700/40">
-              <tr><td colspan="11" class="px-2 py-4 text-center text-slate-500">اختر خدمة واحدة على الأقل</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- خيار الدمج -->
-      <div id="merge-box" class="bg-slate-900/50 rounded-xl border-2 border-slate-700 p-3 mb-4">
-        <label class="flex items-start gap-2 cursor-pointer">
-          <input type="checkbox" id="merge-mode" checked
-                 class="accent-amber-500 w-4 h-4 mt-0.5"
-                 onchange="onMergeToggle()">
-          <div class="flex-1">
-            <span class="text-xs font-bold text-slate-200">
-              🔗 دمج الاختيارات في كود واحد — يصلح لأي من الأزواج المختارة
-            </span>
-            <p class="text-[10px] text-slate-500 mt-1">
-              عند التفعيل: يُولّد كود واحد لكل "عدد" ويصلح لأي دولة/خدمة مختارة.
-              عند الإلغاء: كود منفصل لكل زوج (الوضع القديم).
-            </p>
-            <div id="merge-info" class="text-[11px] text-amber-400 mt-2 hidden">
-              سيُولّد <span id="merge-count-label" class="font-bold">0</span> كود،
-              كل كود يصلح لـ <span id="merge-pairs-label" class="font-bold">0</span> زوج:
-              <span id="merge-pairs-list" class="text-amber-300"></span>
+        <!-- ملخص + تحليل مالي -->
+        <div class="bg-slate-800/50 rounded-lg p-3 mb-3">
+          <div class="text-xs text-slate-300 mb-1" id="summary-text">—</div>
+          <div id="financial-info" class="hidden mt-2 grid grid-cols-2 md:grid-cols-4 gap-2">
+            <div class="bg-slate-900/60 rounded-lg p-2 border border-slate-700">
+              <div class="text-[10px] text-slate-400">تكلفة 5SIM</div>
+              <div id="fivesim-cost-label" class="text-xs font-bold text-red-400">$0.00</div>
+            </div>
+            <div class="bg-slate-900/60 rounded-lg p-2 border border-slate-700">
+              <div class="text-[10px] text-slate-400">سعر البيع</div>
+              <div id="sale-price-label" class="text-xs font-bold text-amber-400">$0.00</div>
+            </div>
+            <div class="bg-slate-900/60 rounded-lg p-2 border border-slate-700">
+              <div class="text-[10px] text-slate-400">الربح المتوقع</div>
+              <div id="profit-label" class="text-xs font-bold text-emerald-400">$0.00</div>
+            </div>
+            <div class="bg-slate-900/60 rounded-lg p-2 border border-slate-700">
+              <div class="text-[10px] text-slate-400">هامش الربح</div>
+              <div id="profit-pct-label" class="text-xs font-bold text-cyan-400">0%</div>
             </div>
           </div>
-        </label>
-      </div>
+        </div>
 
-      <div class="flex items-center gap-3 flex-wrap mb-4">
-        <div class="text-xs text-slate-400">
-          الأزواج المختارة: <span id="pairs-count" class="font-bold text-amber-400">0</span>
-          · إجمالي الأكواد: <span id="total-codes-count" class="font-bold text-amber-400">0</span>
-          · إجمالي القيمة: <span id="batch-total" class="font-bold text-amber-400">$0.00</span>
+        <div class="flex items-center gap-2 flex-wrap">
+          <button onclick="generateMatrix(this)" class="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-bold px-6 py-2.5 rounded-xl transition-all shadow-lg text-sm flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            توليد الأكواد
+          </button>
+          <button onclick="resetMatrix()" class="bg-slate-700 hover:bg-slate-600 text-white font-bold px-4 py-2.5 rounded-xl transition-all text-sm">إعادة تعيين</button>
         </div>
       </div>
 
-      <!-- ✨ صندوق التحليل المالي -->
-      <div id="financial-info" class="hidden bg-gradient-to-r from-slate-900/80 to-slate-800/80 rounded-xl border border-emerald-700/30 p-3 mb-4">
-        <p class="text-xs font-bold text-emerald-400 mb-2">📊 تحليل مالي (تقديري)</p>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div class="bg-slate-900/60 rounded-lg p-2 border border-slate-700">
-            <div class="text-[10px] text-slate-400">تكلفة 5SIM</div>
-            <div id="fivesim-cost-label" class="text-sm font-bold text-red-400">$0.00</div>
-          </div>
-          <div class="bg-slate-900/60 rounded-lg p-2 border border-slate-700">
-            <div class="text-[10px] text-slate-400">سعر البيع</div>
-            <div id="sale-price-label" class="text-sm font-bold text-amber-400">$0.00</div>
-          </div>
-          <div class="bg-slate-900/60 rounded-lg p-2 border border-slate-700">
-            <div class="text-[10px] text-slate-400">الربح المتوقع</div>
-            <div id="profit-label" class="text-sm font-bold text-emerald-400">$0.00</div>
-          </div>
-          <div class="bg-slate-900/60 rounded-lg p-2 border border-slate-700">
-            <div class="text-[10px] text-slate-400">هامش الربح</div>
-            <div id="profit-pct-label" class="text-sm font-bold text-cyan-400">0%</div>
-          </div>
-        </div>
-        <p class="text-[9px] text-slate-500 mt-2">
-          ⚠️ السعر الفعلي قد يتغير لحظة الشراء من 5SIM. هذه تقديرات للعرض فقط.
-        </p>
-      </div>
-
-      <div class="flex items-center gap-2 flex-wrap mb-4">
-        <button onclick="generateVouchers(this)" class="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-bold px-6 py-2.5 rounded-xl transition-all shadow-lg text-sm flex items-center gap-2">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-          </svg>
-          توليد الأكواد
-        </button>
-        <button onclick="clearSelection()" class="bg-slate-700 hover:bg-slate-600 text-white font-bold px-4 py-2.5 rounded-xl transition-all text-sm">مسح التحديد</button>
-      </div>
-
+      <!-- مخرجات -->
       <div id="codes-output-wrap" class="hidden">
         <div class="flex items-center justify-between mb-2">
           <p class="text-xs font-bold text-emerald-400">✅ الأكواد المُولّدة</p>
@@ -229,11 +273,50 @@
             <button onclick="downloadCodes()" class="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg font-bold transition-colors">⬇️ تنزيل TXT</button>
           </div>
         </div>
-        <textarea id="codes-output" readonly rows="10" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl mono text-xs outline-none" dir="ltr"></textarea>
+        <textarea id="codes-output" readonly rows="12" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl mono text-xs outline-none" dir="ltr"></textarea>
       </div>
     </section>
 
-    <!-- ══ Vouchers List ═══════════════════════════════════ -->
+    <!-- ══ Catalog Tree (Collapsible — لعرض الأسعار) ══ -->
+    <section class="bg-slate-800 rounded-2xl border border-slate-700 p-5">
+      <details class="group">
+        <summary class="cursor-pointer flex items-center justify-between list-none">
+          <h2 class="text-lg font-bold flex items-center gap-2">
+            <span class="w-1 h-5 bg-gradient-to-b from-cyan-400 to-sky-500 rounded-full"></span>
+            📊 كتالوج 5SIM (الأسعار)
+          </h2>
+          <span class="text-xs text-slate-400 group-open:rotate-180 transition-transform">▼</span>
+        </summary>
+
+        <div class="mt-4">
+          <div class="bg-amber-500/10 border border-amber-500/30 rounded-lg p-2 mb-3 flex items-center gap-2">
+            <span>💎</span>
+            <span class="text-[11px] text-amber-300 font-bold">
+              الأسعار مرئية لك فقط — الزبائن لا يرونها
+            </span>
+          </div>
+
+          <div class="mb-3">
+            <input type="text" id="catalog-search" placeholder="🔎 ابحث عن دولة أو خدمة..."
+                   oninput="filterCatalog(this.value)"
+                   class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl focus:border-amber-500 outline-none text-sm">
+          </div>
+
+          <div class="text-[11px] text-slate-400 mb-2">
+            دول: <span id="count-countries" class="font-bold text-amber-400">0</span>
+            · خدمات متاحة: <span id="count-services" class="font-bold text-emerald-400">0</span>
+          </div>
+
+          <div class="bg-slate-900/50 rounded-xl border border-slate-700 p-2 max-h-[600px] overflow-y-auto">
+            <div id="catalog-tree">
+              <p class="text-[11px] text-slate-500 text-center py-6">جاري تحميل الكتالوج...</p>
+            </div>
+          </div>
+        </div>
+      </details>
+    </section>
+
+    <!-- ══ Vouchers List ══ -->
     <section class="bg-slate-800 rounded-2xl border border-slate-700 p-5">
       <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h2 class="text-lg font-bold flex items-center gap-2">
@@ -281,7 +364,7 @@
       </div>
     </section>
 
-    <!-- ══ Access Codes ════════════════════════════════════ -->
+    <!-- ══ Access Codes ══ -->
     <section class="bg-slate-800 rounded-2xl border border-slate-700 p-5">
       <h2 class="text-lg font-bold flex items-center gap-2 mb-4">
         <span class="w-1 h-5 bg-gradient-to-b from-cyan-400 to-sky-500 rounded-full"></span>
@@ -372,7 +455,7 @@
       </div>
     </section>
 
-    <!-- ══ Deposits ════════════════════════════════════════ -->
+    <!-- ══ Deposits ══ -->
     <section class="bg-slate-800 rounded-2xl border border-slate-700 p-5">
       <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h2 class="text-lg font-bold flex items-center gap-2">
@@ -423,7 +506,7 @@
 
 <script>
 // ══════════════════════════════════════════════════════════════
-// 🔓 بدون تسجيل دخول
+// Helpers
 // ══════════════════════════════════════════════════════════════
 function adminFetch(url, opts = {}) {
   return fetch(url, {
@@ -435,9 +518,6 @@ function adminFetch(url, opts = {}) {
   });
 }
 
-// ══════════════════════════════════════════════════════════════
-// Toast
-// ══════════════════════════════════════════════════════════════
 function toast(msg, type = 'info') {
   const el = document.getElementById('toast');
   const colors = {
@@ -453,9 +533,6 @@ function toast(msg, type = 'info') {
   el._t = setTimeout(() => el.classList.add('hidden'), 4000);
 }
 
-// ══════════════════════════════════════════════════════════════
-// Helpers
-// ══════════════════════════════════════════════════════════════
 function escapeHtml(s) {
   if (s == null) return '';
   return String(s)
@@ -464,16 +541,6 @@ function escapeHtml(s) {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
-}
-
-function fmtPrice(v) {
-  if (v == null) return '—';
-  return '$' + Number(v).toFixed(2);
-}
-
-function fmtFivesim(v) {
-  if (v == null) return '—';
-  return '$' + Number(v).toFixed(3);
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -507,12 +574,22 @@ async function loadWallet(btn) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// Catalog
+// Catalog State
 // ══════════════════════════════════════════════════════════════
 let CATALOG = { countries: [], ok: false, error: null, markup_percent: 0, fetched_at: null };
-let SELECTED = new Map();
 let SEARCH_FILTER = '';
 
+const MATRIX = {
+  selectedCountries: new Set(),
+  selectedServices: new Set(),
+  selectedPairs: new Set(),
+  countrySearch: '',
+  serviceSearch: '',
+};
+
+// ══════════════════════════════════════════════════════════════
+// Load Catalog
+// ══════════════════════════════════════════════════════════════
 async function loadCatalog(force = false) {
   try {
     const url = force ? '/api/v1/admin/catalog/refresh' : '/api/v1/admin/catalog';
@@ -534,7 +611,10 @@ async function loadCatalog(force = false) {
 
     renderTree();
     updateMeta();
-    updatePairsCounter();
+    renderCountryPicker();
+    renderServicePicker();
+    renderMatrix();
+    updateModePreviews();
     if (force) toast('✅ تم تحديث الكتالوج', 'success');
   } catch (e) {
     console.error('loadCatalog:', e);
@@ -553,6 +633,9 @@ async function refreshCatalog(btn) {
   }
 }
 
+// ══════════════════════════════════════════════════════════════
+// Catalog Tree (للأسعار)
+// ══════════════════════════════════════════════════════════════
 function updateMeta() {
   const meta = document.getElementById('catalog-meta');
   if (!CATALOG.fetched_at) { meta.textContent = ''; return; }
@@ -578,7 +661,6 @@ function updateMeta() {
   document.getElementById('count-countries').textContent = totalCountries;
   document.getElementById('count-services').textContent = totalServices;
 
-  // شارة نطاق الأسعار
   const priceRangeBadge = document.getElementById('price-range-badge');
   if (priceRangeBadge && allPrices.length) {
     priceRangeBadge.innerHTML = `
@@ -618,7 +700,6 @@ function renderTree() {
     const services = countryMatch ? c.services : matchingServices;
     const availCount = services.filter(s => s.available).length;
 
-    // حساب أرخص سعر ومتوسط الأسعار
     const availableWithPrice = services.filter(s => s.available && s.cost != null);
     let minPrice = null;
     let avgPrice = null;
@@ -650,14 +731,13 @@ function renderTree() {
     html += `
       <div class="mb-1 border border-slate-700/50 rounded-lg overflow-hidden" data-country="${escapeHtml(c.slug)}">
         <div class="country-row flex items-center justify-between px-3 py-2 bg-slate-800/60"
-             onclick="toggleCountry('${escapeHtml(c.slug)}')">
+             onclick="toggleCountryTree('${escapeHtml(c.slug)}')">
           <div class="flex items-center gap-2 min-w-0 flex-1">
             <span class="text-base">${c.flag || '🏳️'}</span>
             <div class="min-w-0">
               <div class="flex items-center gap-2 flex-wrap">
                 <span class="font-bold text-[12px]">${escapeHtml(c.name)}</span>
                 <span class="mono text-[10px] text-slate-500">${escapeHtml(c.code || '')}</span>
-                ${c.prefix ? `<span class="mono text-[10px] text-slate-500">+${escapeHtml(c.prefix)}</span>` : ''}
               </div>
               ${priceLine}
             </div>
@@ -681,27 +761,16 @@ function renderTree() {
     html = '<p class="text-[11px] text-slate-500 text-center py-6">لا نتائج مطابقة للبحث</p>';
   }
   tree.innerHTML = html;
-
-  const selectedCountries = new Set(Array.from(SELECTED.values()).map(r => r.countrySlug));
-  selectedCountries.forEach(slug => {
-    const box = document.querySelector(`[data-services="${CSS.escape(slug)}"]`);
-    const chevron = document.querySelector(`[data-country="${CSS.escape(slug)}"] .country-chevron`);
-    if (box) box.classList.remove('hidden');
-    if (chevron) chevron.style.transform = 'rotate(180deg)';
-  });
 }
 
 function renderServiceRow(c, s) {
-  const key = `${c.slug}:${s.id}`;
-  const isSel = SELECTED.has(key);
-  const availableClass = s.available ? '' : 'unavailable';
-  const labelClass = s.available ? '' : 'label-unavailable';
-
   const salePrice = s.cost != null ? Number(s.cost) : null;
   const fivesimPrice = s.fivesim_cost != null ? Number(s.fivesim_cost) : null;
   const profit = (salePrice != null && fivesimPrice != null)
     ? (salePrice - fivesimPrice)
     : null;
+
+  const labelClass = s.available ? '' : 'label-unavailable';
 
   let priceHtml = '';
   if (s.available && salePrice != null) {
@@ -719,12 +788,8 @@ function renderServiceRow(c, s) {
   }
 
   return `
-    <label class="flex items-center justify-between gap-2 px-2 py-1.5 rounded-md hover:bg-slate-700/40 cursor-pointer service-chip ${availableClass}">
+    <div class="flex items-center justify-between gap-2 px-2 py-1.5 rounded-md ${s.available ? '' : 'opacity-55'}">
       <div class="flex items-center gap-2 min-w-0 flex-1">
-        <input type="checkbox" class="accent-amber-500 service-cb ${s.available ? '' : 'cb-unavailable'}"
-               data-country="${escapeHtml(c.slug)}" data-service="${escapeHtml(s.id)}"
-               ${isSel ? 'checked' : ''}
-               onchange="onServiceToggle('${escapeHtml(c.slug)}', '${escapeHtml(s.id)}', this.checked)">
         <span class="text-sm">${s.icon || '📱'}</span>
         <span class="text-[11px] font-bold truncate ${labelClass}">${escapeHtml(s.name)}</span>
       </div>
@@ -734,11 +799,11 @@ function renderServiceRow(c, s) {
           : `<span class="text-red-400 whitespace-nowrap">—</span>`}
         ${priceHtml}
       </div>
-    </label>
+    </div>
   `;
 }
 
-function toggleCountry(slug) {
+function toggleCountryTree(slug) {
   const box = document.querySelector(`[data-services="${CSS.escape(slug)}"]`);
   const chevron = document.querySelector(`[data-country="${CSS.escape(slug)}"] .country-chevron`);
   if (!box) return;
@@ -747,365 +812,536 @@ function toggleCountry(slug) {
   if (chevron) chevron.style.transform = isHidden ? 'rotate(180deg)' : '';
 }
 
-function onServiceToggle(countrySlug, serviceId, checked) {
-  const key = `${countrySlug}:${serviceId}`;
-  if (checked) {
-    const country = CATALOG.countries.find(c => c.slug === countrySlug);
-    const service = country?.services.find(s => s.id === serviceId);
-    if (!country || !service) return;
-    SELECTED.set(key, {
-      countrySlug,
-      serviceId,
-      countryName: country.name,
-      serviceName: service.name,
-      flag: country.flag,
-      available: !!service.available,
-      count: service.count || 0,
-      operator: service.operator,
-      rate: service.rate,
-      salePrice: service.cost != null ? Number(service.cost) : null,
-      fivesimPrice: service.fivesim_cost != null ? Number(service.fivesim_cost) : null,
-      pairCount: 1,
-    });
-  } else {
-    SELECTED.delete(key);
-  }
-  renderDetails();
-  updatePairsCounter();
-}
-
-function clearSelection() {
-  SELECTED.clear();
-  document.querySelectorAll('input.service-cb').forEach(cb => { cb.checked = false; });
-  renderDetails();
-  updatePairsCounter();
-}
-
-function updatePairCount(key, val) {
-  const r = SELECTED.get(key);
-  if (!r) return;
-  let n = parseInt(val, 10);
-  if (!n || n < 1) n = 1;
-  if (n > 1000) n = 1000;
-  r.pairCount = n;
-  updatePairsCounter();
-}
-
-function removePair(key) {
-  SELECTED.delete(key);
-  const [c, s] = key.split(':');
-  const cb = document.querySelector(
-    `input.service-cb[data-country="${CSS.escape(c)}"][data-service="${CSS.escape(s)}"]`
+// ══════════════════════════════════════════════════════════════
+// Country Picker (Multi-select)
+// ══════════════════════════════════════════════════════════════
+function renderCountryPicker() {
+  const el = document.getElementById('country-picker');
+  if (!el) return;
+  const q = MATRIX.countrySearch.toLowerCase();
+  const countries = (CATALOG.countries || []).filter(c =>
+    !q || c.name.toLowerCase().includes(q) || c.slug.toLowerCase().includes(q) || (c.code || '').toLowerCase().includes(q)
   );
-  if (cb) cb.checked = false;
-  renderDetails();
-  updatePairsCounter();
-}
 
-function renderDetails() {
-  const tbody = document.getElementById('details-tbody');
-  const rows = Array.from(SELECTED.entries());
-
-  if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="11" class="px-2 py-4 text-center text-slate-500">اختر خدمة واحدة على الأقل</td></tr>';
+  if (!countries.length) {
+    el.innerHTML = '<p class="text-[11px] text-slate-500 text-center py-4 col-span-full">لا نتائج</p>';
+    document.getElementById('selected-countries-count').textContent = MATRIX.selectedCountries.size;
     return;
   }
 
-  tbody.innerHTML = rows.map(([key, r]) => {
-    const statusLabel = r.available
-      ? '<span class="bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full text-[10px] font-bold">متوفر</span>'
-      : '<span class="bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full text-[10px] font-bold">غير متوفر</span>';
-
-    const salePrice = r.salePrice != null ? r.salePrice : null;
-    const fivesimPrice = r.fivesimPrice != null ? r.fivesimPrice : null;
-    const profit = (salePrice != null && fivesimPrice != null)
-      ? (salePrice - fivesimPrice)
-      : null;
-
-    const profitBadge = profit != null
-      ? `<span class="text-emerald-400 font-bold">+$${profit.toFixed(2)}</span>
-         <span class="text-slate-500 text-[9px]">(${((profit / fivesimPrice) * 100).toFixed(0)}%)</span>`
-      : '—';
-
+  el.innerHTML = countries.map(c => {
+    const sel = MATRIX.selectedCountries.has(c.slug);
     return `
-      <tr class="hover:bg-slate-700/20">
-        <td class="px-2 py-1.5">${r.flag || '🏳️'} ${escapeHtml(r.countryName)}</td>
-        <td class="px-2 py-1.5">${escapeHtml(r.serviceName)}</td>
-        <td class="px-2 py-1.5">${statusLabel}</td>
-        <td class="px-2 py-1.5 font-bold ${r.available ? 'text-emerald-400' : 'text-slate-500'}">${r.count ?? 0}</td>
-        <td class="px-2 py-1.5 mono text-[10px]">${escapeHtml(r.operator || '—')}</td>
-        <td class="px-2 py-1.5 mono text-[10px] text-slate-400">${fivesimPrice != null ? '$' + fivesimPrice.toFixed(3) : '—'}</td>
-        <td class="px-2 py-1.5 font-bold text-amber-400">${salePrice != null ? '$' + salePrice.toFixed(2) : '—'}</td>
-        <td class="px-2 py-1.5">${profitBadge}</td>
-        <td class="px-2 py-1.5">
-          <input type="number" min="1" max="1000" value="${r.pairCount ?? 1}"
-                 class="w-16 px-2 py-1 bg-slate-900 border border-slate-700 rounded-md text-[11px] outline-none focus:border-amber-500"
-                 onchange="updatePairCount('${key}', this.value)">
+      <button type="button" onclick="toggleCountryPick('${escapeHtml(c.slug)}')"
+              class="flex items-center gap-1.5 p-2 rounded-lg border-2 text-right transition-all
+                     ${sel ? 'border-blue-500 bg-blue-500/10' : 'border-slate-700 hover:border-slate-500 bg-slate-900/30'}">
+        <span class="text-sm">${c.flag || '🏳️'}</span>
+        <span class="text-[11px] font-bold truncate flex-1">${escapeHtml(c.name)}</span>
+        ${sel ? '<span class="text-emerald-400 text-xs">✓</span>' : ''}
+      </button>
+    `;
+  }).join('');
+
+  document.getElementById('selected-countries-count').textContent = MATRIX.selectedCountries.size;
+}
+
+function toggleCountryPick(slug) {
+  if (MATRIX.selectedCountries.has(slug)) {
+    MATRIX.selectedCountries.delete(slug);
+  } else {
+    MATRIX.selectedCountries.add(slug);
+  }
+  Array.from(MATRIX.selectedPairs).forEach(k => {
+    if (k.startsWith(slug + ':')) MATRIX.selectedPairs.delete(k);
+  });
+  renderCountryPicker();
+  renderServicePicker();
+  renderMatrix();
+}
+
+function selectAllCountries() {
+  const q = MATRIX.countrySearch.toLowerCase();
+  (CATALOG.countries || []).forEach(c => {
+    if (!q || c.name.toLowerCase().includes(q) || c.slug.toLowerCase().includes(q)) {
+      MATRIX.selectedCountries.add(c.slug);
+    }
+  });
+  renderCountryPicker();
+  renderServicePicker();
+  renderMatrix();
+}
+
+function clearAllCountries() {
+  MATRIX.selectedCountries.clear();
+  MATRIX.selectedPairs.clear();
+  renderCountryPicker();
+  renderServicePicker();
+  renderMatrix();
+}
+
+function filterCountryPicker(q) {
+  MATRIX.countrySearch = q || '';
+  renderCountryPicker();
+}
+
+// ══════════════════════════════════════════════════════════════
+// Service Picker (Multi-select)
+// ══════════════════════════════════════════════════════════════
+function renderServicePicker() {
+  const el = document.getElementById('service-picker');
+  if (!el) return;
+
+  if (!MATRIX.selectedCountries.size) {
+    el.innerHTML = '<p class="text-[11px] text-slate-500 text-center py-4 col-span-full">اختر دولة أولاً</p>';
+    document.getElementById('selected-services-count').textContent = '0';
+    return;
+  }
+
+  const servicesMap = new Map();
+  MATRIX.selectedCountries.forEach(slug => {
+    const country = CATALOG.countries.find(c => c.slug === slug);
+    if (!country) return;
+    (country.services || []).forEach(s => {
+      if (!servicesMap.has(s.id)) {
+        servicesMap.set(s.id, {
+          id: s.id,
+          name: s.name,
+          icon: s.icon || '📱',
+          availableIn: new Set(),
+          totalCount: 0,
+        });
+      }
+      const m = servicesMap.get(s.id);
+      if (s.available) {
+        m.availableIn.add(slug);
+        m.totalCount += (s.count || 0);
+      }
+    });
+  });
+
+  const q = MATRIX.serviceSearch.toLowerCase();
+  const services = Array.from(servicesMap.values()).filter(s =>
+    !q || s.name.toLowerCase().includes(q) || s.id.toLowerCase().includes(q)
+  );
+
+  services.sort((a, b) => b.totalCount - a.totalCount);
+
+  if (!services.length) {
+    el.innerHTML = '<p class="text-[11px] text-slate-500 text-center py-4 col-span-full">لا نتائج</p>';
+    document.getElementById('selected-services-count').textContent = '0';
+    return;
+  }
+
+  el.innerHTML = services.map(s => {
+    const sel = MATRIX.selectedServices.has(s.id);
+    const availCount = s.availableIn.size;
+    return `
+      <button type="button" onclick="toggleServicePick('${escapeHtml(s.id)}')"
+              class="flex items-center gap-1.5 p-2 rounded-lg border-2 text-right transition-all
+                     ${sel ? 'border-purple-500 bg-purple-500/10' : 'border-slate-700 hover:border-slate-500 bg-slate-900/30'}">
+        <span class="text-sm">${s.icon}</span>
+        <div class="flex-1 min-w-0">
+          <div class="text-[11px] font-bold truncate">${escapeHtml(s.name)}</div>
+          <div class="text-[9px] text-slate-500">${availCount}/${MATRIX.selectedCountries.size} دولة</div>
+        </div>
+        ${sel ? '<span class="text-emerald-400 text-xs">✓</span>' : ''}
+      </button>
+    `;
+  }).join('');
+
+  document.getElementById('selected-services-count').textContent = MATRIX.selectedServices.size;
+}
+
+function toggleServicePick(id) {
+  if (MATRIX.selectedServices.has(id)) {
+    MATRIX.selectedServices.delete(id);
+  } else {
+    MATRIX.selectedServices.add(id);
+  }
+  Array.from(MATRIX.selectedPairs).forEach(k => {
+    if (k.endsWith(':' + id)) MATRIX.selectedPairs.delete(k);
+  });
+  renderServicePicker();
+  renderMatrix();
+}
+
+function selectAllServices() {
+  const q = MATRIX.serviceSearch.toLowerCase();
+  const servicesSet = new Set();
+  MATRIX.selectedCountries.forEach(slug => {
+    const country = CATALOG.countries.find(c => c.slug === slug);
+    if (!country) return;
+    (country.services || []).forEach(s => {
+      if (!q || s.name.toLowerCase().includes(q) || s.id.toLowerCase().includes(q)) {
+        servicesSet.add(s.id);
+      }
+    });
+  });
+  servicesSet.forEach(id => MATRIX.selectedServices.add(id));
+  renderServicePicker();
+  renderMatrix();
+}
+
+function clearAllServices() {
+  MATRIX.selectedServices.clear();
+  MATRIX.selectedPairs.clear();
+  renderServicePicker();
+  renderMatrix();
+}
+
+function filterServicePicker(q) {
+  MATRIX.serviceSearch = q || '';
+  renderServicePicker();
+}
+
+// ══════════════════════════════════════════════════════════════
+// Matrix
+// ══════════════════════════════════════════════════════════════
+function renderMatrix() {
+  const section = document.getElementById('matrix-section');
+  const modeSection = document.getElementById('mode-section');
+  const thead = document.getElementById('matrix-thead');
+  const tbody = document.getElementById('matrix-tbody');
+
+  if (!MATRIX.selectedCountries.size || !MATRIX.selectedServices.size) {
+    section.classList.add('hidden');
+    modeSection.classList.add('hidden');
+    return;
+  }
+
+  section.classList.remove('hidden');
+  modeSection.classList.remove('hidden');
+
+  const countries = Array.from(MATRIX.selectedCountries)
+    .map(slug => CATALOG.countries.find(c => c.slug === slug))
+    .filter(Boolean);
+  const services = Array.from(MATRIX.selectedServices).sort();
+
+  thead.innerHTML = `
+    <tr class="bg-slate-800 border-b border-slate-700">
+      <th class="px-2 py-2 text-right text-[10px] font-bold text-slate-400 sticky right-0 bg-slate-800 z-10">البرنامج ↓ / الدولة →</th>
+      ${countries.map(c => `
+        <th class="px-2 py-2 text-center text-[10px] font-bold text-slate-300 min-w-[90px]">
+          <div class="text-base">${c.flag || '🏳️'}</div>
+          <div class="truncate">${escapeHtml(c.name)}</div>
+        </th>
+      `).join('')}
+    </tr>
+  `;
+
+  tbody.innerHTML = services.map(sid => {
+    const serviceMeta = findServiceMeta(sid);
+    return `
+      <tr class="border-b border-slate-700/50 hover:bg-slate-800/30">
+        <td class="px-2 py-1.5 text-[11px] font-bold text-slate-300 sticky right-0 bg-slate-900/95 z-10">
+          <div class="flex items-center gap-1">
+            <span>${serviceMeta?.icon || '📱'}</span>
+            <span class="truncate">${escapeHtml(serviceMeta?.name || sid)}</span>
+          </div>
         </td>
-        <td class="px-2 py-1.5 text-center">
-          <button onclick="generateForPair('${key}', this)"
-                  ${r.available ? '' : 'disabled'}
-                  class="text-[10px] font-bold px-2 py-1 rounded-md transition-colors
-                         ${r.available
-                           ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30'
-                           : 'bg-slate-800 text-slate-600 border border-slate-700 cursor-not-allowed'}">
-            ⚡ توليد
-          </button>
-        </td>
-        <td class="px-2 py-1.5 text-center">
-          <button onclick="removePair('${key}')" class="text-[10px] text-slate-400 hover:text-red-400" title="إزالة">✕</button>
-        </td>
+        ${countries.map(c => {
+          const service = (c.services || []).find(s => s.id === sid);
+          const available = service?.available;
+          const count = service?.count || 0;
+          const price = service?.cost;
+          const key = `${c.slug}:${sid}`;
+          const selected = MATRIX.selectedPairs.has(key);
+
+          if (!available) {
+            return `<td class="px-1 py-1 text-center">
+              <div class="bg-slate-800/50 border border-slate-700 rounded-lg p-1.5 text-red-400 text-[9px]">
+                ✗ غير متوفر
+              </div>
+            </td>`;
+          }
+
+          return `<td class="px-1 py-1 text-center">
+            <button type="button" onclick="togglePairPick('${escapeHtml(key)}')"
+                    class="w-full rounded-lg p-1.5 border-2 transition-all text-[10px]
+                           ${selected
+                             ? 'border-emerald-500 bg-emerald-500/20 text-emerald-300'
+                             : 'border-slate-700 bg-slate-800/50 text-slate-400 hover:border-slate-500'}">
+              <div class="font-bold">${selected ? '✓' : count}</div>
+              ${price != null ? `<div class="text-[9px] ${selected ? 'text-emerald-400' : 'text-amber-400'}">$${Number(price).toFixed(2)}</div>` : ''}
+            </button>
+          </td>`;
+        }).join('')}
       </tr>
     `;
   }).join('');
+
+  document.getElementById('selected-pairs-count').textContent = MATRIX.selectedPairs.size;
+  updateModePreviews();
 }
 
-function isMergeMode() {
-  const el = document.getElementById('merge-mode');
-  return el ? el.checked : false;
-}
-
-function onMergeToggle() {
-  const box = document.getElementById('merge-box');
-  if (isMergeMode()) {
-    box.classList.add('active');
-  } else {
-    box.classList.remove('active');
+function findServiceMeta(sid) {
+  for (const c of (CATALOG.countries || [])) {
+    const s = (c.services || []).find(x => x.id === sid);
+    if (s) return { id: s.id, name: s.name, icon: s.icon };
   }
-  updatePairsCounter();
+  return null;
 }
 
-function updatePairsCounter() {
-  const rows = Array.from(SELECTED.values());
-  const value = parseFloat(document.getElementById('v-value').value) || 0;
-  const merge = isMergeMode();
-
-  let totalCodes = 0;
-  if (merge) {
-    totalCodes = rows.length ? Math.max(...rows.map(r => parseInt(r.pairCount, 10) || 1)) : 0;
+function togglePairPick(key) {
+  if (MATRIX.selectedPairs.has(key)) {
+    MATRIX.selectedPairs.delete(key);
   } else {
-    totalCodes = rows.reduce((s, r) => s + (parseInt(r.pairCount, 10) || 0), 0);
+    MATRIX.selectedPairs.add(key);
   }
+  renderMatrix();
+}
 
-  // حساب التكاليف والأرباح
-  let totalFivesimCost = 0;
-  let totalSalePrice = 0;
-  let availableRows = 0;
-
-  if (merge) {
-    let maxFivesimCost = 0;
-    let maxSalePrice = 0;
-    rows.forEach(r => {
-      if (r.available && r.fivesimPrice != null) {
-        maxFivesimCost = Math.max(maxFivesimCost, r.fivesimPrice);
-        maxSalePrice = Math.max(maxSalePrice, r.salePrice || 0);
+function selectAllAvailablePairs() {
+  MATRIX.selectedCountries.forEach(slug => {
+    const country = CATALOG.countries.find(c => c.slug === slug);
+    if (!country) return;
+    MATRIX.selectedServices.forEach(sid => {
+      const service = (country.services || []).find(s => s.id === sid);
+      if (service?.available) {
+        MATRIX.selectedPairs.add(`${slug}:${sid}`);
       }
     });
-    totalFivesimCost = maxFivesimCost * totalCodes;
-    totalSalePrice = maxSalePrice * totalCodes;
-    availableRows = rows.filter(r => r.available).length;
-  } else {
-    rows.forEach(r => {
-      const n = parseInt(r.pairCount, 10) || 0;
-      if (r.available && r.fivesimPrice != null) {
-        totalFivesimCost += r.fivesimPrice * n;
-        totalSalePrice += (r.salePrice || 0) * n;
-        availableRows++;
-      }
-    });
-  }
+  });
+  renderMatrix();
+}
 
-  const totalProfit = totalSalePrice - totalFivesimCost;
+function clearAllPairs() {
+  MATRIX.selectedPairs.clear();
+  renderMatrix();
+}
 
-  document.getElementById('pairs-count').textContent = rows.length;
-  document.getElementById('total-codes-count').textContent = totalCodes;
-  document.getElementById('batch-total').textContent = '$' + (totalCodes * value).toFixed(2);
+// ══════════════════════════════════════════════════════════════
+// Mode previews + generation
+// ══════════════════════════════════════════════════════════════
+function onModeChange() {
+  updateModePreviews();
+  updateFinancialInfo();
+}
 
-  // صندوق التحليل المالي
-  const financialEl = document.getElementById('financial-info');
-  if (financialEl) {
-    if (totalCodes > 0 && availableRows > 0) {
-      financialEl.classList.remove('hidden');
-      document.getElementById('fivesim-cost-label').textContent = '$' + totalFivesimCost.toFixed(2);
-      document.getElementById('sale-price-label').textContent = '$' + totalSalePrice.toFixed(2);
-      document.getElementById('profit-label').textContent = '$' + totalProfit.toFixed(2);
-      const profitPct = totalFivesimCost > 0 ? (totalProfit / totalFivesimCost) * 100 : 0;
-      document.getElementById('profit-pct-label').textContent = profitPct.toFixed(0) + '%';
+function updateModePreviews() {
+  const pairs = Array.from(MATRIX.selectedPairs);
+  const count = parseInt(document.getElementById('v-count')?.value, 10) || 1;
+
+  const mergedEl = document.getElementById('merged-preview');
+  const groupsEl = document.getElementById('groups-preview');
+  const separateEl = document.getElementById('separate-preview');
+
+  if (mergedEl) mergedEl.textContent = `${count} كود × ${pairs.length} زوج`;
+
+  const groups = new Map();
+  pairs.forEach(key => {
+    const [c, s] = key.split(':');
+    if (!groups.has(c)) groups.set(c, []);
+    groups.get(c).push(s);
+  });
+  if (groupsEl) groupsEl.textContent = `${groups.size} كود × ${count} = ${groups.size * count} كود`;
+
+  if (separateEl) separateEl.textContent = `${pairs.length} كود × ${count} = ${pairs.length * count} كود`;
+
+  const mode = document.querySelector('input[name="gen-mode"]:checked')?.value || 'merged';
+  const summaryEl = document.getElementById('summary-text');
+  if (summaryEl) {
+    let desc = '';
+    if (mode === 'merged') {
+      desc = `🔗 كود واحد يصلح لـ <b>${pairs.length}</b> زوج × <b>${count}</b> = <b>${count}</b> كود`;
+    } else if (mode === 'groups') {
+      desc = `📦 <b>${groups.size}</b> مجموعة × <b>${count}</b> = <b>${groups.size * count}</b> كود`;
     } else {
-      financialEl.classList.add('hidden');
+      desc = `📋 <b>${pairs.length}</b> زوج × <b>${count}</b> = <b>${pairs.length * count}</b> كود`;
     }
+    summaryEl.innerHTML = desc;
   }
 
-  const info = document.getElementById('merge-info');
-  if (merge && rows.length) {
-    info.classList.remove('hidden');
-    document.getElementById('merge-count-label').textContent = totalCodes;
-    document.getElementById('merge-pairs-label').textContent = rows.length;
-    document.getElementById('merge-pairs-list').textContent =
-      ' (' + rows.map(r => `${r.countryName}/${r.serviceName}`).join(', ') + ')';
-  } else {
-    info.classList.add('hidden');
-  }
+  updateFinancialInfo();
 }
-['v-value'].forEach(id => {
-  const el = document.getElementById(id);
-  if (el) el.addEventListener('input', updatePairsCounter);
-});
 
-// ══════════════════════════════════════════════════════════════
-// Generate for ONE pair
-// ══════════════════════════════════════════════════════════════
-async function generateForPair(key, btn) {
-  const r = SELECTED.get(key);
-  if (!r) return;
-  if (!r.available) { toast('❌ هذا الزوج غير متوفر في 5SIM', 'error'); return; }
+function updateFinancialInfo() {
+  const financialEl = document.getElementById('financial-info');
+  if (!financialEl) return;
 
-  const value = parseFloat(document.getElementById('v-value').value);
-  const days = parseInt(document.getElementById('v-days').value, 10);
-  const note = document.getElementById('v-note').value;
-  const pairCount = parseInt(r.pairCount, 10) || 1;
+  const pairs = Array.from(MATRIX.selectedPairs);
+  if (!pairs.length) {
+    financialEl.classList.add('hidden');
+    return;
+  }
 
-  if (!value || value < 1) { toast('القيمة يجب أن تكون ≥ $1', 'error'); return; }
-  if (!days || days < 1) { toast('الصلاحية يجب أن تكون ≥ يوم', 'error'); return; }
-  if (pairCount < 1 || pairCount > 1000) { toast('العدد يجب أن يكون 1-1000', 'error'); return; }
+  const count = parseInt(document.getElementById('v-count')?.value, 10) || 1;
+  const mode = document.querySelector('input[name="gen-mode"]:checked')?.value || 'merged';
 
-  const originalText = btn.innerHTML;
-  btn.disabled = true;
-  btn.innerHTML = '⏳';
+  let totalFivesim = 0;
+  let totalSale = 0;
 
-  try {
-    const resp = await adminFetch('/api/v1/admin/vouchers/generate', {
-      method: 'POST',
-      body: JSON.stringify({
-        count: pairCount,
-        value,
-        expires_days: days,
-        note,
-        country: r.countrySlug,
-        service: r.serviceId,
-      }),
+  if (mode === 'merged') {
+    let maxCost = 0, maxSale = 0;
+    pairs.forEach(key => {
+      const [c, s] = key.split(':');
+      const country = CATALOG.countries.find(x => x.slug === c);
+      const service = country?.services?.find(x => x.id === s);
+      if (service?.available) {
+        maxCost = Math.max(maxCost, service.fivesim_cost || 0);
+        maxSale = Math.max(maxSale, service.cost || 0);
+      }
     });
-    const data = await resp.json();
-    if (!resp.ok) {
-      toast('❌ ' + (data.detail || 'فشل التوليد'), 'error');
-      return;
-    }
-    toast(`✅ ${data.count} كود لـ ${r.flag || ''} ${r.countryName} / ${r.serviceName}`, 'success');
-
-    document.getElementById('codes-output').value =
-      `# ${r.countrySlug} / ${r.serviceId}  (${data.count} كود)\n` +
-      data.codes.join('\n');
-    document.getElementById('codes-output-wrap').classList.remove('hidden');
-    loadVouchers();
-  } catch (e) {
-    toast('❌ خطأ في الاتصال', 'error');
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = originalText;
+    totalFivesim = maxCost * count;
+    totalSale = maxSale * count;
+  } else if (mode === 'groups') {
+    const groups = new Map();
+    pairs.forEach(key => {
+      const [c, s] = key.split(':');
+      if (!groups.has(c)) groups.set(c, []);
+      groups.get(c).push(s);
+    });
+    groups.forEach((services, c) => {
+      const country = CATALOG.countries.find(x => x.slug === c);
+      let maxCost = 0, maxSale = 0;
+      services.forEach(s => {
+        const service = country?.services?.find(x => x.id === s);
+        if (service?.available) {
+          maxCost = Math.max(maxCost, service.fivesim_cost || 0);
+          maxSale = Math.max(maxSale, service.cost || 0);
+        }
+      });
+      totalFivesim += maxCost * count;
+      totalSale += maxSale * count;
+    });
+  } else {
+    pairs.forEach(key => {
+      const [c, s] = key.split(':');
+      const country = CATALOG.countries.find(x => x.slug === c);
+      const service = country?.services?.find(x => x.id === s);
+      if (service?.available) {
+        totalFivesim += (service.fivesim_cost || 0) * count;
+        totalSale += (service.cost || 0) * count;
+      }
+    });
   }
+
+  const profit = totalSale - totalFivesim;
+  const pct = totalFivesim > 0 ? (profit / totalFivesim) * 100 : 0;
+
+  financialEl.classList.remove('hidden');
+  document.getElementById('fivesim-cost-label').textContent = '$' + totalFivesim.toFixed(2);
+  document.getElementById('sale-price-label').textContent = '$' + totalSale.toFixed(2);
+  document.getElementById('profit-label').textContent = '$' + profit.toFixed(2);
+  document.getElementById('profit-pct-label').textContent = pct.toFixed(0) + '%';
 }
 
 // ══════════════════════════════════════════════════════════════
-// Generate — يدعم وضع الدمج
+// Generate Matrix
 // ══════════════════════════════════════════════════════════════
-async function generateVouchers(btn) {
+async function generateMatrix(btn) {
   const value = parseFloat(document.getElementById('v-value').value);
   const days = parseInt(document.getElementById('v-days').value, 10);
+  const count = parseInt(document.getElementById('v-count').value, 10);
   const note = document.getElementById('v-note').value;
-  const merge = isMergeMode();
+  const mode = document.querySelector('input[name="gen-mode"]:checked')?.value || 'merged';
 
-  if (!value || value < 1) { toast('القيمة يجب أن تكون ≥ $1', 'error'); return; }
-  if (!days || days < 1) { toast('الصلاحية يجب أن تكون ≥ يوم', 'error'); return; }
+  if (!value || value < 1) { toast('القيمة ≥ $1', 'error'); return; }
+  if (!days || days < 1) { toast('الصلاحية ≥ يوم', 'error'); return; }
+  if (!count || count < 1 || count > 1000) { toast('العدد 1-1000', 'error'); return; }
 
-  const rows = Array.from(SELECTED.values());
-  if (!rows.length) { toast('اختر خدمة واحدة على الأقل', 'warning'); return; }
+  const pairs = Array.from(MATRIX.selectedPairs);
+  if (!pairs.length) { toast('حدد زوجاً واحداً على الأقل في المصفوفة', 'warning'); return; }
 
-  const unavailable = rows.filter(r => !r.available);
+  const unavailable = [];
+  pairs.forEach(key => {
+    const [c, s] = key.split(':');
+    const country = CATALOG.countries.find(x => x.slug === c);
+    const service = country?.services?.find(x => x.id === s);
+    if (!service?.available) unavailable.push(key);
+  });
   if (unavailable.length) {
-    toast(`❌ ${unavailable.length} خدمة غير متوفرة — أزلها أو استخدم "⚡ توليد" للباقي`, 'error');
+    toast(`❌ ${unavailable.length} زوج غير متوفر`, 'error');
     return;
   }
 
   let body;
-  if (merge) {
-    const maxCount = Math.max(...rows.map(r => parseInt(r.pairCount, 10) || 1));
-    if (maxCount < 1 || maxCount > 1000) {
-      toast('العدد يجب أن يكون 1-1000', 'error');
-      return;
-    }
+  if (mode === 'merged') {
     body = {
-      value,
-      expires_days: days,
-      note,
-      merge: true,
-      count: maxCount,
-      allowed_pairs: rows.map(r => ({
-        country: r.countrySlug,
-        service: r.serviceId,
-      })),
+      value, expires_days: days, note, mode: 'merged', count,
+      pairs: pairs.map(k => {
+        const [c, s] = k.split(':');
+        return { country: c, service: s };
+      }),
+    };
+  } else if (mode === 'groups') {
+    const groups = new Map();
+    pairs.forEach(key => {
+      const [c, s] = key.split(':');
+      if (!groups.has(c)) {
+        const country = CATALOG.countries.find(x => x.slug === c);
+        groups.set(c, { label: country?.name || c, pairs: [] });
+      }
+      groups.get(c).pairs.push({ country: c, service: s });
+    });
+    body = {
+      value, expires_days: days, note, mode: 'groups', count,
+      groups: Array.from(groups.values()),
     };
   } else {
-    for (const r of rows) {
-      const n = parseInt(r.pairCount, 10);
-      if (!n || n < 1 || n > 1000) {
-        toast(`❌ العدد غير صحيح لـ ${r.serviceName}`, 'error');
-        return;
-      }
-    }
     body = {
-      value,
-      expires_days: days,
-      note,
-      merge: false,
-      pairs: rows.map(r => ({
-        country: r.countrySlug,
-        service: r.serviceId,
-        count: parseInt(r.pairCount, 10),
-      })),
+      value, expires_days: days, note, mode: 'separate', count,
+      pairs: pairs.map(k => {
+        const [c, s] = k.split(':');
+        return { country: c, service: s };
+      }),
     };
   }
 
-  const originalText = btn.innerHTML;
+  const orig = btn.innerHTML;
   btn.disabled = true;
   btn.innerHTML = '⏳ جارٍ التوليد...';
 
   try {
-    const resp = await adminFetch('/api/v1/admin/vouchers/generate-multi', {
+    const resp = await adminFetch('/api/v1/admin/vouchers/generate-matrix', {
       method: 'POST',
       body: JSON.stringify(body),
     });
     const data = await resp.json();
     if (!resp.ok) {
-      toast('❌ ' + (data.detail || 'فشل التوليد'), 'error');
+      toast('❌ ' + (data.detail || 'فشل'), 'error');
       return;
     }
 
     const lines = [];
-    if (data.merge) {
-      const pairs = data.batches[0].allowed_pairs
-        .map(p => `${p.country}/${p.service}`).join(', ');
-      lines.push(`# 🔗 كود موحّد — يصلح لـ: ${pairs}`);
-      lines.push(`# العدد: ${data.total_count} كود × $${value}`);
+    lines.push(`# ═══════════════════════════════════════`);
+    lines.push(`# الوضع: ${mode} | العدد الكلي: ${data.total_count} | القيمة: $${data.total_value}`);
+    lines.push(`# ═══════════════════════════════════════`);
+    lines.push('');
+    data.batches.forEach(b => {
+      lines.push(`# ${b.label}`);
+      lines.push(`# الأزواج: ${b.service}`);
+      lines.push(`# العدد: ${b.count}`);
+      b.codes.forEach(c => lines.push(c));
       lines.push('');
-      data.batches[0].codes.forEach(c => lines.push(c));
-      toast(`✅ ${data.total_count} كود موحّد (${data.batches[0].allowed_pairs.length} زوج)`, 'success');
-    } else {
-      data.batches.forEach(b => {
-        lines.push(`# ${b.country} / ${b.service}  (${b.count} كود)`);
-        b.codes.forEach(c => lines.push(c));
-        lines.push('');
-      });
-      toast(`✅ تم توليد ${data.total_count} كود بقيمة $${data.total_value.toFixed(2)}`, 'success');
-    }
+    });
+
     document.getElementById('codes-output').value = lines.join('\n');
     document.getElementById('codes-output-wrap').classList.remove('hidden');
+    toast(`✅ تم توليد ${data.total_count} كود بقيمة $${data.total_value}`, 'success');
     loadVouchers();
   } catch (e) {
     toast('❌ خطأ في الاتصال', 'error');
   } finally {
     btn.disabled = false;
-    btn.innerHTML = originalText;
+    btn.innerHTML = orig;
   }
+}
+
+function resetMatrix() {
+  MATRIX.selectedCountries.clear();
+  MATRIX.selectedServices.clear();
+  MATRIX.selectedPairs.clear();
+  MATRIX.countrySearch = '';
+  MATRIX.serviceSearch = '';
+  const cs = document.getElementById('country-search');
+  const ss = document.getElementById('service-search');
+  if (cs) cs.value = '';
+  if (ss) ss.value = '';
+  renderCountryPicker();
+  renderServicePicker();
+  renderMatrix();
+  document.getElementById('codes-output-wrap').classList.add('hidden');
 }
 
 function copyCodes() {
@@ -1455,12 +1691,21 @@ async function rejectDeposit(id) {
 }
 
 // ══════════════════════════════════════════════════════════════
+// Listeners
+// ══════════════════════════════════════════════════════════════
+['v-value', 'v-count'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('input', () => {
+    updateModePreviews();
+    updateFinancialInfo();
+  });
+});
+
+// ══════════════════════════════════════════════════════════════
 // Bootstrap
 // ══════════════════════════════════════════════════════════════
 loadAll();
 loadCatalog();
-onMergeToggle();
-updatePairsCounter();
 setInterval(loadAll, 30000);
 setInterval(() => loadCatalog(true), 5 * 60 * 1000);
 </script>
