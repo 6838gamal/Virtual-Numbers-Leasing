@@ -136,6 +136,44 @@ def _merge_defaults(data: dict) -> dict:
     return data
 
 
+# ✨ NEW — إصلاح جذر مشكلة "can only concatenate str to str"
+def _normalize_dict_keys(data: dict) -> dict:
+    """
+    JSONB في PostgreSQL يحوّل مفاتيح القواميس إلى strings دائماً.
+    هذا يسبب أخطاء مثل: max(STORE["customers"].keys(), default=0) + 1
+    حيث تُرجع str ثم نحاول جمعها مع int.
+
+    نطبّع:
+      - customers: {"1": {...}, "2": {...}}  →  {1: {...}, 2: {...}}
+      - وأيضاً v["id"] داخل كل عميل إن كان str → int
+    """
+    # 1) customers — المفتاح الأساسي لهذه المشكلة
+    if isinstance(data.get("customers"), dict):
+        normalized: dict = {}
+        for k, v in data["customers"].items():
+            try:
+                new_k = int(k)
+            except (ValueError, TypeError):
+                new_k = k  # احتفظ بالمفتاح كما هو إن لم يكن رقمياً
+
+            if isinstance(v, dict):
+                # تأكد أن id داخل القيمة int أيضاً
+                if "id" in v:
+                    try:
+                        v["id"] = int(v["id"])
+                    except (ValueError, TypeError):
+                        pass
+                # تأكد أن used_by (في access_codes) ليس هنا — لا علاقة
+            normalized[new_k] = v
+        data["customers"] = normalized
+
+    # 2) (اختياري للمستقبل) أي قاموس آخر بمفاتيح رقمية يمكن تطبيعه هنا
+    #    مثال: لو أضفت "sessions_by_id": {"1": {...}} لاحقاً.
+    #    لا نحتاجه الآن لأن كل المجموعات الأخرى قوائم (lists).
+
+    return data
+
+
 # ══════════════════════════════════════════════════════════════
 # 4) CRUD
 # ══════════════════════════════════════════════════════════════
@@ -152,7 +190,9 @@ def load_store() -> dict:
             data = row["data"]
             if isinstance(data, str):
                 data = json.loads(data)
-            return _merge_defaults(data)
+            data = _merge_defaults(data)
+            data = _normalize_dict_keys(data)   # ✨ NEW — إصلاح جذر المشكلة
+            return data
 
 
 def reload_from_disk() -> dict:
