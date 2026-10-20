@@ -38,10 +38,7 @@
       border-radius:5px; background:rgba(56,189,248,0.15); font-size:12px;
     }
 
-    .main-area {
-      padding-top:72px; padding-bottom:24px;
-      min-height:100vh;
-    }
+    .main-area { padding-top:72px; padding-bottom:24px; min-height:100vh; }
 
     .modal-overlay {
       position:fixed; inset:0; background:rgba(15,23,42,0.7);
@@ -98,12 +95,11 @@
       background: #cbd5e1; border-radius: 3px;
     }
     .scroll-grid::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-    .scroll-grid.expanded { max-height: 340px; }
   </style>
 </head>
 <body>
 
-  <!-- ═══════════════ HUD TOP (4 أزرار فقط) ═══════════════ -->
+  <!-- ═══════════════ HUD TOP (4 أزرار) ═══════════════ -->
   <div class="hud-top">
     <div class="max-w-5xl mx-auto flex items-center gap-2 flex-wrap">
 
@@ -237,7 +233,6 @@
               <span class="text-[10px] text-slate-400">{{ countries|length }} دولة متاحة من 5SIM</span>
             </div>
 
-            {# ✨ صندوق البحث عن الدولة #}
             <div class="relative mb-3">
               <span class="absolute inset-y-0 right-3 flex items-center text-slate-400 text-sm pointer-events-none">🔍</span>
               <input type="text" id="countrySearch"
@@ -258,9 +253,7 @@
                 <span class="text-2xl">{{ c.flag }}</span>
                 <div class="flex-1 min-w-0">
                   <div class="text-sm font-bold text-slate-700 truncate">{{ c.name }}</div>
-                  <div class="text-[10px] text-slate-400">
-                    {{ c.services_count }} خدمة
-                  </div>
+                  <div class="text-[10px] text-slate-400">{{ c.services_count }} خدمة</div>
                 </div>
               </button>
               {% endfor %}
@@ -293,7 +286,6 @@
               <h3 class="text-base font-bold text-slate-800">اختر الخدمة</h3>
             </div>
 
-            {# ✨ صندوق البحث عن الخدمة #}
             <div class="relative mb-3">
               <span class="absolute inset-y-0 right-3 flex items-center text-slate-400 text-sm pointer-events-none">🔍</span>
               <input type="text" id="serviceSearch"
@@ -336,7 +328,6 @@
               </div>
             </div>
 
-            {# كود الشراء #}
             <div class="bg-gradient-to-br from-amber-50 to-yellow-50 border border-amber-200 rounded-xl p-3 mb-4">
               <div class="flex items-center gap-2 mb-2">
                 <span class="text-lg">🎟️</span>
@@ -346,7 +337,8 @@
                 <input type="text" id="orderVoucherCode"
                        placeholder="ضع كودك الذي استلمته من متجر ريفال هنا"
                        class="glass !bg-white uppercase flex-1 text-xs"
-                       dir="rtl">
+                       dir="rtl"
+                       onkeydown="if(event.key==='Enter'){event.preventDefault();checkOrderVoucher();}">
                 <button type="button" onclick="checkOrderVoucher()"
                         class="bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs px-3 rounded-lg whitespace-nowrap">
                   🔍 تحقق
@@ -398,7 +390,7 @@
 
   <!-- ═══════════════ MODALS ═══════════════ -->
 
-  <!-- Verify Code Modal -->
+  <!-- ✨ Verify Code Modal — حقل الكود فقط -->
   <div id="verifyCodeModal" class="modal-overlay" onclick="if(event.target===this) closeModal('verifyCodeModal')">
     <div class="modal-box p-5">
       <div class="flex items-center justify-between mb-4">
@@ -406,16 +398,15 @@
         <button onclick="closeModal('verifyCodeModal')" class="text-slate-400 hover:text-slate-600 text-xl">✕</button>
       </div>
 
+      <p class="text-[11px] text-slate-500 mb-3 leading-relaxed">
+        أدخل كودك للتحقق من صلاحيته وقيمته. لا حاجة لمعرفة الدولة أو الخدمة — سنعرض لك ما يصلح له.
+      </p>
+
       <div class="space-y-2">
         <input type="text" id="verifyCodeInput"
                placeholder="ضع كودك الذي استلمته من متجر ريفال هنا"
-               class="glass uppercase w-full" dir="rtl">
-        <div class="grid grid-cols-2 gap-2">
-          <input type="text" id="verifyCountry" placeholder="الدولة (مثال: egypt)"
-                 class="glass !bg-white !text-xs" dir="ltr">
-          <input type="text" id="verifyService" placeholder="الخدمة (مثال: whatsapp)"
-                 class="glass !bg-white !text-xs" dir="ltr">
-        </div>
+               class="glass uppercase w-full" dir="rtl"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();doVerifyCode();}">
         <button type="button" onclick="doVerifyCode()"
                 class="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-2.5 rounded-xl text-sm">
           🔍 تحقق
@@ -622,15 +613,18 @@
   }
 
   // ══════════════════════════════════════════════════════════
-  // Verify Code
+  // ✨ Verify Code — حقل الكود فقط
   // ══════════════════════════════════════════════════════════
   async function doVerifyCode() {
     const code = (document.getElementById('verifyCodeInput').value || '').trim().toUpperCase();
-    const country = (document.getElementById('verifyCountry').value || '').trim().toLowerCase();
-    const service = (document.getElementById('verifyService').value || '').trim().toLowerCase();
     const out = document.getElementById('verifyResult');
-    if (!code) { out.classList.remove('hidden'); out.className='p-3 rounded-lg text-xs bg-amber-50 text-amber-800'; out.textContent='أدخل الكود أولاً'; return; }
-    if (!country || !service) { out.classList.remove('hidden'); out.className='p-3 rounded-lg text-xs bg-amber-50 text-amber-800'; out.textContent='أدخل الدولة والخدمة للتحقق الكامل'; return; }
+
+    if (!code) {
+      out.classList.remove('hidden');
+      out.className = 'p-3 rounded-lg text-xs bg-amber-50 text-amber-800';
+      out.textContent = 'أدخل الكود أولاً';
+      return;
+    }
 
     out.classList.remove('hidden');
     out.className = 'p-3 rounded-lg text-xs bg-slate-100 text-slate-600';
@@ -638,18 +632,38 @@
 
     try {
       const r = await fetch('/api/v1/vouchers/check', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ code, country, service }),
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ code }),   // ← فقط الكود
       });
       const d = await r.json();
+
       if (r.ok) {
+        const pairs = (d.allowed_pairs || []);
+        let pairsHtml = '';
+        if (pairs.length === 0) {
+          pairsHtml = '<div class="text-slate-600 text-[10px] mt-1">✨ كود بدون قيود — يصلح لأي دولة/خدمة</div>';
+        } else if (pairs.length === 1) {
+          const p = pairs[0];
+          pairsHtml = `<div class="text-slate-600 text-[10px] mt-1">يصلح لـ: <b class="mono">${p.country}/${p.service}</b></div>`;
+        } else {
+          const list = pairs.map(p => `<span class="mono bg-white/50 px-1 rounded">${p.country}/${p.service}</span>`).join(', ');
+          pairsHtml = `<div class="text-slate-600 text-[10px] mt-1">يصلح لـ <b>${pairs.length}</b> زوج:<br>${list}</div>`;
+        }
+
         out.className = 'p-3 rounded-lg text-xs bg-emerald-50 text-emerald-800';
-        out.innerHTML = `✅ <b>الكود صالح!</b><br>💰 القيمة: $${d.value.toFixed(2)}<br>📅 ينتهي: ${new Date(d.expires_at).toLocaleDateString('ar-EG')}`;
+        out.innerHTML = `
+          ✅ <b>الكود صالح!</b><br>
+          💰 القيمة: $${Number(d.value).toFixed(2)}<br>
+          📅 ينتهي: ${new Date(d.expires_at).toLocaleDateString('ar-EG')}
+          ${d.label ? `<br>🏷️ ${d.label}` : ''}
+          ${pairsHtml}
+        `;
       } else {
         out.className = 'p-3 rounded-lg text-xs bg-red-50 text-red-800';
-        out.innerHTML = '❌ ' + (d.detail || 'غير صالح');
+        out.innerHTML = '❌ ' + (d.detail || 'الكود غير صالح');
       }
-    } catch(e) {
+    } catch (e) {
       out.className = 'p-3 rounded-lg text-xs bg-red-50 text-red-800';
       out.textContent = '❌ خطأ في الاتصال';
     }
@@ -672,7 +686,6 @@
     document.getElementById('service-step').classList.remove('opacity-50','pointer-events-none');
     document.getElementById('confirm-step').classList.add('opacity-50','pointer-events-none');
 
-    // ✨ فعّل بحث الخدمة وامسح نصه
     const ss = document.getElementById('serviceSearch');
     if (ss) { ss.disabled = false; ss.value = ''; }
   }
@@ -683,11 +696,9 @@
     const moreWrap = document.getElementById('service-more-wrap');
     grid.innerHTML = ''; moreWrap.classList.add('hidden'); moreWrap.innerHTML = '';
 
-    // ✨ أعد تعيين البحث عند إعادة رسم الخدمات
     const ss = document.getElementById('serviceSearch');
     if (ss) ss.value = '';
 
-    // ✨ أخفِ رسالة "لا نتائج"
     const noRes = document.getElementById('service-no-results');
     if (noRes) noRes.classList.add('hidden');
 
@@ -767,7 +778,6 @@
   }
 
   function quickBuy(countrySlug, serviceId) {
-    // ✨ امسح البحثين لضمان ظهور العنصر المطلوب
     const cs = document.getElementById('countrySearch');
     if (cs) { cs.value = ''; filterCountries(''); }
     const ss0 = document.getElementById('serviceSearch');
@@ -804,7 +814,7 @@
   }
 
   // ══════════════════════════════════════════════════════════
-  // ✨ البحث (تطبيع النص للعربية والإنجليزية)
+  // ✨ البحث (تطبيع النص)
   // ══════════════════════════════════════════════════════════
   function _norm(s) {
     return String(s || '')
@@ -872,7 +882,7 @@
     buttons.forEach(b => {
       const name = _norm(b.querySelector('.text-xs.font-bold')?.textContent || '');
       const id = _norm(b.dataset.id || '');
-      const isMatch = name.includes(q) || id.includes(q);
+      const isMatch = name.includes(id ? q : q) || id.includes(q);
       b.classList.toggle('hidden', !isMatch);
       if (isMatch) matched++;
     });
@@ -884,41 +894,63 @@
   }
 
   // ══════════════════════════════════════════════════════════
-  // Purchase flow
+  // ✨ checkOrderVoucher — يرسل الزوج إن كان مختاراً، وإلا الكود فقط
   // ══════════════════════════════════════════════════════════
   async function checkOrderVoucher() {
     const code = (document.getElementById('orderVoucherCode')?.value || '').trim().toUpperCase();
     const msg = document.getElementById('orderVoucherMsg');
-    if (!code) { msg.textContent = '⚠️ أدخل الكود أولاً'; msg.className = 'text-[11px] text-amber-700 mt-1.5'; return; }
-    if (!selectedCountry || !selectedService) {
-      msg.textContent = '⚠️ اختر الدولة والخدمة أولاً';
+
+    if (!code) {
+      msg.textContent = '⚠️ أدخل الكود أولاً';
       msg.className = 'text-[11px] text-amber-700 mt-1.5';
       return;
     }
+
     msg.textContent = '⏳ جارٍ التحقق...';
     msg.className = 'text-[11px] text-slate-600 mt-1.5';
+
+    const body = { code };
+    if (selectedCountry && selectedService) {
+      body.country = selectedCountry.slug;
+      body.service = selectedService.id;
+    }
+
     try {
       const r = await fetch('/api/v1/vouchers/check', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ code, country: selectedCountry.slug, service: selectedService.id }),
+        body: JSON.stringify(body),
       });
       const d = await r.json();
       if (r.ok) {
-        msg.innerHTML = `✅ الكود صالح! القيمة: $${d.value.toFixed(2)} — يصلح لـ ${d.allowed_pairs.length} زوج`;
+        const pairsCount = (d.allowed_pairs || []).length;
+        if (pairsCount === 0) {
+          msg.innerHTML = `✅ الكود صالح! القيمة: $${Number(d.value).toFixed(2)} — بدون قيود`;
+        } else if (pairsCount === 1) {
+          const p = d.allowed_pairs[0];
+          msg.innerHTML = `✅ الكود صالح! القيمة: $${Number(d.value).toFixed(2)} — يصلح لـ <b>${p.country}/${p.service}</b>`;
+        } else {
+          msg.innerHTML = `✅ الكود صالح! القيمة: $${Number(d.value).toFixed(2)} — يصلح لـ ${pairsCount} زوج`;
+        }
         msg.className = 'text-[11px] text-emerald-700 mt-1.5 font-bold';
       } else {
         msg.innerHTML = '❌ ' + (d.detail || 'غير صالح');
         msg.className = 'text-[11px] text-red-700 mt-1.5 font-bold';
       }
-    } catch(e) {
+    } catch (e) {
       msg.textContent = '❌ خطأ في الاتصال';
       msg.className = 'text-[11px] text-red-700 mt-1.5';
     }
   }
 
+  // ══════════════════════════════════════════════════════════
+  // Purchase flow
+  // ══════════════════════════════════════════════════════════
   async function confirmPurchase() {
-    if (!selectedCountry || !selectedService) return;
+    if (!selectedCountry || !selectedService) {
+      showAlert('اختر الدولة والخدمة أولاً', 'error');
+      return;
+    }
 
     const voucherCode = (document.getElementById('orderVoucherCode')?.value || '').trim().toUpperCase();
 
@@ -1035,7 +1067,6 @@
     selectedService = null;
     document.getElementById('confirm-step').classList.add('opacity-50','pointer-events-none');
 
-    // ✨ امسح البحثين
     const cs = document.getElementById('countrySearch');
     if (cs) { cs.value = ''; filterCountries(''); }
     const ss = document.getElementById('serviceSearch');
