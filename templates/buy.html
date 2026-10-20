@@ -82,15 +82,7 @@
 
     .hidden { display:none !important; }
 
-    /* ✨ شارة السعر المخفي */
-    .price-hidden-badge {
-      display:inline-flex; align-items:center; gap:4px;
-      background:linear-gradient(135deg, #fef3c7, #fde68a);
-      color:#92400e; font-size:10px; font-weight:700;
-      padding:3px 8px; border-radius:8px;
-    }
-
-    /* ✨ NEW — حاوية قابلة للتمرير (ارتفاع ~6 عناصر) */
+    /* ✨ حاوية قابلة للتمرير (ارتفاع ~6 عناصر) */
     .scroll-grid {
       max-height: 340px;
       overflow-y: auto;
@@ -111,7 +103,7 @@
 </head>
 <body>
 
-  <!-- ═══════════════ HUD TOP ═══════════════ -->
+  <!-- ═══════════════ HUD TOP (4 أزرار فقط) ═══════════════ -->
   <div class="hud-top">
     <div class="max-w-5xl mx-auto flex items-center gap-2 flex-wrap">
 
@@ -119,7 +111,7 @@
         JAMAL
       </div>
 
-      {# ✨ خدمة عملاء واتساب #}
+      {# 1) خدمة عملاء واتساب #}
       <a href="https://wa.me/966578405137" target="_blank" rel="noopener"
          class="hud-chip !bg-emerald-500/10 !border-emerald-500/30 !text-emerald-300 hover:!bg-emerald-500/20"
          title="خدمة عملاء واتساب">
@@ -127,7 +119,7 @@
         <span class="hidden sm:inline">واتساب</span>
       </a>
 
-      {# ✨ شراء كود (رابط خارجي) #}
+      {# 2) شراء كود (رابط خارجي) #}
       <a href="https://rivalstore.xyz/ar/%D8%A7%D9%84%D8%A3%D8%B1%D9%82%D8%A7%D9%85-%D8%A7%D9%84%D8%A5%D9%81%D8%AA%D8%B1%D8%A7%D8%B6%D9%8A%D8%A9/c1344820948?filters"
          target="_blank" rel="noopener"
          class="hud-chip !bg-violet-500/10 !border-violet-500/30 !text-violet-300 hover:!bg-violet-500/20"
@@ -136,75 +128,23 @@
         <span class="hidden sm:inline">شراء كود</span>
       </a>
 
-      {# ✨ شراء رقم — scroll للأسفل #}
+      {# 3) شراء رقم — scroll للأسفل #}
       <button type="button" onclick="scrollToBuy()" class="hud-chip" title="شراء رقم">
         <span class="ico">📱</span>
         <span class="hidden sm:inline">شراء رقم</span>
       </button>
 
-      {# ✨ التحقق من الأكواد #}
+      {# 4) التحقق من الأكواد #}
       <button type="button" onclick="openModal('verifyCodeModal')" class="hud-chip" title="التحقق من الأكواد">
         <span class="ico">🔍</span>
         <span class="hidden sm:inline">تحقق</span>
       </button>
 
-      <div class="flex-1"></div>
-
-      {# ❌ لا يوجد زر رصيد #}
-
-      <button onclick="openModal('numbersModal')" class="hud-chip" title="أرقامي">
-        <span class="ico">📱</span>
-        <span class="val" id="hudNumbers">{{ stats.active_numbers }}</span>
-      </button>
-
-      <button onclick="openModal('inboxModal')" class="hud-chip relative" title="الرسائل">
-        <span class="ico">📨</span>
-        <span class="val" id="hudSms">{{ stats.my_sms }}</span>
-        {% if stats.unread_sms %}
-        <span class="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center border-2 border-slate-900">{{ stats.unread_sms }}</span>
-        {% endif %}
-      </button>
-
-      <button onclick="openModal('supportModal')" class="hud-chip" title="الدعم">
-        <span class="ico">🎧</span>
-      </button>
-
-      {# ❌ لا زر حساب/خروج في وضع الضيف #}
-      {% if not guest_mode %}
-      <button onclick="openModal('profileModal')" class="hud-chip" title="الحساب">
-        <span class="w-6 h-6 rounded-full bg-gradient-to-br from-sky-500 to-violet-500 text-white flex items-center justify-center font-bold text-[10px]">{{ customer.initials }}</span>
-      </button>
-      <a href="/logout" class="hud-chip !bg-red-500/10 !border-red-500/30 !text-red-400 hover:!bg-red-500/20" title="خروج">
-        <span class="ico !bg-red-500/20">⏻</span>
-      </a>
-      {% endif %}
     </div>
   </div>
 
   <main class="main-area">
     <div class="max-w-5xl mx-auto px-3 md:px-5">
-
-      {# ❌ لا تحذير رصيد — الرصيد مخفي نهائياً #}
-
-      {# ✨ إشعار السعر المخفي #}
-      {% if hide_prices and prices_meta.ok %}
-      <div class="mb-4 bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-200 rounded-xl p-3 flex items-center gap-2">
-        <span class="text-lg">💎</span>
-        <div class="text-xs text-amber-800">
-          <b>الأسعار مخفية</b> — ستظهر لك التكلفة عند تأكيد الشراء.
-        </div>
-      </div>
-      {% endif %}
-
-      {# ✨ تنبيه كود الشراء الإلزامي في وضع الضيف #}
-      {% if guest_mode and guest_requires_voucher %}
-      <div class="mb-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-3 flex items-center gap-2">
-        <span class="text-lg">🎟️</span>
-        <div class="text-xs text-blue-800">
-          <b>يلزم إدخال كود الشراء</b> قبل تأكيد أي عملية شراء.
-        </div>
-      </div>
-      {% endif %}
 
       {% if not prices_meta.ok %}
       <div class="max-w-2xl mx-auto mt-8">
@@ -267,9 +207,6 @@
                   <span>{{ p.country_flag }}</span>
                   <span>{{ p.country_name }}</span>
                 </div>
-              </div>
-              <div class="mt-1">
-                <span class="price-hidden-badge">💎 السعر عند الطلب</span>
               </div>
             </div>
           </button>
@@ -368,29 +305,23 @@
                 <span class="text-sm text-slate-500">الخدمة</span>
                 <span id="confirm-service" class="text-sm font-bold text-slate-700">—</span>
               </div>
-              <div class="flex items-center justify-between py-2 border-b border-slate-200">
+              <div class="flex items-center justify-between py-2">
                 <span class="text-sm text-slate-500">الكمية المتاحة</span>
                 <span id="confirm-count" class="text-sm font-bold text-slate-700">—</span>
               </div>
-              <div class="flex items-center justify-between pt-3">
-                <span class="text-sm font-bold text-slate-700">التكلفة النهائية</span>
-                <span class="price-hidden-badge">💎 تُحتسب عند التأكيد</span>
-              </div>
             </div>
 
-            {# ✨ كود الشراء (إلزامي في وضع الضيف) #}
+            {# كود الشراء (إلزامي في وضع الضيف) #}
             <div class="bg-gradient-to-br from-amber-50 to-yellow-50 border border-amber-200 rounded-xl p-3 mb-4">
               <div class="flex items-center gap-2 mb-2">
                 <span class="text-lg">🎟️</span>
-                <span class="text-xs font-bold text-amber-900">
-                  كود الشراء {% if guest_requires_voucher %}<span class="text-red-600">(إلزامي)</span>{% else %}(اختياري){% endif %}
-                </span>
+                <span class="text-xs font-bold text-amber-900">كود الشراء</span>
               </div>
               <div class="flex gap-2">
                 <input type="text" id="orderVoucherCode"
-                       placeholder="JS-XXX-XXXX-XXXX"
+                       placeholder="ضع كودك الذي استلمته من متجر ريفال هنا"
                        class="glass !bg-white uppercase flex-1 text-xs"
-                       dir="ltr">
+                       dir="rtl">
                 <button type="button" onclick="checkOrderVoucher()"
                         class="bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs px-3 rounded-lg whitespace-nowrap">
                   🔍 تحقق
@@ -407,15 +338,10 @@
               </svg>
               شراء الآن
             </button>
-            <p class="text-[10px] text-slate-400 text-center mt-2">
-              سيُحتسب السعر النهائي عند تأكيد الطلب.
-            </p>
           </div>
         </div>
 
         <div class="space-y-4">
-          {# ❌ لا بطاقة رصيد #}
-
           <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
             <h4 class="text-sm font-bold text-slate-800 mb-3">إحصائيات سريعة</h4>
             <div class="grid grid-cols-2 gap-3">
@@ -447,7 +373,7 @@
 
   <!-- ═══════════════ MODALS ═══════════════ -->
 
-  <!-- ✨ NEW — Verify Code Modal (منفصل عن المحفظة) -->
+  <!-- Verify Code Modal -->
   <div id="verifyCodeModal" class="modal-overlay" onclick="if(event.target===this) closeModal('verifyCodeModal')">
     <div class="modal-box p-5">
       <div class="flex items-center justify-between mb-4">
@@ -456,8 +382,9 @@
       </div>
 
       <div class="space-y-2">
-        <input type="text" id="verifyCodeInput" placeholder="JS-XXX-XXXX-XXXX"
-               class="glass uppercase w-full" dir="ltr">
+        <input type="text" id="verifyCodeInput"
+               placeholder="ضع كودك الذي استلمته من متجر ريفال هنا"
+               class="glass uppercase w-full" dir="rtl">
         <div class="grid grid-cols-2 gap-2">
           <input type="text" id="verifyCountry" placeholder="الدولة (مثال: egypt)"
                  class="glass !bg-white !text-xs" dir="ltr">
@@ -473,7 +400,7 @@
     </div>
   </div>
 
-  <!-- ✨ NEW — Purchase Result Modal -->
+  <!-- Purchase Result Modal -->
   <div id="purchaseResultModal" class="modal-overlay" onclick="if(event.target===this) closeModal('purchaseResultModal')">
     <div class="modal-box p-5">
       <div class="flex items-center justify-between mb-4">
@@ -554,134 +481,11 @@
     </div>
   </div>
 
-  <!-- Numbers -->
-  <div id="numbersModal" class="modal-overlay" onclick="if(event.target===this) closeModal('numbersModal')">
-    <div class="modal-box p-5">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="font-black text-base">📱 أرقامي</h3>
-        <button onclick="closeModal('numbersModal')" class="text-slate-400 hover:text-slate-600 text-xl">✕</button>
-      </div>
-      {% if not my_numbers %}
-        <div class="text-center text-slate-400 text-sm py-8">لا تملك أرقاماً بعد</div>
-      {% else %}
-        <div class="space-y-2">
-          {% for n in my_numbers %}
-          <div class="bg-slate-50 rounded-xl p-3">
-            <div class="flex items-center justify-between mb-1">
-              <div class="font-bold text-sm">{{ n.flag }} {{ n.country }}</div>
-              <span class="pill {% if n.status == 'active' %}green{% else %}red{% endif %}">{{ n.status }}</span>
-            </div>
-            <div class="text-base font-mono font-black text-slate-900">{{ n.phone }}</div>
-            <div class="text-xs text-slate-500 mt-1">{{ n.service }} · {{ n.sms_count }} رسالة</div>
-            <button onclick="closeModal('numbersModal'); openModal('inboxModal')"
-                    class="mt-2 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg">عرض الرسائل</button>
-          </div>
-          {% endfor %}
-        </div>
-      {% endif %}
-    </div>
-  </div>
-
-  <!-- Inbox -->
-  <div id="inboxModal" class="modal-overlay" onclick="if(event.target===this) closeModal('inboxModal')">
-    <div class="modal-box p-5">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="font-black text-base">📨 الرسائل</h3>
-        <button onclick="closeModal('inboxModal')" class="text-slate-400 hover:text-slate-600 text-xl">✕</button>
-      </div>
-      {% if not recent_sms %}
-        <div class="text-center text-slate-400 text-sm py-8">لا توجد رسائل</div>
-      {% else %}
-        <div class="space-y-2">
-          {% for s in recent_sms %}
-          <div class="bg-slate-50 rounded-xl p-3">
-            <div class="flex items-center justify-between text-[10px] text-slate-500 mb-1">
-              <span class="font-mono">{{ s.phone }}</span>
-              <span>{{ s.created_at }}</span>
-            </div>
-            <div class="text-xs font-bold">{{ s.sender }}</div>
-            <div class="text-sm mt-1">{{ s.text }}</div>
-            {% if s.code %}
-            <div class="mt-2 inline-block bg-emerald-50 text-emerald-700 font-mono font-black px-2 py-1 rounded-lg text-sm">{{ s.code }}</div>
-            {% endif %}
-          </div>
-          {% endfor %}
-        </div>
-      {% endif %}
-    </div>
-  </div>
-
-  <!-- Support -->
-  <div id="supportModal" class="modal-overlay" onclick="if(event.target===this) closeModal('supportModal')">
-    <div class="modal-box p-5">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="font-black text-base">🎧 الدعم</h3>
-        <button onclick="closeModal('supportModal')" class="text-slate-400 hover:text-slate-600 text-xl">✕</button>
-      </div>
-      <form id="ticketForm" class="space-y-2">
-        <input type="text" id="tSubject" placeholder="الموضوع" class="glass">
-        <textarea id="tMsg" rows="3" placeholder="الرسالة" class="glass"></textarea>
-        <button class="w-full bg-gradient-to-r from-sky-500 to-violet-500 text-white font-bold py-2.5 rounded-xl">إرسال</button>
-      </form>
-      <p class="text-xs text-slate-500 mt-2" id="ticketMsg"></p>
-
-      {% if tickets %}
-      <div class="mt-4">
-        <div class="text-xs font-bold mb-2">تذاكري</div>
-        <div class="space-y-1">
-          {% for t in tickets %}
-          <div class="bg-slate-50 rounded-lg p-2">
-            <div class="text-xs font-bold">{{ t.subject }}</div>
-            <div class="text-[10px] text-slate-500">{{ t.date }} · {{ t.status }}</div>
-          </div>
-          {% endfor %}
-        </div>
-      </div>
-      {% endif %}
-    </div>
-  </div>
-
-  {# Profile modal — يظهر فقط لغير الضيف #}
-  {% if not guest_mode %}
-  <div id="profileModal" class="modal-overlay" onclick="if(event.target===this) closeModal('profileModal')">
-    <div class="modal-box p-5">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="font-black text-base">👤 الحساب</h3>
-        <button onclick="closeModal('profileModal')" class="text-slate-400 hover:text-slate-600 text-xl">✕</button>
-      </div>
-      <form id="profileForm" class="space-y-2">
-        <div>
-          <label class="text-[10px] text-slate-500 block mb-1">الاسم</label>
-          <input type="text" id="pName" value="{{ customer.name }}" class="glass">
-        </div>
-        <div>
-          <label class="text-[10px] text-slate-500 block mb-1">الإيميل</label>
-          <input type="email" value="{{ customer.email }}" class="glass opacity-60" disabled>
-        </div>
-        <div>
-          <label class="text-[10px] text-slate-500 block mb-1">الهاتف</label>
-          <input type="text" id="pPhone" value="{{ customer.phone or '' }}" class="glass">
-        </div>
-        <div>
-          <label class="text-[10px] text-slate-500 block mb-1">الدولة</label>
-          <input type="text" id="pCountry" value="{{ customer.country or '' }}" class="glass">
-        </div>
-        <button class="w-full bg-gradient-to-r from-sky-500 to-violet-500 text-white font-bold py-2.5 rounded-xl">حفظ</button>
-      </form>
-      <p class="text-xs text-slate-500 mt-2" id="profileMsg"></p>
-      <div class="mt-4 pt-4 border-t border-slate-200">
-        <a href="/logout" class="block text-center bg-red-50 text-red-600 font-bold py-2 rounded-xl hover:bg-red-100">تسجيل الخروج</a>
-      </div>
-    </div>
-  </div>
-  {% endif %}
-
   <!-- ═══════════════ SCRIPTS ═══════════════ -->
   <script>
   // ══════════════════════════════════════════════════════════
   // إعدادات السيرفر
   // ══════════════════════════════════════════════════════════
-  const HIDE_PRICES = true;
   const GUEST_MODE = {{ 'true' if guest_mode else 'false' }};
   const GUEST_REQUIRES_VOUCHER = {{ 'true' if guest_requires_voucher else 'false' }};
 
@@ -798,7 +602,7 @@
   }
 
   // ══════════════════════════════════════════════════════════
-  // Verify Code (منفصل)
+  // Verify Code
   // ══════════════════════════════════════════════════════════
   async function doVerifyCode() {
     const code = (document.getElementById('verifyCodeInput').value || '').trim().toUpperCase();
@@ -871,9 +675,8 @@
       const nameEl = document.createElement('span');
       nameEl.className = 'text-xs font-bold text-slate-700'; nameEl.textContent = s.name;
       btn.appendChild(iconEl); btn.appendChild(nameEl);
-      const priceHtml = s.available ? '<span class="price-hidden-badge">💎 السعر عند الطلب</span>' : '<span class="text-[10px] text-slate-400">غير متاح</span>';
-      const countHtml = s.available ? '<span class="text-[9px] text-slate-400">'+s.count+' متاح</span>' : '';
-      btn.insertAdjacentHTML('beforeend', priceHtml + countHtml);
+      const countHtml = s.available ? '<span class="text-[9px] text-slate-400">'+s.count+' متاح</span>' : '<span class="text-[10px] text-slate-400">غير متاح</span>';
+      btn.insertAdjacentHTML('beforeend', countHtml);
       grid.appendChild(btn);
     });
     if (sorted.length > PREVIEW_COUNT) {
@@ -882,16 +685,12 @@
     }
   }
 
-  // ══════════════════════════════════════════════════════════
-  // Toggle More (يستخدم سكرول داخلي)
-  // ══════════════════════════════════════════════════════════
   function toggleMore(btn, selector, indexAttr) {
     const expanded = btn.dataset.expanded === 'true';
     const preview = parseInt(btn.dataset.preview, 10) || PREVIEW_COUNT;
     const items = document.querySelectorAll(selector);
 
     if (!expanded) {
-      // أظهر الكل — السكرول الداخلي يتولى الباقي
       items.forEach(el => el.classList.remove('hidden'));
       btn.dataset.expanded = 'true';
       const label = btn.querySelector('.label');
@@ -899,7 +698,6 @@
       const chev = btn.querySelector('.chevron');
       if (chev) chev.style.transform = 'rotate(180deg)';
     } else {
-      // أخفِ ما بعد preview وأعد التمرير للأعلى
       items.forEach(el => {
         const i = parseInt(el.dataset[indexAttr], 10);
         if (!isNaN(i) && i >= preview) el.classList.add('hidden');
@@ -1052,7 +850,6 @@
     set('pr-status', order.status || 'PENDING');
     set('pr-expires', order.expires ? new Date(order.expires).toLocaleString('ar-EG') : '—');
 
-    // عدّاد انتظار الكود
     const waitEl = document.getElementById('pr-wait');
     if (window._waitTimer) { clearInterval(window._waitTimer); window._waitTimer = null; }
     if (waitEl) {
@@ -1075,14 +872,13 @@
     if (!CURRENT_ORDER || !CURRENT_ORDER.phone) return;
     let text = CURRENT_ORDER.phone;
     if (withPrefix) {
-      const prefix = CURRENT_ORDER.country_code || '';
-      text = '+' + prefix + text.replace(/^\+/, '');
+      const prefix = CURRENT_ORDER.country_prefix || CURRENT_ORDER.country_code || '';
+      text = '+' + String(prefix).replace(/^\+/, '') + text.replace(/^\+/, '');
     }
     try {
       await navigator.clipboard.writeText(text);
       showAlert('📋 تم النسخ', 'success');
     } catch(e) {
-      // fallback
       const ta = document.createElement('textarea');
       ta.value = text; document.body.appendChild(ta); ta.select();
       try { document.execCommand('copy'); showAlert('📋 تم النسخ', 'success'); }
@@ -1119,7 +915,6 @@
     CURRENT_ORDER = null;
     selectedService = null;
     document.getElementById('confirm-step').classList.add('opacity-50','pointer-events-none');
-    // مسح كود الشراء السابق
     const vc = document.getElementById('orderVoucherCode');
     if (vc) vc.value = '';
     const vm = document.getElementById('orderVoucherMsg');
@@ -1148,39 +943,6 @@
       btn.disabled = false; btn.innerHTML = old;
     }
   }
-
-  // ══════════════════════════════════════════════════════════
-  // Support / Profile
-  // ══════════════════════════════════════════════════════════
-  const ticketForm = document.getElementById('ticketForm');
-  if (ticketForm) ticketForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const msg = document.getElementById('ticketMsg');
-    const r = await fetch('/api/v1/support/tickets', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        subject: document.getElementById('tSubject').value,
-        message: document.getElementById('tMsg').value,
-      })
-    });
-    msg.textContent = r.ok ? '✅ تم الإرسال' : '❌ فشل';
-    if (r.ok) setTimeout(() => location.reload(), 1000);
-  });
-
-  const profileForm = document.getElementById('profileForm');
-  if (profileForm) profileForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const msg = document.getElementById('profileMsg');
-    const r = await fetch('/api/v1/profile', {
-      method:'PATCH', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        name: document.getElementById('pName').value,
-        phone: document.getElementById('pPhone').value,
-        country: document.getElementById('pCountry').value,
-      })
-    });
-    msg.textContent = r.ok ? '✅ تم الحفظ' : '❌ فشل';
-  });
 
   // Init
   document.addEventListener('DOMContentLoaded', () => {
