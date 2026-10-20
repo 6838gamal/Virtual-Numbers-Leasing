@@ -224,10 +224,17 @@
           </div>
         </div>
 
-        <div class="mb-3">
-          <label class="text-xs font-bold text-slate-400 mb-1.5 block">ملاحظة (اختياري)</label>
-          <input type="text" id="v-note" placeholder="بيع لوكيل..."
-                 class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:border-amber-500 outline-none text-sm">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+          <div>
+            <label class="text-xs font-bold text-slate-400 mb-1.5 block">اسم الكود (اختياري)</label>
+            <input type="text" id="v-label" placeholder="مثال: دفعة وكلاء يناير"
+                   class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:border-amber-500 outline-none text-sm">
+          </div>
+          <div>
+            <label class="text-xs font-bold text-slate-400 mb-1.5 block">ملاحظة (اختياري)</label>
+            <input type="text" id="v-note" placeholder="بيع لوكيل..."
+                   class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:border-amber-500 outline-none text-sm">
+          </div>
         </div>
 
         <!-- ملخص + تحليل مالي -->
@@ -348,10 +355,10 @@
           <thead class="bg-slate-900/70 border-b border-slate-700">
             <tr class="text-slate-400 font-bold">
               <th class="px-3 py-2.5">الكود</th>
+              <th class="px-3 py-2.5">الاسم</th>
               <th class="px-3 py-2.5">القيمة</th>
               <th class="px-3 py-2.5">الدولة/الخدمة</th>
               <th class="px-3 py-2.5">الحالة</th>
-              <th class="px-3 py-2.5">المستخدم</th>
               <th class="px-3 py-2.5">تاريخ الإنشاء</th>
               <th class="px-3 py-2.5">نسخ</th>
               <th class="px-3 py-2.5"></th>
@@ -364,75 +371,35 @@
       </div>
     </section>
 
-    <!-- ══ Access Codes ══ -->
+    <!-- ══ الأكواد المستخدمة ══ -->
     <section class="bg-slate-800 rounded-2xl border border-slate-700 p-5">
-      <h2 class="text-lg font-bold flex items-center gap-2 mb-4">
-        <span class="w-1 h-5 bg-gradient-to-b from-cyan-400 to-sky-500 rounded-full"></span>
-        🔑 أكواد تسجيل الدخول للمستخدمين
-      </h2>
+      <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <h2 class="text-lg font-bold flex items-center gap-2">
+          <span class="w-1 h-5 bg-gradient-to-b from-emerald-400 to-teal-500 rounded-full"></span>
+          ✅ الأكواد المستخدمة
+        </h2>
+        <button onclick="loadUsedVouchers(this)" class="text-xs font-bold text-blue-400 hover:text-blue-300 border border-slate-700 hover:border-blue-500/50 px-3 py-1.5 rounded-lg transition-colors">🔄 تحديث</button>
+      </div>
 
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
-        <div>
-          <label class="text-xs font-bold text-slate-400 mb-1.5 block">الوصف / الملصق</label>
-          <input type="text" id="ac-label" placeholder="دفعة وكلاء..." class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:border-cyan-500 outline-none text-sm">
+      <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4" id="used-summary">
+        <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700">
+          <div class="text-[10px] text-slate-400">عدد الأكواد المستخدمة</div>
+          <div class="text-lg font-bold text-emerald-400">—</div>
         </div>
-        <div>
-          <label class="text-xs font-bold text-slate-400 mb-1.5 block">الصلاحية (أيام)</label>
-          <input type="number" id="ac-days" value="30" min="1" max="365" class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:border-cyan-500 outline-none text-sm">
+        <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700">
+          <div class="text-[10px] text-slate-400">إجمالي القيمة</div>
+          <div class="text-lg font-bold text-amber-400">—</div>
         </div>
-        <div>
-          <label class="text-xs font-bold text-slate-400 mb-1.5 block">عدد الاستخدامات</label>
-          <input type="number" id="ac-uses" value="1" min="1" max="100" class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:border-cyan-500 outline-none text-sm">
-        </div>
-        <div>
-          <label class="text-xs font-bold text-slate-400 mb-1.5 block">اسم المستخدم (مسبق)</label>
-          <input type="text" id="ac-name" placeholder="اسم اختياري" class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:border-cyan-500 outline-none text-sm">
-        </div>
-        <div>
-          <label class="text-xs font-bold text-slate-400 mb-1.5 block">البريد (مسبق)</label>
-          <input type="email" id="ac-email" placeholder="user@example.com" class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:border-cyan-500 outline-none text-sm" dir="ltr">
-        </div>
-        <div>
-          <label class="text-xs font-bold text-slate-400 mb-1.5 block">الرصيد الابتدائي ($)</label>
-          <input type="number" id="ac-balance" value="0" min="0" step="0.5" class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:border-cyan-500 outline-none text-sm">
+        <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700">
+          <div class="text-[10px] text-slate-400">آخر استخدام</div>
+          <div class="text-[11px] font-bold text-slate-300">—</div>
         </div>
       </div>
 
-      <div class="mb-4">
-        <button onclick="generateAccessCode(this)" class="bg-gradient-to-r from-cyan-500 to-sky-600 hover:from-cyan-600 hover:to-sky-700 text-white font-bold px-6 py-2.5 rounded-xl transition-all shadow-lg text-sm flex items-center gap-2">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-          </svg>
-          توليد كود دخول
-        </button>
-      </div>
-
-      <div id="ac-output-wrap" class="hidden mb-4">
-        <div class="flex items-center justify-between mb-2">
-          <p class="text-xs font-bold text-cyan-400">✅ تم إنشاء الكود</p>
-          <button onclick="copyAccessCode()" class="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg font-bold transition-colors">📋 نسخ</button>
-        </div>
-        <input id="ac-output" readonly class="w-full px-3 py-2 bg-slate-900 border border-cyan-500/50 rounded-xl mono text-sm text-cyan-300 outline-none" dir="ltr">
-      </div>
-
-      <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <h3 class="text-sm font-bold text-slate-300">الأكواد المُولّدة</h3>
-        <div class="flex items-center gap-2">
-          <select id="ac-filter" onchange="loadAccessCodes()" class="text-xs bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 outline-none">
-            <option value="">الكل</option>
-            <option value="active">نشطة</option>
-            <option value="used">مستخدمة</option>
-            <option value="disabled">معطّلة</option>
-          </select>
-          <button onclick="loadAccessCodes(this)" class="text-xs font-bold text-blue-400 hover:text-blue-300 border border-slate-700 hover:border-blue-500/50 px-3 py-1.5 rounded-lg transition-colors">🔄 تحديث</button>
-        </div>
-      </div>
-
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4" id="ac-summary">
-        <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700"><div class="text-[10px] text-slate-400">الإجمالي</div><div class="text-lg font-bold">—</div></div>
-        <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700"><div class="text-[10px] text-slate-400">نشطة</div><div class="text-lg font-bold text-cyan-400">—</div></div>
-        <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700"><div class="text-[10px] text-slate-400">مستخدمة</div><div class="text-lg font-bold text-blue-400">—</div></div>
-        <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700"><div class="text-[10px] text-slate-400">معطّلة</div><div class="text-lg font-bold text-red-400">—</div></div>
+      <div class="mb-3">
+        <input type="text" id="used-search" placeholder="🔎 ابحث بالكود أو الاسم أو الدولة..."
+               oninput="filterUsedVouchers(this.value)"
+               class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl focus:border-emerald-500 outline-none text-sm">
       </div>
 
       <div class="overflow-x-auto rounded-xl border border-slate-700">
@@ -440,63 +407,21 @@
           <thead class="bg-slate-900/70 border-b border-slate-700">
             <tr class="text-slate-400 font-bold">
               <th class="px-3 py-2.5">الكود</th>
-              <th class="px-3 py-2.5">الوصف</th>
-              <th class="px-3 py-2.5">الاستخدامات</th>
-              <th class="px-3 py-2.5">الرصيد</th>
-              <th class="px-3 py-2.5">الحالة</th>
-              <th class="px-3 py-2.5">الانتهاء</th>
-              <th class="px-3 py-2.5"></th>
+              <th class="px-3 py-2.5">الاسم</th>
+              <th class="px-3 py-2.5">القيمة</th>
+              <th class="px-3 py-2.5">استُخدم على</th>
+              <th class="px-3 py-2.5">تاريخ الاستخدام</th>
             </tr>
           </thead>
-          <tbody id="ac-tbody" class="divide-y divide-slate-700/50">
-            <tr><td colspan="7" class="px-3 py-8 text-center text-slate-500">لا توجد أكواد</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <!-- ══ Deposits ══ -->
-    <section class="bg-slate-800 rounded-2xl border border-slate-700 p-5">
-      <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <h2 class="text-lg font-bold flex items-center gap-2">
-          <span class="w-1 h-5 bg-gradient-to-b from-purple-400 to-pink-500 rounded-full"></span>
-          💳 طلبات الإيداع
-          <span id="pending-badge" class="hidden bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">0</span>
-        </h2>
-        <div class="flex items-center gap-2 flex-wrap">
-          <select id="d-filter" onchange="loadDeposits()" class="text-xs bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 outline-none">
-            <option value="">الكل</option>
-            <option value="pending" selected>قيد المراجعة</option>
-            <option value="completed">مكتملة</option>
-            <option value="rejected">مرفوضة</option>
-          </select>
-          <button onclick="loadDeposits(this)" class="text-xs font-bold text-blue-400 hover:text-blue-300 border border-slate-700 hover:border-blue-500/50 px-3 py-1.5 rounded-lg transition-colors">🔄 تحديث</button>
-        </div>
-      </div>
-
-      <div class="overflow-x-auto rounded-xl border border-slate-700">
-        <table class="w-full text-right text-xs">
-          <thead class="bg-slate-900/70 border-b border-slate-700">
-            <tr class="text-slate-400 font-bold">
-              <th class="px-3 py-2.5">#</th>
-              <th class="px-3 py-2.5">الزبون</th>
-              <th class="px-3 py-2.5">المبلغ</th>
-              <th class="px-3 py-2.5">الطريقة</th>
-              <th class="px-3 py-2.5">المرجع</th>
-              <th class="px-3 py-2.5">التاريخ</th>
-              <th class="px-3 py-2.5">الحالة</th>
-              <th class="px-3 py-2.5"></th>
-            </tr>
-          </thead>
-          <tbody id="deposits-tbody" class="divide-y divide-slate-700/50">
-            <tr><td colspan="8" class="px-3 py-8 text-center text-slate-500">لا توجد بيانات</td></tr>
+          <tbody id="used-tbody" class="divide-y divide-slate-700/50">
+            <tr><td colspan="5" class="px-3 py-8 text-center text-slate-500">لا توجد أكواد مستخدمة بعد</td></tr>
           </tbody>
         </table>
       </div>
     </section>
 
     <footer class="text-center text-[10px] text-slate-500 pt-4 pb-8">
-      <p>جمال سولوشنز · لوحة التحكم · <span id="footer-version">v2.4.0-open</span></p>
+      <p>جمال سولوشنز · لوحة التحكم · <span id="footer-version">v2.5.0-open</span></p>
       <p class="mt-1">آخر تحديث: <span id="last-refresh">—</span></p>
     </footer>
   </main>
@@ -549,8 +474,7 @@ function escapeHtml(s) {
 function loadAll() {
   loadWallet();
   loadVouchers();
-  loadAccessCodes();
-  loadDeposits();
+  loadUsedVouchers();
   const el = document.getElementById('last-refresh');
   if (el) el.textContent = new Date().toLocaleTimeString('ar-EG');
 }
@@ -1234,6 +1158,7 @@ async function generateMatrix(btn) {
   const days = parseInt(document.getElementById('v-days').value, 10);
   const count = parseInt(document.getElementById('v-count').value, 10);
   const note = document.getElementById('v-note').value;
+  const label = document.getElementById('v-label')?.value?.trim() || '';   // ✨ NEW
   const mode = document.querySelector('input[name="gen-mode"]:checked')?.value || 'merged';
 
   if (!value || value < 1) { toast('القيمة ≥ $1', 'error'); return; }
@@ -1258,7 +1183,7 @@ async function generateMatrix(btn) {
   let body;
   if (mode === 'merged') {
     body = {
-      value, expires_days: days, note, mode: 'merged', count,
+      value, expires_days: days, note, label, mode: 'merged', count,
       pairs: pairs.map(k => {
         const [c, s] = k.split(':');
         return { country: c, service: s };
@@ -1275,12 +1200,12 @@ async function generateMatrix(btn) {
       groups.get(c).pairs.push({ country: c, service: s });
     });
     body = {
-      value, expires_days: days, note, mode: 'groups', count,
+      value, expires_days: days, note, label, mode: 'groups', count,
       groups: Array.from(groups.values()),
     };
   } else {
     body = {
-      value, expires_days: days, note, mode: 'separate', count,
+      value, expires_days: days, note, label, mode: 'separate', count,
       pairs: pairs.map(k => {
         const [c, s] = k.split(':');
         return { country: c, service: s };
@@ -1305,6 +1230,7 @@ async function generateMatrix(btn) {
 
     const lines = [];
     lines.push(`# ═══════════════════════════════════════`);
+    if (label) lines.push(`# الاسم: ${label}`);
     lines.push(`# الوضع: ${mode} | العدد الكلي: ${data.total_count} | القيمة: $${data.total_value}`);
     lines.push(`# ═══════════════════════════════════════`);
     lines.push('');
@@ -1338,6 +1264,8 @@ function resetMatrix() {
   const ss = document.getElementById('service-search');
   if (cs) cs.value = '';
   if (ss) ss.value = '';
+  const lbl = document.getElementById('v-label');
+  if (lbl) lbl.value = '';
   renderCountryPicker();
   renderServicePicker();
   renderMatrix();
@@ -1423,10 +1351,10 @@ async function loadVouchers(btn) {
       return `
         <tr class="hover:bg-slate-700/30 transition-colors">
           <td class="px-3 py-2"><code class="mono text-[11px] bg-slate-900 px-2 py-0.5 rounded">${escapeHtml(v.code)}</code></td>
+          <td class="px-3 py-2 text-slate-300 text-[11px]">${escapeHtml(v.label || '—')}</td>
           <td class="px-3 py-2 font-bold text-amber-400">$${v.value.toFixed(2)}</td>
           <td class="px-3 py-2">${cs}${usedOn}</td>
           <td class="px-3 py-2">${statusBadge}</td>
-          <td class="px-3 py-2 text-slate-400">${escapeHtml(v.used_by || '—')}</td>
           <td class="px-3 py-2 text-slate-500 text-[10px]">${date}</td>
           <td class="px-3 py-2">
             <button onclick="copyOneCode('${safeCode}')"
@@ -1474,220 +1402,101 @@ async function disableVoucher(id) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// Access Codes
+// ✨ الأكواد المستخدمة
 // ══════════════════════════════════════════════════════════════
-async function generateAccessCode(btn) {
-  const label = document.getElementById('ac-label').value.trim();
-  const days = parseInt(document.getElementById('ac-days').value, 10);
-  const uses = parseInt(document.getElementById('ac-uses').value, 10);
-  const name = document.getElementById('ac-name').value.trim();
-  const email = document.getElementById('ac-email').value.trim();
-  const balance = parseFloat(document.getElementById('ac-balance').value) || 0;
+let USED_VOUCHERS = [];
+let USED_SEARCH = '';
 
-  if (!days || days < 1) { toast('الصلاحية يجب أن تكون ≥ يوم', 'error'); return; }
-  if (!uses || uses < 1) { toast('عدد الاستخدامات يجب أن يكون ≥ 1', 'error'); return; }
-
-  const originalText = btn.innerHTML;
-  btn.disabled = true;
-  btn.innerHTML = '⏳ جارٍ التوليد...';
-
-  try {
-    const r = await adminFetch('/api/v1/admin/access-codes/generate', {
-      method: 'POST',
-      body: JSON.stringify({
-        label, expires_days: days, max_uses: uses,
-        preset_name: name, preset_email: email, preset_balance: balance,
-      }),
-    });
-    const data = await r.json();
-    if (!r.ok) {
-      toast('❌ ' + (data.detail || 'فشل التوليد'), 'error');
-      return;
-    }
-    document.getElementById('ac-output').value = data.code;
-    document.getElementById('ac-output-wrap').classList.remove('hidden');
-    toast('✅ تم إنشاء كود الدخول', 'success');
-    loadAccessCodes();
-  } catch (e) {
-    toast('❌ خطأ في الاتصال', 'error');
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = originalText;
-  }
-}
-
-function copyAccessCode() {
-  const t = document.getElementById('ac-output');
-  t.select();
-  navigator.clipboard.writeText(t.value).then(
-    () => toast('✅ تم النسخ', 'success'),
-    () => { document.execCommand('copy'); toast('✅ تم النسخ', 'success'); }
-  );
-}
-
-async function loadAccessCodes(btn) {
+async function loadUsedVouchers(btn) {
   if (btn) btn.disabled = true;
   try {
-    const statusFilter = document.getElementById('ac-filter').value;
-    const url = '/api/v1/admin/access-codes' + (statusFilter ? '?status_filter=' + statusFilter : '');
-    const r = await adminFetch(url);
+    const r = await adminFetch('/api/v1/admin/vouchers/used');
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
+    USED_VOUCHERS = data.vouchers || [];
     const s = data.summary;
 
-    document.getElementById('ac-summary').innerHTML = `
-      <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700"><div class="text-[10px] text-slate-400">الإجمالي</div><div class="text-lg font-bold">${s.total}</div></div>
-      <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700"><div class="text-[10px] text-slate-400">نشطة</div><div class="text-lg font-bold text-cyan-400">${s.active}</div></div>
-      <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700"><div class="text-[10px] text-slate-400">مستخدمة</div><div class="text-lg font-bold text-blue-400">${s.used}</div></div>
-      <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700"><div class="text-[10px] text-slate-400">معطّلة</div><div class="text-lg font-bold text-red-400">${s.disabled}</div></div>
+    const lastUsed = USED_VOUCHERS[0]?.used_at
+      ? new Date(USED_VOUCHERS[0].used_at).toLocaleString('ar-EG')
+      : '—';
+
+    document.getElementById('used-summary').innerHTML = `
+      <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700">
+        <div class="text-[10px] text-slate-400">عدد الأكواد المستخدمة</div>
+        <div class="text-lg font-bold text-emerald-400">${s.total_used}</div>
+      </div>
+      <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700">
+        <div class="text-[10px] text-slate-400">إجمالي القيمة</div>
+        <div class="text-lg font-bold text-amber-400">$${s.total_value.toFixed(2)}</div>
+      </div>
+      <div class="bg-slate-900/50 rounded-xl p-3 border border-slate-700">
+        <div class="text-[10px] text-slate-400">آخر استخدام</div>
+        <div class="text-[11px] font-bold text-slate-300">${lastUsed}</div>
+      </div>
     `;
 
-    const tbody = document.getElementById('ac-tbody');
-    if (!data.codes.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="px-3 py-8 text-center text-slate-500">لا توجد أكواد</td></tr>';
-      return;
-    }
-
-    tbody.innerHTML = data.codes.map(c => {
-      const statusBadge = {
-        active: '<span class="bg-cyan-500/20 text-cyan-400 px-2 py-0.5 rounded-full text-[10px] font-bold">نشط</span>',
-        used: '<span class="bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full text-[10px] font-bold">مستخدم</span>',
-        disabled: '<span class="bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full text-[10px] font-bold">معطّل</span>',
-        expired: '<span class="bg-slate-500/20 text-slate-400 px-2 py-0.5 rounded-full text-[10px] font-bold">منتهي</span>',
-      }[c.status] || c.status;
-      const exp = new Date(c.expires_at).toLocaleDateString('ar-EG');
-      return `
-        <tr class="hover:bg-slate-700/30 transition-colors">
-          <td class="px-3 py-2"><code class="mono text-[11px] bg-slate-900 px-2 py-0.5 rounded text-cyan-300">${escapeHtml(c.code)}</code></td>
-          <td class="px-3 py-2 text-slate-400 text-[10px]">${escapeHtml(c.label || '—')}</td>
-          <td class="px-3 py-2 text-[11px]">${c.uses_count} / ${c.max_uses}</td>
-          <td class="px-3 py-2 font-bold text-amber-400">$${(c.preset_balance || 0).toFixed(2)}</td>
-          <td class="px-3 py-2">${statusBadge}</td>
-          <td class="px-3 py-2 text-slate-500 text-[10px]">${exp}</td>
-          <td class="px-3 py-2">
-            ${c.status === 'active' ? `<button onclick="disableAccessCode(${c.id})" class="text-[10px] font-bold text-red-400 hover:text-red-300 border border-red-500/30 hover:border-red-500 px-2 py-1 rounded-lg transition-colors">تعطيل</button>` : ''}
-            <button onclick="deleteAccessCode(${c.id})" class="text-[10px] font-bold text-slate-400 hover:text-red-300 px-2 py-1 ml-1">🗑️</button>
-          </td>
-        </tr>
-      `;
-    }).join('');
+    renderUsedVouchers();
   } catch (e) {
-    console.error('loadAccessCodes:', e);
+    console.error('loadUsedVouchers:', e);
+    toast('❌ فشل تحميل الأكواد المستخدمة', 'error');
   } finally {
     if (btn) btn.disabled = false;
   }
 }
 
-async function disableAccessCode(id) {
-  if (!confirm('تعطيل هذا الكود؟')) return;
-  try {
-    const r = await adminFetch(`/api/v1/admin/access-codes/${id}/disable`, { method: 'POST' });
-    if (r.ok) { toast('✅ تم التعطيل', 'success'); loadAccessCodes(); }
-    else { const d = await r.json(); toast('❌ ' + (d.detail || 'فشل'), 'error'); }
-  } catch (e) { toast('❌ خطأ في الاتصال', 'error'); }
+function filterUsedVouchers(q) {
+  USED_SEARCH = (q || '').toLowerCase().trim();
+  renderUsedVouchers();
 }
 
-async function deleteAccessCode(id) {
-  if (!confirm('حذف هذا الكود نهائياً؟')) return;
-  try {
-    const r = await adminFetch(`/api/v1/admin/access-codes/${id}`, { method: 'DELETE' });
-    if (r.ok) { toast('🗑️ تم الحذف', 'success'); loadAccessCodes(); }
-    else { const d = await r.json(); toast('❌ ' + (d.detail || 'فشل'), 'error'); }
-  } catch (e) { toast('❌ خطأ في الاتصال', 'error'); }
-}
+function renderUsedVouchers() {
+  const tbody = document.getElementById('used-tbody');
+  if (!tbody) return;
+  const q = USED_SEARCH;
 
-// ══════════════════════════════════════════════════════════════
-// Deposits
-// ══════════════════════════════════════════════════════════════
-async function loadDeposits(btn) {
-  if (btn) btn.disabled = true;
-  try {
-    const statusFilter = document.getElementById('d-filter').value;
-    const url = '/api/v1/admin/deposits' + (statusFilter ? '?status_filter=' + statusFilter : '');
-    const r = await adminFetch(url);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const data = await r.json();
+  const rows = USED_VOUCHERS.filter(v => {
+    if (!q) return true;
+    const hay = [
+      v.code, v.label, v.note,
+      v.used_on?.country, v.used_on?.service,
+      ...(v.allowed_pairs || []).flatMap(p => [p.country, p.service]),
+    ].join(' ').toLowerCase();
+    return hay.includes(q);
+  });
 
-    const badge = document.getElementById('pending-badge');
-    if (data.summary.pending > 0) {
-      badge.textContent = data.summary.pending;
-      badge.classList.remove('hidden');
-    } else {
-      badge.classList.add('hidden');
-    }
-
-    const tbody = document.getElementById('deposits-tbody');
-    if (!data.deposits.length) {
-      tbody.innerHTML = '<tr><td colspan="8" class="px-3 py-8 text-center text-slate-500">لا توجد طلبات</td></tr>';
-      return;
-    }
-
-    tbody.innerHTML = data.deposits.map(d => {
-      const statusBadge = {
-        pending: '<span class="bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full text-[10px] font-bold">قيد المراجعة</span>',
-        completed: '<span class="bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full text-[10px] font-bold">مكتمل</span>',
-        rejected: '<span class="bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full text-[10px] font-bold">مرفوض</span>',
-      }[d.status] || d.status;
-      const actions = d.status === 'pending' ? `
-        <div class="flex items-center gap-1.5">
-          <button onclick="approveDeposit(${d.id})" class="text-[10px] font-bold bg-emerald-500 hover:bg-emerald-600 text-white px-2 py-1 rounded-lg transition-colors">✓ موافقة</button>
-          <button onclick="rejectDeposit(${d.id})" class="text-[10px] font-bold bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded-lg transition-colors">✗ رفض</button>
-        </div>
-      ` : '';
-      return `
-        <tr class="hover:bg-slate-700/30 transition-colors">
-          <td class="px-3 py-2 text-slate-500">#${d.id}</td>
-          <td class="px-3 py-2">
-            <div class="font-bold text-[11px]">${escapeHtml(d.customer_name || '—')}</div>
-            <div class="text-[10px] text-slate-500 mono" dir="ltr">${escapeHtml(d.customer_email || '—')}</div>
-          </td>
-          <td class="px-3 py-2 font-bold text-emerald-400">$${d.amount.toFixed(2)}</td>
-          <td class="px-3 py-2 text-[10px]"><span class="bg-slate-700 px-2 py-0.5 rounded">${escapeHtml(d.method)}</span></td>
-          <td class="px-3 py-2"><code class="mono text-[10px] bg-slate-900 px-1.5 py-0.5 rounded block max-w-[150px] truncate" title="${escapeHtml(d.reference)}" dir="ltr">${escapeHtml(d.reference)}</code></td>
-          <td class="px-3 py-2 text-slate-500 text-[10px]">${escapeHtml(d.date)}</td>
-          <td class="px-3 py-2">${statusBadge}</td>
-          <td class="px-3 py-2">${actions}</td>
-        </tr>
-      `;
-    }).join('');
-  } catch (e) {
-    console.error('loadDeposits:', e);
-  } finally {
-    if (btn) btn.disabled = false;
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="px-3 py-8 text-center text-slate-500">لا نتائج</td></tr>';
+    return;
   }
-}
 
-async function approveDeposit(id) {
-  if (!confirm('تأكيد الموافقة على الإيداع؟ سيُضاف المبلغ لرصيد الزبون.')) return;
-  try {
-    const r = await adminFetch(`/api/v1/admin/deposits/${id}/approve`, { method: 'POST' });
-    const d = await r.json();
-    if (r.ok) {
-      toast(`✅ تمت الموافقة — الرصيد الجديد: $${d.new_balance.toFixed(2)}`, 'success');
-      loadDeposits();
-      loadWallet();
-    } else {
-      toast('❌ ' + (d.detail || 'فشل'), 'error');
-    }
-  } catch (e) {
-    toast('❌ خطأ في الاتصال', 'error');
-  }
-}
+  tbody.innerHTML = rows.map(v => {
+    const usedAt = v.used_at ? new Date(v.used_at).toLocaleString('ar-EG') : '—';
 
-async function rejectDeposit(id) {
-  const reason = prompt('سبب الرفض (اختياري):') || '';
-  try {
-    const r = await adminFetch(`/api/v1/admin/deposits/${id}/reject?reason=${encodeURIComponent(reason)}`, { method: 'POST' });
-    if (r.ok) {
-      toast('تم رفض الطلب', 'warning');
-      loadDeposits();
-    } else {
-      const d = await r.json();
-      toast('❌ ' + (d.detail || 'فشل'), 'error');
+    let usedOnHtml = '—';
+    if (v.used_on?.country && v.used_on?.service) {
+      usedOnHtml = `<span class="mono text-[10px] bg-blue-500/10 text-blue-300 px-2 py-0.5 rounded">${escapeHtml(v.used_on.country)}/${escapeHtml(v.used_on.service)}</span>`;
+    } else if ((v.allowed_pairs || []).length === 1) {
+      const p = v.allowed_pairs[0];
+      usedOnHtml = `<span class="mono text-[10px] bg-slate-700 px-2 py-0.5 rounded">${escapeHtml(p.country)}/${escapeHtml(p.service)}</span>`;
+    } else if ((v.allowed_pairs || []).length > 1) {
+      usedOnHtml = `<span class="text-[10px] text-amber-300">🔗 ${v.allowed_pairs.length} أزواج</span>`;
     }
-  } catch (e) {
-    toast('❌ خطأ في الاتصال', 'error');
-  }
+
+    const safeCode = escapeHtml(v.code).replace(/'/g, "\\'");
+
+    return `
+      <tr class="hover:bg-slate-700/30 transition-colors">
+        <td class="px-3 py-2">
+          <code class="mono text-[11px] bg-slate-900 px-2 py-0.5 rounded">${escapeHtml(v.code)}</code>
+          <button onclick="copyOneCode('${safeCode}')" class="text-[10px] text-cyan-400 hover:text-cyan-300 ml-1">📋</button>
+        </td>
+        <td class="px-3 py-2 text-slate-300 text-[11px]">${escapeHtml(v.label || '—')}</td>
+        <td class="px-3 py-2 font-bold text-amber-400">$${v.value.toFixed(2)}</td>
+        <td class="px-3 py-2">${usedOnHtml}</td>
+        <td class="px-3 py-2 text-slate-500 text-[10px]">${usedAt}</td>
+      </tr>
+    `;
+  }).join('');
 }
 
 // ══════════════════════════════════════════════════════════════
