@@ -117,6 +117,7 @@ def _default_store() -> dict:
         "customers": {}, "numbers": [], "orders": [], "sms": [],
         "transactions": [], "deposits": [], "tickets": [], "sessions": [],
         "vouchers": [], "access_codes": [],
+        "popular_services": [],          # ✨ NEW — الأكثر طلباً (من لوحة التحكم)
         "owner_wallet": {
             "total_profit": 0.0,
             "total_revenue": 0.0,
