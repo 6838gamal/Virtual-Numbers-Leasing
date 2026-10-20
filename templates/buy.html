@@ -111,7 +111,6 @@
         JAMAL
       </div>
 
-      {# 1) خدمة عملاء واتساب #}
       <a href="https://wa.me/966578405137" target="_blank" rel="noopener"
          class="hud-chip !bg-emerald-500/10 !border-emerald-500/30 !text-emerald-300 hover:!bg-emerald-500/20"
          title="خدمة عملاء واتساب">
@@ -119,7 +118,6 @@
         <span class="hidden sm:inline">واتساب</span>
       </a>
 
-      {# 2) شراء كود (رابط خارجي) #}
       <a href="https://rivalstore.xyz/ar/%D8%A7%D9%84%D8%A3%D8%B1%D9%82%D8%A7%D9%85-%D8%A7%D9%84%D8%A5%D9%81%D8%AA%D8%B1%D8%A7%D8%B6%D9%8A%D8%A9/c1344820948?filters"
          target="_blank" rel="noopener"
          class="hud-chip !bg-violet-500/10 !border-violet-500/30 !text-violet-300 hover:!bg-violet-500/20"
@@ -128,13 +126,11 @@
         <span class="hidden sm:inline">شراء كود</span>
       </a>
 
-      {# 3) شراء رقم — scroll للأسفل #}
       <button type="button" onclick="scrollToBuy()" class="hud-chip" title="شراء رقم">
         <span class="ico">📱</span>
         <span class="hidden sm:inline">شراء رقم</span>
       </button>
 
-      {# 4) التحقق من الأكواد #}
       <button type="button" onclick="openModal('verifyCodeModal')" class="hud-chip" title="التحقق من الأكواد">
         <span class="ico">🔍</span>
         <span class="hidden sm:inline">تحقق</span>
@@ -176,7 +172,7 @@
         </button>
       </div>
 
-      {# ══ الأكثر طلباً — يظهر فقط إن ضُبطت من لوحة التحكم ══ #}
+      {# ══ الأكثر طلباً ══ #}
       {% if popular_services %}
       <div class="mb-6" id="popular-section">
         <div class="flex items-center justify-between mb-3">
@@ -241,6 +237,16 @@
               <span class="text-[10px] text-slate-400">{{ countries|length }} دولة متاحة من 5SIM</span>
             </div>
 
+            {# ✨ صندوق البحث عن الدولة #}
+            <div class="relative mb-3">
+              <span class="absolute inset-y-0 right-3 flex items-center text-slate-400 text-sm pointer-events-none">🔍</span>
+              <input type="text" id="countrySearch"
+                     placeholder="ابحث عن دولة..."
+                     class="glass !pr-9 !bg-white text-sm w-full"
+                     oninput="filterCountries(this.value)"
+                     autocomplete="off">
+            </div>
+
             <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 scroll-grid" id="country-grid">
               {% for c in countries %}
               <button type="button"
@@ -260,8 +266,12 @@
               {% endfor %}
             </div>
 
+            <div id="country-no-results" class="hidden text-center text-xs text-slate-400 py-4">
+              لا توجد دولة مطابقة لبحثك
+            </div>
+
             {% if countries|length > 6 %}
-            <div class="text-center mt-3">
+            <div class="text-center mt-3" id="country-more-wrap">
               <button type="button"
                       onclick="toggleMore(this, '.country-btn', 'countryIndex')"
                       data-expanded="false"
@@ -282,9 +292,24 @@
               <div class="w-7 h-7 rounded-full bg-slate-300 text-white text-xs font-bold flex items-center justify-center">2</div>
               <h3 class="text-base font-bold text-slate-800">اختر الخدمة</h3>
             </div>
+
+            {# ✨ صندوق البحث عن الخدمة #}
+            <div class="relative mb-3">
+              <span class="absolute inset-y-0 right-3 flex items-center text-slate-400 text-sm pointer-events-none">🔍</span>
+              <input type="text" id="serviceSearch"
+                     placeholder="ابحث عن خدمة..."
+                     class="glass !pr-9 !bg-white text-sm w-full disabled:opacity-50"
+                     oninput="filterServices(this.value)"
+                     autocomplete="off"
+                     disabled>
+            </div>
+
             <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 scroll-grid" id="service-grid"></div>
             <div id="service-empty" class="hidden text-center text-xs text-slate-400 py-6">
               لا توجد خدمات متاحة لهذه الدولة حالياً
+            </div>
+            <div id="service-no-results" class="hidden text-center text-xs text-slate-400 py-4">
+              لا توجد خدمة مطابقة لبحثك
             </div>
             <div id="service-more-wrap" class="hidden text-center mt-3"></div>
           </div>
@@ -311,7 +336,7 @@
               </div>
             </div>
 
-            {# كود الشراء (إلزامي في وضع الضيف) #}
+            {# كود الشراء #}
             <div class="bg-gradient-to-br from-amber-50 to-yellow-50 border border-amber-200 rounded-xl p-3 mb-4">
               <div class="flex items-center gap-2 mb-2">
                 <span class="text-lg">🎟️</span>
@@ -439,7 +464,6 @@
         </div>
       </div>
 
-      {# أزرار النسخ #}
       <div class="grid grid-cols-2 gap-2 mb-3">
         <button type="button" onclick="copyPhone(false)"
                 class="bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs py-2 rounded-lg">
@@ -451,7 +475,6 @@
         </button>
       </div>
 
-      {# شراء / إلغاء #}
       <div id="pr-actions" class="grid grid-cols-2 gap-2">
         <button type="button" onclick="confirmKeepOrder()"
                 class="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2.5 rounded-xl text-sm">
@@ -483,9 +506,6 @@
 
   <!-- ═══════════════ SCRIPTS ═══════════════ -->
   <script>
-  // ══════════════════════════════════════════════════════════
-  // إعدادات السيرفر
-  // ══════════════════════════════════════════════════════════
   const GUEST_MODE = {{ 'true' if guest_mode else 'false' }};
   const GUEST_REQUIRES_VOUCHER = {{ 'true' if guest_requires_voucher else 'false' }};
 
@@ -651,6 +671,10 @@
     renderServices(selectedCountry ? selectedCountry.services : []);
     document.getElementById('service-step').classList.remove('opacity-50','pointer-events-none');
     document.getElementById('confirm-step').classList.add('opacity-50','pointer-events-none');
+
+    // ✨ فعّل بحث الخدمة وامسح نصه
+    const ss = document.getElementById('serviceSearch');
+    if (ss) { ss.disabled = false; ss.value = ''; }
   }
 
   function renderServices(services) {
@@ -658,6 +682,15 @@
     const empty = document.getElementById('service-empty');
     const moreWrap = document.getElementById('service-more-wrap');
     grid.innerHTML = ''; moreWrap.classList.add('hidden'); moreWrap.innerHTML = '';
+
+    // ✨ أعد تعيين البحث عند إعادة رسم الخدمات
+    const ss = document.getElementById('serviceSearch');
+    if (ss) ss.value = '';
+
+    // ✨ أخفِ رسالة "لا نتائج"
+    const noRes = document.getElementById('service-no-results');
+    if (noRes) noRes.classList.add('hidden');
+
     if (!services || services.length === 0) { empty.classList.remove('hidden'); return; }
     empty.classList.add('hidden');
     const sorted = sortByPopularity(services, s => s.id);
@@ -734,6 +767,12 @@
   }
 
   function quickBuy(countrySlug, serviceId) {
+    // ✨ امسح البحثين لضمان ظهور العنصر المطلوب
+    const cs = document.getElementById('countrySearch');
+    if (cs) { cs.value = ''; filterCountries(''); }
+    const ss0 = document.getElementById('serviceSearch');
+    if (ss0) ss0.value = '';
+
     const cb = document.querySelector('.country-btn[data-slug="'+countrySlug+'"]') || document.querySelector('.country-btn[data-code="'+countrySlug+'"]');
     if (!cb) { showAlert('الدولة غير موجودة', 'error'); return; }
     selectCountry(cb.dataset.slug, cb);
@@ -762,6 +801,86 @@
     div.textContent = msg;
     document.body.appendChild(div);
     setTimeout(() => div.remove(), 3500);
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // ✨ البحث (تطبيع النص للعربية والإنجليزية)
+  // ══════════════════════════════════════════════════════════
+  function _norm(s) {
+    return String(s || '')
+      .toLowerCase()
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[أإآ]/g, 'ا')
+      .replace(/ى/g, 'ي')
+      .replace(/ة/g, 'ه')
+      .trim();
+  }
+
+  function filterCountries(query) {
+    const q = _norm(query);
+    const buttons = document.querySelectorAll('.country-btn');
+    const moreWrap = document.getElementById('country-more-wrap');
+    const noRes = document.getElementById('country-no-results');
+
+    if (!q) {
+      buttons.forEach(b => {
+        const i = parseInt(b.dataset.countryIndex, 10);
+        b.classList.toggle('hidden', !isNaN(i) && i >= PREVIEW_COUNT);
+      });
+      if (moreWrap) moreWrap.classList.remove('hidden');
+      if (noRes) noRes.classList.add('hidden');
+      return;
+    }
+
+    let matched = 0;
+    buttons.forEach(b => {
+      const name = _norm(b.querySelector('.text-sm')?.textContent || '');
+      const code = _norm(b.dataset.code || '');
+      const slug = _norm(b.dataset.slug || '');
+      const isMatch = name.includes(q) || code.includes(q) || slug.includes(q);
+      b.classList.toggle('hidden', !isMatch);
+      if (isMatch) matched++;
+    });
+
+    if (moreWrap) moreWrap.classList.add('hidden');
+    if (noRes) noRes.classList.toggle('hidden', matched > 0);
+
+    const scroller = document.getElementById('country-grid');
+    if (scroller) scroller.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function filterServices(query) {
+    const q = _norm(query);
+    const grid = document.getElementById('service-grid');
+    if (!grid) return;
+    const buttons = document.querySelectorAll('.service-btn');
+    const moreWrap = document.getElementById('service-more-wrap');
+    const noRes = document.getElementById('service-no-results');
+
+    if (!q) {
+      buttons.forEach(b => {
+        const i = parseInt(b.dataset.serviceIndex, 10);
+        b.classList.toggle('hidden', !isNaN(i) && i >= PREVIEW_COUNT);
+      });
+      if (moreWrap && buttons.length > PREVIEW_COUNT) moreWrap.classList.remove('hidden');
+      if (noRes) noRes.classList.add('hidden');
+      return;
+    }
+
+    let matched = 0;
+    buttons.forEach(b => {
+      const name = _norm(b.querySelector('.text-xs.font-bold')?.textContent || '');
+      const id = _norm(b.dataset.id || '');
+      const isMatch = name.includes(q) || id.includes(q);
+      b.classList.toggle('hidden', !isMatch);
+      if (isMatch) matched++;
+    });
+
+    if (moreWrap) moreWrap.classList.add('hidden');
+    if (noRes) noRes.classList.toggle('hidden', matched > 0);
+
+    grid.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   // ══════════════════════════════════════════════════════════
@@ -915,6 +1034,13 @@
     CURRENT_ORDER = null;
     selectedService = null;
     document.getElementById('confirm-step').classList.add('opacity-50','pointer-events-none');
+
+    // ✨ امسح البحثين
+    const cs = document.getElementById('countrySearch');
+    if (cs) { cs.value = ''; filterCountries(''); }
+    const ss = document.getElementById('serviceSearch');
+    if (ss) { ss.value = ''; ss.disabled = true; }
+
     const vc = document.getElementById('orderVoucherCode');
     if (vc) vc.value = '';
     const vm = document.getElementById('orderVoucherMsg');
