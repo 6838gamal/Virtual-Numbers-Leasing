@@ -2,12 +2,14 @@
 Jamal Solutions — Virtual Numbers Platform
 Customer Portal (FastAPI + Jinja2 + SSE + 5SIM + Access-Code Login)
 
-✅ 1.8.0 — دعم الكود الموحّد + إخفاء الأسعار:
-- كود واحد يصلح لأكثر من زوج (allowed_pairs)
-- endpoint /api/v1/vouchers/check للتحقق المسبق
-- الشراء المباشر بالكود عبر voucher_code في create_order
-- HIDE_PRICES_FROM_CUSTOMERS لإخفاء الأسعار عن الزبائن
-- مخزن مشترك عبر shared_storage.py
+✅ 1.9.0 — وضع الضيف + الأكثر طلباً من لوحة التحكم + إخفاء كامل للرصيد والأسعار:
+- GUEST_MODE: إقلاع مباشر على /buy بدون تسجيل دخول
+- GUEST_REQUIRES_VOUCHER: كود شراء إلزامي للزائر (حماية من استهلاك رصيدك)
+- HIDE_BALANCE_FROM_CUSTOMERS: إخفاء الرصيد والأسعار قسرياً في وضع الضيف
+- popular_services تُدار من لوحة التحكم (/api/v1/admin/popular)
+- /api/v1/vouchers/check متاح بدون تسجيل دخول في وضع الضيف
+- create_order يعيد بيانات نتيجة الشراء (بدون سعر/رصيد في وضع الإخفاء)
+- shared_storage.py كمخزن مشترك
 """
 from __future__ import annotations
 
@@ -74,6 +76,8 @@ except ImportError:
 
 
 STORE: dict[str, Any] = load_store()
+# ✨ NEW — تأكد من وجود المفاتيح الجديدة
+STORE.setdefault("popular_services", [])
 print(f"[app] 💾 store loaded from {STORE_FILE}")
 
 
@@ -122,6 +126,8 @@ def _refresh() -> None:
     fresh = reload_from_disk()
     STORE.clear()
     STORE.update(fresh)
+    # ✨ NEW — أعد التأكد بعد الـ reload
+    STORE.setdefault("popular_services", [])
 
 
 # ══════════════════════════════════════════════════════════════
@@ -148,6 +154,15 @@ SESSION_IDLE_TIMEOUT = int(os.getenv("SESSION_IDLE_TIMEOUT", str(7 * 24 * 3600))
 
 
 # ══════════════════════════════════════════════════════════════
+# ✨ NEW — Guest Mode (إلغاء تسجيل الدخول)
+# ══════════════════════════════════════════════════════════════
+GUEST_MODE = os.getenv("GUEST_MODE", "true").lower() == "true"
+GUEST_REQUIRES_VOUCHER = os.getenv("GUEST_REQUIRES_VOUCHER", "true").lower() == "true"
+HIDE_BALANCE_FROM_CUSTOMERS = os.getenv("HIDE_BALANCE_FROM_CUSTOMERS", "true").lower() == "true"
+GUEST_CUSTOMER_ID = int(os.getenv("GUEST_CUSTOMER_ID", "0"))  # 0 = auto
+
+
+# ══════════════════════════════════════════════════════════════
 # 5SIM — إعدادات
 # ══════════════════════════════════════════════════════════════
 SIM5_BASE = os.getenv("SIM5_BASE", "https://5sim.net/v1").rstrip("/")
@@ -156,8 +171,11 @@ SIM5_ENABLED = bool(SIM5_API_KEY)
 
 FIVESIM_MARKUP_PERCENT = float(os.getenv("FIVESIM_MARKUP_PERCENT", "40"))
 
-# ✨ NEW — إخفاء الأسعار عن الزبائن (السعر مرئي للأدمن فقط)
-HIDE_PRICES_FROM_CUSTOMERS = os.getenv("HIDE_PRICES_FROM_CUSTOMERS", "true").lower() == "true"
+# ✨ NEW — إخفاء قسري إن كان GUEST_MODE + HIDE_BALANCE
+HIDE_PRICES_FROM_CUSTOMERS = (
+    os.getenv("HIDE_PRICES_FROM_CUSTOMERS", "true").lower() == "true"
+    or (GUEST_MODE and HIDE_BALANCE_FROM_CUSTOMERS)
+)
 
 ADMIN_SECRET = os.getenv("ADMIN_SECRET", "").strip()
 VOUCHER_PREFIX = os.getenv("VOUCHER_PREFIX", "JS").strip().upper()
@@ -276,12 +294,8 @@ def _calculate_sale_price(fivesim_cost: float) -> float:
     return round(fivesim_cost + markup, 2)
 
 
-# ✨ NEW — إخفاء الأسعار من الكتالوج قبل إرساله للزبون
 def _strip_prices(catalog: dict) -> dict:
-    """
-    إذا HIDE_PRICES_FROM_CUSTOMERS=true، يحذف cost/fivesim_cost/min_price
-    من كل خدمة/دولة. يبقى فقط available/count/name/icon.
-    """
+    """إذا HIDE_PRICES_FROM_CUSTOMERS=true، يحذف cost/fivesim_cost/min_price."""
     if not HIDE_PRICES_FROM_CUSTOMERS or not catalog.get("ok"):
         return catalog
 
@@ -303,7 +317,6 @@ def _strip_prices(catalog: dict) -> dict:
     return out
 
 
-# ✨ NEW — التوافق العكسي للأزواج المسموحة
 def _normalize_voucher_pairs(v: dict) -> list[dict]:
     """يعيد قائمة الأزواج المسموحة مع التوافق العكسي."""
     pairs = v.get("allowed_pairs") or []
@@ -456,7 +469,9 @@ PUBLIC_PATHS = (
     "/favicon.ico",
     "/api/v1/system",
     "/api/v1/prices",
+    "/api/v1/popular",           # ✨ NEW
     "/api/v1/auth/login-with-code",
+    "/api/v1/vouchers/check",    # ✨ NEW — متاح بدون تسجيل في وضع الضيف
 )
 
 PROTECTED_PREFIXES = (
@@ -624,9 +639,18 @@ async def lifespan(app: FastAPI):
     else:
         print("🔴 تحذير: SECRET_KEY غير مضبوط في متغيرات البيئة!")
 
-    print("✅ تسجيل الدخول بالكود مفعّل.")
+    if GUEST_MODE:
+        print("✅ GUEST_MODE مفعّل — لا تسجيل دخول، الإقلاع مباشر على /buy")
+        if GUEST_REQUIRES_VOUCHER:
+            print("✅ GUEST_REQUIRES_VOUCHER=true — كود شراء إلزامي لكل عملية")
+        else:
+            print("⚠️  GUEST_REQUIRES_VOUCHER=false — الشراء مجاني (يستهلك رصيد 5SIM الحقيقي!)")
+    else:
+        print("✅ تسجيل الدخول بالكود مفعّل.")
+
     print("✅ الشاشة الوحيدة: /buy")
     print(f"✅ إخفاء الأسعار عن الزبائن: {HIDE_PRICES_FROM_CUSTOMERS}")
+    print(f"✅ إخفاء الرصيد عن الزبائن: {HIDE_BALANCE_FROM_CUSTOMERS}")
 
     _info = _store_file_info()
     print(f"✅ المخزن المشترك: {_info['path']} (kind={_info['kind']}, ready={'✅' if _info['exists'] else '❌'})")
@@ -677,7 +701,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Jamal Solutions — Customer Portal",
     description="Virtual Numbers Platform",
-    version="1.8.0",
+    version="1.9.0",
     lifespan=lifespan,
 )
 
@@ -688,7 +712,54 @@ if STATIC_DIR.exists():
 # ══════════════════════════════════════════════════════════════
 # Customer helpers
 # ══════════════════════════════════════════════════════════════
+def _get_or_create_guest() -> dict:
+    """ينشئ/يعيد عميلاً افتراضياً موحّداً لكل الزوار."""
+    if GUEST_CUSTOMER_ID and GUEST_CUSTOMER_ID in STORE["customers"]:
+        return STORE["customers"][GUEST_CUSTOMER_ID]
+
+    guest = next(
+        (c for c in STORE["customers"].values() if c.get("is_guest")),
+        None,
+    )
+    if guest:
+        return guest
+
+    new_id = max(STORE["customers"].keys(), default=0) + 1
+    now = datetime.now(timezone.utc)
+    guest = {
+        "id": new_id,
+        "name": "زائر",
+        "email": f"guest{new_id}@jamal.local",
+        "phone": "",
+        "country": "",
+        "initials": "ز",
+        "picture": None,
+        "balance": 0.0,
+        "currency": "USD",
+        "created_at": now.strftime("%Y-%m-%d"),
+        "email_verified": False,
+        "phone_verified": False,
+        "two_fa_enabled": False,
+        "has_strong_password": False,
+        "security_score": 0,
+        "is_guest": True,
+        "prefs": {
+            "email_notifications": False,
+            "sms_notifications": False,
+            "marketing_emails": False,
+        },
+    }
+    STORE["customers"][new_id] = guest
+    _persist_now()
+    print(f"[guest] ✨ created guest customer #{new_id}")
+    return guest
+
+
 def _get_customer_from_session(request: Request) -> dict | None:
+    # ✨ GUEST MODE — تجاهل الجلسة تماماً
+    if GUEST_MODE:
+        return _get_or_create_guest()
+
     try:
         cid = request.session.get("customer_id")
     except Exception:
@@ -838,7 +909,7 @@ def _create_vouchers_batch(
     note: str = "",
     country: Optional[str] = None,
     service: Optional[str] = None,
-    allowed_pairs: Optional[list[dict]] = None,   # ✨ NEW
+    allowed_pairs: Optional[list[dict]] = None,
 ) -> list[dict]:
     batch_id = f"batch_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
     now = datetime.now(timezone.utc)
@@ -872,12 +943,12 @@ def _create_vouchers_batch(
             "note": note,
             "country": single["country"] if single else (country or None),
             "service": single["service"] if single else (service or None),
-            "allowed_pairs": pairs,           # ✨ NEW
+            "allowed_pairs": pairs,
             "created_at": now.isoformat(),
             "expires_at": expires.isoformat(),
             "used_by": None,
             "used_at": None,
-            "used_on": None,                  # ✨ NEW
+            "used_on": None,
         }
         STORE["vouchers"].append(voucher)
         created.append(voucher)
@@ -909,7 +980,6 @@ def _validate_voucher(code: str) -> dict:
     except (ValueError, TypeError):
         pass
 
-    # ✨ توافق عكسي
     v["allowed_pairs"] = _normalize_voucher_pairs(v)
     return v
 
@@ -1008,7 +1078,7 @@ def _check_admin(request: Request) -> None:
 class OrderCreate(BaseModel):
     country: str
     service: str
-    voucher_code: str | None = None   # ✨ NEW — الشراء المباشر بالكود
+    voucher_code: str | None = None
 
 
 class DepositRequestCreate(BaseModel):
@@ -1019,8 +1089,8 @@ class DepositRequestCreate(BaseModel):
 
 class VoucherRedeem(BaseModel):
     code: str
-    country: str | None = None   # ✨ NEW — التحقق من allowed_pairs
-    service: str | None = None   # ✨ NEW
+    country: str | None = None
+    service: str | None = None
 
 
 class VoucherBatchCreate(BaseModel):
@@ -1031,7 +1101,6 @@ class VoucherBatchCreate(BaseModel):
 
 
 class VoucherCheck(BaseModel):
-    """✨ NEW — التحقق من صلاحية كود لزوج معيّن."""
     code: str
     country: str
     service: str
@@ -1073,6 +1142,17 @@ class AccessCodeCreate(BaseModel):
     preset_balance: float = Field(0.0, ge=0)
 
 
+# ✨ NEW — popular services
+class PopularServiceItem(BaseModel):
+    country_slug: str
+    service_id: str
+    order: int = 0
+
+
+class PopularServicesUpdate(BaseModel):
+    items: list[PopularServiceItem] = Field(default_factory=list)
+
+
 # ══════════════════════════════════════════════════════════════
 # System routes
 # ══════════════════════════════════════════════════════════════
@@ -1086,7 +1166,10 @@ async def health():
         "store_file": _info["path"],
         "store_kind": _info["kind"],
         "store_ready": _info["exists"],
-        "hide_prices": HIDE_PRICES_FROM_CUSTOMERS,   # ✨
+        "hide_prices": HIDE_PRICES_FROM_CUSTOMERS,
+        "guest_mode": GUEST_MODE,
+        "guest_requires_voucher": GUEST_REQUIRES_VOUCHER,
+        "hide_balance": HIDE_BALANCE_FROM_CUSTOMERS,
     }
     if _info.get("version") is not None:
         out["store_version"] = _info["version"]
@@ -1131,18 +1214,23 @@ async def system_version():
             "markup_percent": FIVESIM_MARKUP_PERCENT,
             "deposit_requests": True,
             "admin_endpoints": bool(ADMIN_SECRET),
-            "login_method": "access_code",
+            "login_method": "none (guest)" if GUEST_MODE else "access_code",
             "access_codes": True,
             "single_screen": True,
             "shared_store": True,
-            "multi_pair_vouchers": True,        # ✨
-            "voucher_check_endpoint": True,     # ✨
-            "hide_prices_from_customers": HIDE_PRICES_FROM_CUSTOMERS,   # ✨
+            "multi_pair_vouchers": True,
+            "voucher_check_endpoint": True,
+            "hide_prices_from_customers": HIDE_PRICES_FROM_CUSTOMERS,
+            "hide_balance_from_customers": HIDE_BALANCE_FROM_CUSTOMERS,
+            "guest_mode": GUEST_MODE,
+            "guest_requires_voucher": GUEST_REQUIRES_VOUCHER,
+            "popular_services_admin": True,
         },
         "sim5": sim5_info,
         "customers_in_store": len(STORE["customers"]),
         "vouchers_in_store": len(STORE["vouchers"]),
         "access_codes_in_store": len(STORE["access_codes"]),
+        "popular_services_count": len(STORE.get("popular_services", [])),
         "uptime": _fmt_uptime(time.time() - START_TIME),
         "store_file": _info["path"],
         "store_kind": _info["kind"],
@@ -1173,6 +1261,16 @@ async def sim5_profile():
 @app.get("/api/v1/system/whoami")
 async def whoami(request: Request):
     _refresh()
+    if GUEST_MODE:
+        return {
+            "has_session": False,
+            "customer_id": None,
+            "customer_in_store": False,
+            "email": None,
+            "name": "زائر",
+            "customers_count": len(STORE["customers"]),
+            "guest_mode": True,
+        }
     cid = request.session.get("customer_id")
     customer_exists = cid in STORE["customers"] if cid else False
     return {
@@ -1247,6 +1345,7 @@ async def status_page(request: Request):
     <div class="meta">
       <span>المخزن: <b>{store_kind_str}</b></span>
       <span>الأسعار مخفية: <b>{'✅ نعم' if HIDE_PRICES_FROM_CUSTOMERS else '❌ لا'}</b></span>
+      <span>وضع الضيف: <b>{'✅ نعم' if GUEST_MODE else '❌ لا'}</b></span>
     </div>
     <h1>🔌 5SIM</h1>
     <div class="meta"><span>{sim5_status}</span></div>
@@ -1309,20 +1408,18 @@ async def me_stats(request: Request):
             "id": customer["id"],
             "name": customer["name"],
             "email": customer["email"],
-            "balance": customer["balance"],
+            "balance": None if HIDE_BALANCE_FROM_CUSTOMERS else customer["balance"],
         },
         "stats": await get_my_stats(customer["id"]),
     }
 
 
 # ══════════════════════════════════════════════════════════════
-# API — Prices ✨ محدّث (إخفاء الأسعار)
+# API — Prices
 # ══════════════════════════════════════════════════════════════
 @app.get("/api/v1/prices")
 async def api_prices(country: str | None = None):
     result = await build_live_catalog()
-
-    # ✨ إخفاء الأسعار عن الزبون
     result = _strip_prices(result)
 
     countries = result["countries"]
@@ -1347,7 +1444,8 @@ async def api_prices(country: str | None = None):
 
 @app.post("/api/v1/prices/refresh")
 async def api_prices_refresh(request: Request):
-    await get_current_customer(request)
+    if not GUEST_MODE:
+        await get_current_customer(request)
     if not SIM5_ENABLED:
         raise HTTPException(503, "5SIM غير مفعّل")
     try:
@@ -1359,11 +1457,25 @@ async def api_prices_refresh(request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
+# ✨ NEW — Popular services (public endpoint)
+# ══════════════════════════════════════════════════════════════
+@app.get("/api/v1/popular")
+async def api_popular():
+    """للزبون — يعيد قائمة الأكثر طلباً كما ضبطها الأدمن."""
+    _refresh()
+    return {"ok": True, "popular": STORE.get("popular_services", [])}
+
+
+# ══════════════════════════════════════════════════════════════
 # Auth — Login page + Access Code
 # ══════════════════════════════════════════════════════════════
 @app.get("/", response_class=HTMLResponse)
 async def login_page(request: Request):
     _refresh()
+    # ✨ GUEST MODE — الإقلاع مباشرة على /buy
+    if GUEST_MODE:
+        return RedirectResponse(url="/buy", status_code=303)
+
     if request.session.get("customer_id"):
         if _session_is_expired(request):
             request.session.clear()
@@ -1386,6 +1498,9 @@ async def login_page(request: Request):
 @app.post("/api/v1/auth/login-with-code")
 async def login_with_code(payload: AccessCodeLogin, request: Request):
     _refresh()
+    if GUEST_MODE:
+        return {"ok": True, "redirect": "/buy", "guest_mode": True}
+
     record = _validate_access_code(payload.code)
 
     customer = None
@@ -1466,7 +1581,7 @@ async def logout(request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# ⭐ الشاشة الوحيدة — /buy ✨ محدّث
+# الشاشة الوحيدة — /buy
 # ══════════════════════════════════════════════════════════════
 @app.get("/buy", response_class=HTMLResponse)
 async def buy_page(request: Request):
@@ -1476,37 +1591,35 @@ async def buy_page(request: Request):
     stats = await get_my_stats(cid)
 
     result = await build_live_catalog()
-
-    # ✨ إخفاء الأسعار قبل إرسالها للـ template
     result = _strip_prices(result)
-
     countries = result["countries"] if result["ok"] else []
 
+    # ✨ NEW — الأكثر طلباً من STORE (بدلاً من حسابها)
     popular: list[dict] = []
     if result["ok"]:
-        for c in countries:
-            for s in c["services"]:
-                if s["available"]:
-                    popular.append({
-                        "country_slug": c["slug"],
-                        "country_name": c["name"],
-                        "country_flag": c["flag"],
-                        "service_id": s["id"],
-                        "service_name": s["name"],
-                        # ✨ لا نرسل السعر إن كان مخفياً
-                        "price": None if HIDE_PRICES_FROM_CUSTOMERS else s.get("cost"),
-                        "count": s["count"],
-                    })
-        # ✨ ترتيب حسب count إن كانت الأسعار مخفية
-        if HIDE_PRICES_FROM_CUSTOMERS:
-            popular.sort(key=lambda x: -x["count"])
-        else:
-            popular.sort(key=lambda x: x["price"] or 999)
-        popular = popular[:8]
+        wanted = STORE.get("popular_services", [])
+        by_slug = {c["slug"]: c for c in countries}
+        for item in wanted:
+            c = by_slug.get(item["country_slug"])
+            if not c:
+                continue
+            s = next((x for x in c["services"] if x["id"] == item["service_id"]), None)
+            if not s or not s["available"]:
+                continue
+            popular.append({
+                "country_slug": c["slug"],
+                "country_name": c["name"],
+                "country_flag": c["flag"],
+                "service_id": s["id"],
+                "service_name": s["name"],
+                "count": s["count"],
+                "price": None,  # لا نرسل السعر إطلاقاً
+            })
 
     stats["countries_count"] = len(countries)
     stats["services_count"] = sum(c["services_count"] for c in countries)
-    stats["prices_hidden"] = HIDE_PRICES_FROM_CUSTOMERS   # ✨
+    stats["prices_hidden"] = HIDE_PRICES_FROM_CUSTOMERS
+    stats["hide_balance"] = HIDE_BALANCE_FROM_CUSTOMERS
 
     my_numbers = await get_my_numbers(cid)
     sms_list = await get_my_recent_sms(cid, limit=100)
@@ -1530,7 +1643,10 @@ async def buy_page(request: Request):
             "stats": stats,
             "countries": countries,
             "popular_services": popular,
-            "hide_prices": HIDE_PRICES_FROM_CUSTOMERS,   # ✨ للـ template
+            "hide_prices": HIDE_PRICES_FROM_CUSTOMERS,
+            "hide_balance": HIDE_BALANCE_FROM_CUSTOMERS,
+            "guest_mode": GUEST_MODE,
+            "guest_requires_voucher": GUEST_REQUIRES_VOUCHER,
             "prices_meta": {
                 "ok": result["ok"],
                 "error": result["error"],
@@ -1631,7 +1747,7 @@ async def admin_panel(request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# ✨ NEW — التحقق من كود موحّد قبل الاستخدام
+# ✨ NEW — التحقق من كود موحّد قبل الاستخدام (متاح بدون تسجيل في وضع الضيف)
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/vouchers/check")
 async def check_voucher_compat(payload: VoucherCheck, request: Request):
@@ -1645,7 +1761,8 @@ async def check_voucher_compat(payload: VoucherCheck, request: Request):
     لا يستهلك الكود — آمن للاستدعاء من واجهة الزبون.
     """
     _refresh()
-    await get_current_customer(request)
+    if not GUEST_MODE:
+        await get_current_customer(request)
 
     v = _validate_voucher(payload.code)
     pairs = v["allowed_pairs"]
@@ -1674,20 +1791,18 @@ async def check_voucher_compat(payload: VoucherCheck, request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# API — Wallet ✨ محدّث
+# API — Wallet
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/wallet/redeem-voucher")
 async def redeem_voucher(payload: VoucherRedeem, request: Request):
-    """
-    ✨ محدّث — يدعم التحقق من allowed_pairs إن مُرّر country/service.
-    """
     _refresh()
+    if GUEST_MODE:
+        raise HTTPException(403, "تفعيل أكواد الشحن غير متاح في وضع الزائر")
     customer = await get_current_customer(request)
     cid = customer["id"]
 
     voucher = _validate_voucher(payload.code)
 
-    # ✨ التحقق من allowed_pairs إن مُرّر زوج
     if payload.country and payload.service:
         if not _voucher_allows(voucher, payload.country, payload.service):
             pairs_str = ", ".join(
@@ -1704,7 +1819,6 @@ async def redeem_voucher(payload: VoucherRedeem, request: Request):
     voucher["status"] = "used"
     voucher["used_by"] = cid
     voucher["used_at"] = now.isoformat()
-    # ✨ سجّل الزوج المستخدم
     if payload.country and payload.service:
         voucher["used_on"] = {
             "country": payload.country,
@@ -1731,13 +1845,15 @@ async def redeem_voucher(payload: VoucherRedeem, request: Request):
         "status": "success",
         "value": voucher["value"],
         "new_balance": customer["balance"],
-        "allowed_pairs": voucher["allowed_pairs"],   # ✨
+        "allowed_pairs": voucher["allowed_pairs"],
     }
 
 
 @app.post("/api/v1/wallet/deposit-request")
 async def create_deposit_request(payload: DepositRequestCreate, request: Request):
     _refresh()
+    if GUEST_MODE:
+        raise HTTPException(403, "طلبات الإيداع غير متاحة في وضع الزائر")
     customer = await get_current_customer(request)
 
     deposit = {
@@ -1762,14 +1878,13 @@ async def create_deposit_request(payload: DepositRequestCreate, request: Request
 
 
 # ══════════════════════════════════════════════════════════════
-# API — Orders ✨ محدّث (دعم voucher_code)
+# API — Orders (دعم voucher_code)
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/orders")
 async def create_order(payload: OrderCreate, request: Request):
     """
-    ✨ محدّث — يدعم:
-      - الدفع من الرصيد (الافتراضي)
-      - الدفع المباشر بالكود عبر voucher_code (يحترم allowed_pairs)
+    - الدفع من الرصيد (للمسجّلين فقط، إن لم يُخفَ الرصيد)
+    - الدفع بالكود عبر voucher_code (إلزامي في وضع الضيف)
     """
     _refresh()
     customer = await get_current_customer(request)
@@ -1778,7 +1893,11 @@ async def create_order(payload: OrderCreate, request: Request):
     if not SIM5_ENABLED:
         raise HTTPException(503, "5SIM غير مفعّل — لا يمكن الشراء")
 
-    # ✨ معالجة الكود المباشر
+    # ✨ GUEST MODE — كود إلزامي
+    if GUEST_MODE and GUEST_REQUIRES_VOUCHER and not payload.voucher_code:
+        raise HTTPException(400, "أدخل كود الشراء أولاً")
+
+    # ✨ معالجة الكود
     voucher = None
     if payload.voucher_code:
         voucher = _validate_voucher(payload.voucher_code)
@@ -1817,11 +1936,13 @@ async def create_order(payload: OrderCreate, request: Request):
     if not service.get("operator"):
         raise HTTPException(400, "لم يُحدد مشغل متاح لهذه الخدمة")
 
-    # ✨ الرصيد المتاح (من الرصيد أو الكود)
+    # ✨ الرصيد المتاح
     if voucher:
         available_balance = voucher["value"]
         source_name = "الكود"
     else:
+        if HIDE_BALANCE_FROM_CUSTOMERS and GUEST_MODE:
+            raise HTTPException(400, "أدخل كود الشراء أولاً")
         available_balance = customer["balance"]
         source_name = "رصيدك"
 
@@ -1848,7 +1969,7 @@ async def create_order(payload: OrderCreate, request: Request):
     sale_price = _calculate_sale_price(fivesim_cost)
     profit = round(sale_price - fivesim_cost, 4)
 
-    # ✨ تحقق مرة أخرى بعد معرفة السعر الفعلي
+    # ✨ تحقق نهائي
     if voucher:
         if voucher["value"] < sale_price:
             try:
@@ -1892,7 +2013,7 @@ async def create_order(payload: OrderCreate, request: Request):
         "expires": sim5_order.get("expires"),
         "created_at": sim5_order.get("created_at", now.isoformat()),
         "sms": sim5_order.get("sms") or [],
-        "paid_by_voucher": voucher["code"] if voucher else None,   # ✨
+        "paid_by_voucher": voucher["code"] if voucher else None,
     }
     STORE["orders"].append(order)
 
@@ -1913,7 +2034,7 @@ async def create_order(payload: OrderCreate, request: Request):
         "created_at": order["created_at"],
     })
 
-    # ✨ خصم من الرصيد أو استهلاك الكود
+    # ✨ خصم / استهلاك
     if voucher:
         voucher["status"] = "used"
         voucher["used_by"] = cid
@@ -1956,19 +2077,26 @@ async def create_order(payload: OrderCreate, request: Request):
 
     _persist_now()
 
-    return {
+    # ✨ بيانات كافية لنموذج نتيجة الشراء — بدون سعر/رصيد في وضع الإخفاء
+    response = {
         "id": order_id,
         "sim5_id": order["sim5_id"],
         "phone": order["phone"],
         "status": order["status"],
         "expires": order["expires"],
-        "price": None if HIDE_PRICES_FROM_CUSTOMERS else sale_price,   # ✨
+        "created_at": order["created_at"],
         "service": service["name"],
         "country": country["name"],
+        "country_code": country["code"],
         "flag": country["flag"],
-        "new_balance": customer["balance"],
         "paid_by_voucher": voucher["code"] if voucher else None,
     }
+    if not HIDE_PRICES_FROM_CUSTOMERS:
+        response["price"] = sale_price
+    if not HIDE_BALANCE_FROM_CUSTOMERS:
+        response["new_balance"] = customer["balance"]
+
+    return response
 
 
 @app.get("/api/v1/orders/sync")
@@ -2380,6 +2508,46 @@ async def admin_delete_access_code(code_id: int, request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
+# ✨ NEW — Popular Services (admin)
+# ══════════════════════════════════════════════════════════════
+@app.get("/api/v1/admin/popular")
+async def admin_list_popular(request: Request):
+    _check_admin(request)
+    _refresh()
+    return {"ok": True, "popular": STORE.get("popular_services", [])}
+
+
+@app.put("/api/v1/admin/popular")
+async def admin_set_popular(payload: PopularServicesUpdate, request: Request):
+    _check_admin(request)
+    _refresh()
+    items = []
+    for it in payload.items:
+        c = it.country_slug.strip().lower()
+        s = it.service_id.strip().lower()
+        if not c or not s:
+            continue
+        items.append({
+            "country_slug": c,
+            "service_id": s,
+            "order": int(it.order),
+        })
+    items.sort(key=lambda x: x["order"])
+    STORE["popular_services"] = items
+    _persist_now()
+    return {"ok": True, "count": len(items), "popular": items}
+
+
+@app.delete("/api/v1/admin/popular")
+async def admin_clear_popular(request: Request):
+    _check_admin(request)
+    _refresh()
+    STORE["popular_services"] = []
+    _persist_now()
+    return {"ok": True, "count": 0}
+
+
+# ══════════════════════════════════════════════════════════════
 # API — SMS
 # ══════════════════════════════════════════════════════════════
 @app.delete("/api/v1/sms/{sms_id}")
@@ -2494,10 +2662,14 @@ async def end_session(session_id: str, request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# Middleware — Auth Guard
+# Middleware — Auth Guard (يتخطى كل شيء في وضع الضيف)
 # ══════════════════════════════════════════════════════════════
 @app.middleware("http")
 async def auth_guard(request: Request, call_next):
+    # ✨ GUEST MODE — لا حماية إطلاقاً
+    if GUEST_MODE:
+        return await call_next(request)
+
     path = request.url.path
 
     if path == "/":
