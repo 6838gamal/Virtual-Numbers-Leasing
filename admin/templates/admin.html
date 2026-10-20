@@ -284,6 +284,66 @@
       </div>
     </section>
 
+    <!-- ══ الأكثر طلباً (Popular) ══ -->
+    <section class="bg-slate-800 rounded-2xl border border-slate-700 p-5">
+      <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <h2 class="text-lg font-bold flex items-center gap-2">
+          <span class="w-1 h-5 bg-gradient-to-b from-orange-400 to-red-500 rounded-full"></span>
+          🔥 الأكثر طلباً
+        </h2>
+        <div class="flex items-center gap-2 flex-wrap">
+          <button onclick="loadPopular(this)" class="text-xs font-bold text-blue-400 hover:text-blue-300 border border-slate-700 hover:border-blue-500/50 px-3 py-1.5 rounded-lg transition-colors">🔄 تحديث</button>
+          <button onclick="clearPopularConfirm()" class="text-xs font-bold text-red-400 hover:text-red-300 border border-slate-700 hover:border-red-500/50 px-3 py-1.5 rounded-lg transition-colors">🗑️ مسح الكل</button>
+        </div>
+      </div>
+
+      <div class="bg-amber-500/10 border border-amber-500/30 rounded-lg p-2 mb-3 flex items-center gap-2">
+        <span>💡</span>
+        <span class="text-[11px] text-amber-300">
+          هذه القائمة تظهر للزبائن في أعلى صفحة الشراء. أضف الزوج → اضبط الترتيب → احفظ.
+        </span>
+      </div>
+
+      <!-- إضافة زوج جديد -->
+      <div class="bg-slate-900/50 rounded-xl border border-slate-700 p-3 mb-4">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
+          <div>
+            <label class="text-[10px] font-bold text-slate-400 mb-1 block">الدولة</label>
+            <select id="pop-country" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs outline-none focus:border-orange-500">
+              <option value="">اختر دولة...</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-[10px] font-bold text-slate-400 mb-1 block">الخدمة</label>
+            <select id="pop-service" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs outline-none focus:border-orange-500" disabled>
+              <option value="">اختر خدمة...</option>
+            </select>
+          </div>
+          <button onclick="addPopularItem()" class="bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs px-4 py-2 rounded-lg transition-colors h-[36px]">
+            ➕ إضافة
+          </button>
+        </div>
+      </div>
+
+      <!-- القائمة الحالية -->
+      <div id="popular-list" class="space-y-2 mb-3">
+        <p class="text-[11px] text-slate-500 text-center py-4">جاري التحميل...</p>
+      </div>
+
+      <!-- أزرار الحفظ -->
+      <div class="flex items-center gap-2 flex-wrap pt-3 border-t border-slate-700">
+        <button onclick="savePopular(this)" class="bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-sm px-5 py-2 rounded-xl transition-colors">
+          💾 حفظ التغييرات
+        </button>
+        <button onclick="loadPopular()" class="bg-slate-700 hover:bg-slate-600 text-white font-bold text-sm px-4 py-2 rounded-xl transition-colors">
+          ↩️ تراجع
+        </button>
+        <span id="popular-dirty-badge" class="hidden bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-bold px-2 py-1 rounded-lg">
+          ⚠️ تغييرات غير محفوظة
+        </span>
+      </div>
+    </section>
+
     <!-- ══ Catalog Tree (Collapsible — لعرض الأسعار) ══ -->
     <section class="bg-slate-800 rounded-2xl border border-slate-700 p-5">
       <details class="group">
@@ -475,6 +535,7 @@ function loadAll() {
   loadWallet();
   loadVouchers();
   loadUsedVouchers();
+  // لا نحمّل popular تلقائياً — قد يمسح تعديلات غير محفوظة
   const el = document.getElementById('last-refresh');
   if (el) el.textContent = new Date().toLocaleTimeString('ar-EG');
 }
@@ -539,6 +600,12 @@ async function loadCatalog(force = false) {
     renderServicePicker();
     renderMatrix();
     updateModePreviews();
+    if (typeof renderPopularCountryPicker === 'function') {
+      renderPopularCountryPicker();
+    }
+    if (typeof renderPopularList === 'function') {
+      renderPopularList();
+    }
     if (force) toast('✅ تم تحديث الكتالوج', 'success');
   } catch (e) {
     console.error('loadCatalog:', e);
@@ -1158,7 +1225,7 @@ async function generateMatrix(btn) {
   const days = parseInt(document.getElementById('v-days').value, 10);
   const count = parseInt(document.getElementById('v-count').value, 10);
   const note = document.getElementById('v-note').value;
-  const label = document.getElementById('v-label')?.value?.trim() || '';   // ✨ NEW
+  const label = document.getElementById('v-label')?.value?.trim() || '';
   const mode = document.querySelector('input[name="gen-mode"]:checked')?.value || 'merged';
 
   if (!value || value < 1) { toast('القيمة ≥ $1', 'error'); return; }
@@ -1292,6 +1359,231 @@ function downloadCodes() {
   URL.revokeObjectURL(url);
   toast('⬇️ تم التنزيل', 'success');
 }
+
+// ══════════════════════════════════════════════════════════════
+// ✨ الأكثر طلباً (Popular)
+// ══════════════════════════════════════════════════════════════
+let POPULAR_ITEMS = [];
+let POPULAR_SAVED = [];
+let POPULAR_DIRTY = false;
+
+async function loadPopular(btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const r = await adminFetch('/api/v1/admin/popular');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    POPULAR_ITEMS = (data.popular || []).map((it, i) => ({
+      country_slug: it.country_slug,
+      service_id: it.service_id,
+      order: it.order ?? i,
+    }));
+    POPULAR_SAVED = JSON.parse(JSON.stringify(POPULAR_ITEMS));
+    POPULAR_DIRTY = false;
+    renderPopularList();
+    renderPopularCountryPicker();
+    updatePopularDirty();
+  } catch (e) {
+    console.error('loadPopular:', e);
+    toast('❌ فشل تحميل الأكثر طلباً', 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+function renderPopularCountryPicker() {
+  const sel = document.getElementById('pop-country');
+  if (!sel) return;
+  const countries = CATALOG.countries || [];
+  if (!countries.length) {
+    sel.innerHTML = '<option value="">— الكتالوج لم يُحمّل بعد —</option>';
+    return;
+  }
+  const current = sel.value;
+  sel.innerHTML = '<option value="">اختر دولة...</option>' + countries
+    .filter(c => c.services_count > 0)
+    .map(c => `<option value="${escapeHtml(c.slug)}">${c.flag || '🏳️'} ${escapeHtml(c.name)}</option>`)
+    .join('');
+  if (current) sel.value = current;
+}
+
+document.addEventListener('change', (e) => {
+  if (e.target.id === 'pop-country') {
+    const country = CATALOG.countries.find(c => c.slug === e.target.value);
+    const sel = document.getElementById('pop-service');
+    if (!sel) return;
+    if (!country) {
+      sel.innerHTML = '<option value="">اختر خدمة...</option>';
+      sel.disabled = true;
+      return;
+    }
+    const services = (country.services || []).filter(s => s.available);
+    services.sort((a, b) => (b.count || 0) - (a.count || 0));
+    sel.innerHTML = '<option value="">اختر خدمة...</option>' + services
+      .map(s => `<option value="${escapeHtml(s.id)}">${s.icon || '📱'} ${escapeHtml(s.name)} (${s.count})</option>`)
+      .join('');
+    sel.disabled = false;
+  }
+});
+
+function addPopularItem() {
+  const countrySlug = document.getElementById('pop-country').value;
+  const serviceId = document.getElementById('pop-service').value;
+  if (!countrySlug || !serviceId) {
+    toast('اختر الدولة والخدمة أولاً', 'warning');
+    return;
+  }
+  const exists = POPULAR_ITEMS.some(it => it.country_slug === countrySlug && it.service_id === serviceId);
+  if (exists) {
+    toast('هذا الزوج موجود بالفعل', 'warning');
+    return;
+  }
+  POPULAR_ITEMS.push({
+    country_slug: countrySlug,
+    service_id: serviceId,
+    order: POPULAR_ITEMS.length,
+  });
+  reindexPopular();
+  renderPopularList();
+  updatePopularDirty();
+  toast('✅ تمت الإضافة — لا تنسَ الحفظ', 'success');
+}
+
+function reindexPopular() {
+  POPULAR_ITEMS.forEach((it, i) => { it.order = i; });
+}
+
+function renderPopularList() {
+  const el = document.getElementById('popular-list');
+  if (!el) return;
+
+  if (!POPULAR_ITEMS.length) {
+    el.innerHTML = '<p class="text-[11px] text-slate-500 text-center py-4 border border-dashed border-slate-700 rounded-lg">لا توجد عناصر — أضف زوجاً من الأعلى</p>';
+    return;
+  }
+
+  el.innerHTML = POPULAR_ITEMS.map((it, idx) => {
+    const country = CATALOG.countries.find(c => c.slug === it.country_slug);
+    const service = country?.services?.find(s => s.id === it.service_id);
+    const available = service?.available;
+    const count = service?.count || 0;
+
+    return `
+      <div class="flex items-center gap-2 bg-slate-900/50 border border-slate-700 rounded-lg p-2 ${!available ? 'opacity-60' : ''}">
+        <span class="text-[10px] font-bold text-slate-500 w-6 text-center">${idx + 1}</span>
+        <span class="text-base">${country?.flag || '🏳️'}</span>
+        <div class="flex-1 min-w-0">
+          <div class="text-[11px] font-bold truncate">
+            ${escapeHtml(country?.name || it.country_slug)}
+            <span class="text-slate-500 mx-1">/</span>
+            ${escapeHtml(service?.name || it.service_id)}
+          </div>
+          <div class="text-[9px] text-slate-500">
+            ${available
+              ? `<span class="text-emerald-400">${count} متاح</span>`
+              : `<span class="text-red-400">⚠️ غير متوفر حالياً</span>`}
+            · <span class="mono">${escapeHtml(it.country_slug)}/${escapeHtml(it.service_id)}</span>
+          </div>
+        </div>
+        <div class="flex items-center gap-1">
+          <button onclick="movePopularUp(${idx})" ${idx === 0 ? 'disabled' : ''}
+                  class="text-xs w-6 h-6 rounded bg-slate-700 hover:bg-slate-600 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">↑</button>
+          <button onclick="movePopularDown(${idx})" ${idx === POPULAR_ITEMS.length - 1 ? 'disabled' : ''}
+                  class="text-xs w-6 h-6 rounded bg-slate-700 hover:bg-slate-600 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">↓</button>
+          <button onclick="removePopularItem(${idx})"
+                  class="text-xs w-6 h-6 rounded bg-red-500/20 hover:bg-red-500/40 text-red-300 transition-colors">✕</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function movePopularUp(idx) {
+  if (idx <= 0) return;
+  [POPULAR_ITEMS[idx - 1], POPULAR_ITEMS[idx]] = [POPULAR_ITEMS[idx], POPULAR_ITEMS[idx - 1]];
+  reindexPopular();
+  renderPopularList();
+  updatePopularDirty();
+}
+
+function movePopularDown(idx) {
+  if (idx >= POPULAR_ITEMS.length - 1) return;
+  [POPULAR_ITEMS[idx + 1], POPULAR_ITEMS[idx]] = [POPULAR_ITEMS[idx], POPULAR_ITEMS[idx + 1]];
+  reindexPopular();
+  renderPopularList();
+  updatePopularDirty();
+}
+
+function removePopularItem(idx) {
+  POPULAR_ITEMS.splice(idx, 1);
+  reindexPopular();
+  renderPopularList();
+  updatePopularDirty();
+}
+
+function updatePopularDirty() {
+  POPULAR_DIRTY = JSON.stringify(POPULAR_ITEMS) !== JSON.stringify(POPULAR_SAVED);
+  const badge = document.getElementById('popular-dirty-badge');
+  if (badge) badge.classList.toggle('hidden', !POPULAR_DIRTY);
+}
+
+async function savePopular(btn) {
+  if (!POPULAR_ITEMS.length && POPULAR_SAVED.length === 0) {
+    toast('لا توجد تغييرات', 'info');
+    return;
+  }
+  const orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '⏳ جارٍ الحفظ...';
+  try {
+    const r = await adminFetch('/api/v1/admin/popular', {
+      method: 'PUT',
+      body: JSON.stringify({ items: POPULAR_ITEMS }),
+    });
+    const data = await r.json();
+    if (!r.ok) {
+      toast('❌ ' + (data.detail || 'فشل الحفظ'), 'error');
+      return;
+    }
+    POPULAR_SAVED = JSON.parse(JSON.stringify(POPULAR_ITEMS));
+    POPULAR_DIRTY = false;
+    updatePopularDirty();
+    toast(`✅ تم حفظ ${data.count} عنصر`, 'success');
+  } catch (e) {
+    toast('❌ خطأ في الاتصال', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = orig;
+  }
+}
+
+async function clearPopularConfirm() {
+  if (!confirm('هل تريد مسح كل عناصر "الأكثر طلباً"؟ (لن يظهر شيء للزبائن)')) return;
+  try {
+    const r = await adminFetch('/api/v1/admin/popular', { method: 'DELETE' });
+    if (r.ok) {
+      POPULAR_ITEMS = [];
+      POPULAR_SAVED = [];
+      POPULAR_DIRTY = false;
+      renderPopularList();
+      updatePopularDirty();
+      toast('🗑️ تم المسح', 'success');
+    } else {
+      const d = await r.json();
+      toast('❌ ' + (d.detail || 'فشل'), 'error');
+    }
+  } catch (e) {
+    toast('❌ خطأ في الاتصال', 'error');
+  }
+}
+
+// تحذير عند مغادرة الصفحة إن كان هناك تغييرات غير محفوظة
+window.addEventListener('beforeunload', (e) => {
+  if (POPULAR_DIRTY) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
 
 // ══════════════════════════════════════════════════════════════
 // Vouchers List
@@ -1515,6 +1807,7 @@ function renderUsedVouchers() {
 // ══════════════════════════════════════════════════════════════
 loadAll();
 loadCatalog();
+loadPopular();           // ✨ NEW
 setInterval(loadAll, 30000);
 setInterval(() => loadCatalog(true), 5 * 60 * 1000);
 </script>
