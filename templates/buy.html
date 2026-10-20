@@ -29,6 +29,7 @@
       background:rgba(19,28,49,0.85); border:1px solid var(--line);
       font-size:11px; font-weight:700; color:#cbd5e1;
       transition:all .15s; white-space:nowrap; cursor:pointer;
+      text-decoration:none;
     }
     .hud-chip:hover { border-color:var(--accent); background:rgba(56,189,248,0.08); }
     .hud-chip .val { color:var(--accent); font-variant-numeric:tabular-nums; }
@@ -38,7 +39,7 @@
     }
 
     .main-area {
-      padding-top:68px; padding-bottom:24px;
+      padding-top:72px; padding-bottom:24px;
       min-height:100vh;
     }
 
@@ -77,16 +78,35 @@
     .pill.green { background:#d1fae5; color:#047857; }
     .pill.red   { background:#fee2e2; color:#b91c1c; }
     .pill.accent{ background:#dbeafe; color:#1e40af; }
+    .pill.amber { background:#fef3c7; color:#92400e; }
 
     .hidden { display:none !important; }
 
-    /* ✨ NEW — شارة السعر المخفي */
+    /* ✨ شارة السعر المخفي */
     .price-hidden-badge {
       display:inline-flex; align-items:center; gap:4px;
       background:linear-gradient(135deg, #fef3c7, #fde68a);
       color:#92400e; font-size:10px; font-weight:700;
       padding:3px 8px; border-radius:8px;
     }
+
+    /* ✨ NEW — حاوية قابلة للتمرير (ارتفاع ~6 عناصر) */
+    .scroll-grid {
+      max-height: 340px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding-left: 4px;
+      scroll-behavior: smooth;
+      scrollbar-width: thin;
+      scrollbar-color: #cbd5e1 transparent;
+    }
+    .scroll-grid::-webkit-scrollbar { width: 6px; }
+    .scroll-grid::-webkit-scrollbar-track { background: transparent; }
+    .scroll-grid::-webkit-scrollbar-thumb {
+      background: #cbd5e1; border-radius: 3px;
+    }
+    .scroll-grid::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    .scroll-grid.expanded { max-height: 340px; }
   </style>
 </head>
 <body>
@@ -99,11 +119,38 @@
         JAMAL
       </div>
 
-      <button onclick="openModal('walletModal')" class="hud-chip" title="المحفظة">
-        <span class="ico">💳</span>
-        <span class="hidden sm:inline">الرصيد</span>
-        <span class="val" id="hudBalance">${{ '%.2f' % customer.balance }}</span>
+      {# ✨ خدمة عملاء واتساب #}
+      <a href="https://wa.me/966578405137" target="_blank" rel="noopener"
+         class="hud-chip !bg-emerald-500/10 !border-emerald-500/30 !text-emerald-300 hover:!bg-emerald-500/20"
+         title="خدمة عملاء واتساب">
+        <span class="ico !bg-emerald-500/20">💬</span>
+        <span class="hidden sm:inline">واتساب</span>
+      </a>
+
+      {# ✨ شراء كود (رابط خارجي) #}
+      <a href="https://rivalstore.xyz/ar/%D8%A7%D9%84%D8%A3%D8%B1%D9%82%D8%A7%D9%85-%D8%A7%D9%84%D8%A5%D9%81%D8%AA%D8%B1%D8%A7%D8%B6%D9%8A%D8%A9/c1344820948?filters"
+         target="_blank" rel="noopener"
+         class="hud-chip !bg-violet-500/10 !border-violet-500/30 !text-violet-300 hover:!bg-violet-500/20"
+         title="شراء كود">
+        <span class="ico !bg-violet-500/20">🎟️</span>
+        <span class="hidden sm:inline">شراء كود</span>
+      </a>
+
+      {# ✨ شراء رقم — scroll للأسفل #}
+      <button type="button" onclick="scrollToBuy()" class="hud-chip" title="شراء رقم">
+        <span class="ico">📱</span>
+        <span class="hidden sm:inline">شراء رقم</span>
       </button>
+
+      {# ✨ التحقق من الأكواد #}
+      <button type="button" onclick="openModal('verifyCodeModal')" class="hud-chip" title="التحقق من الأكواد">
+        <span class="ico">🔍</span>
+        <span class="hidden sm:inline">تحقق</span>
+      </button>
+
+      <div class="flex-1"></div>
+
+      {# ❌ لا يوجد زر رصيد #}
 
       <button onclick="openModal('numbersModal')" class="hud-chip" title="أرقامي">
         <span class="ico">📱</span>
@@ -118,58 +165,43 @@
         {% endif %}
       </button>
 
-      <div class="flex-1"></div>
-
-      <button onclick="openModal('txModal')" class="hud-chip" title="السجل">
-        <span class="ico">📊</span>
-        <span class="hidden sm:inline">السجل</span>
-      </button>
-
       <button onclick="openModal('supportModal')" class="hud-chip" title="الدعم">
         <span class="ico">🎧</span>
       </button>
 
+      {# ❌ لا زر حساب/خروج في وضع الضيف #}
+      {% if not guest_mode %}
       <button onclick="openModal('profileModal')" class="hud-chip" title="الحساب">
         <span class="w-6 h-6 rounded-full bg-gradient-to-br from-sky-500 to-violet-500 text-white flex items-center justify-center font-bold text-[10px]">{{ customer.initials }}</span>
       </button>
-
-      <a href="/logout" class="hud-chip !bg-red-500/10 !border-red-500/30 text-red-400 hover:!bg-red-500/20" title="خروج">
+      <a href="/logout" class="hud-chip !bg-red-500/10 !border-red-500/30 !text-red-400 hover:!bg-red-500/20" title="خروج">
         <span class="ico !bg-red-500/20">⏻</span>
       </a>
+      {% endif %}
     </div>
   </div>
 
   <main class="main-area">
     <div class="max-w-5xl mx-auto px-3 md:px-5">
 
-      {# ══ تحذير الرصيد ══ #}
-      {% if prices_meta.ok and customer.balance < 0.5 %}
-      <div class="mb-6 bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-200 rounded-2xl p-5">
-        <div class="flex items-start gap-3 flex-wrap sm:nowrap">
-          <div class="w-12 h-12 bg-amber-500 rounded-xl flex items-center justify-center text-2xl text-white shadow-md flex-shrink-0">🎟️</div>
-          <div class="flex-1 min-w-0">
-            <h3 class="font-bold text-amber-900 text-sm mb-1">ليس لديك رصيد كافٍ بعد</h3>
-            <p class="text-xs text-amber-700 leading-relaxed">
-              اشحن رصيدك باستخدام كود الشحن أو طلب إيداع يدوي.
-            </p>
-          </div>
-          <button onclick="openModal('walletModal')"
-                  class="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-5 py-2.5 rounded-lg transition-colors whitespace-nowrap flex items-center gap-1.5 shadow-sm">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-            </svg>
-            شحن الرصيد
-          </button>
-        </div>
-      </div>
-      {% endif %}
+      {# ❌ لا تحذير رصيد — الرصيد مخفي نهائياً #}
 
-      {# ✨ NEW — شارة "الأسعار مخفية" #}
+      {# ✨ إشعار السعر المخفي #}
       {% if hide_prices and prices_meta.ok %}
       <div class="mb-4 bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-200 rounded-xl p-3 flex items-center gap-2">
         <span class="text-lg">💎</span>
         <div class="text-xs text-amber-800">
           <b>الأسعار مخفية</b> — ستظهر لك التكلفة عند تأكيد الشراء.
+        </div>
+      </div>
+      {% endif %}
+
+      {# ✨ تنبيه كود الشراء الإلزامي في وضع الضيف #}
+      {% if guest_mode and guest_requires_voucher %}
+      <div class="mb-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-3 flex items-center gap-2">
+        <span class="text-lg">🎟️</span>
+        <div class="text-xs text-blue-800">
+          <b>يلزم إدخال كود الشراء</b> قبل تأكيد أي عملية شراء.
         </div>
       </div>
       {% endif %}
@@ -195,7 +227,7 @@
         <div class="flex items-center gap-2 flex-wrap">
           <span class="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold px-2.5 py-1 rounded-full">
             <span class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
-            {% if hide_prices %}بيانات حية من 5SIM{% else %}أسعار حية من 5SIM{% endif %}
+            بيانات حية من 5SIM
           </span>
         </div>
         <button type="button" onclick="refreshPrices(this)"
@@ -204,6 +236,7 @@
         </button>
       </div>
 
+      {# ══ الأكثر طلباً — يظهر فقط إن ضُبطت من لوحة التحكم ══ #}
       {% if popular_services %}
       <div class="mb-6" id="popular-section">
         <div class="flex items-center justify-between mb-3">
@@ -213,14 +246,14 @@
           </div>
         </div>
 
-        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3" id="popular-grid">
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 scroll-grid" id="popular-grid">
           {% for p in popular_services %}
           <button type="button"
                   data-popular-item
                   data-service-id="{{ p.service_id }}"
                   data-popular-index="{{ loop.index0 }}"
                   onclick="quickBuy('{{ p.country_slug }}', '{{ p.service_id }}')"
-                  class="group relative bg-white rounded-2xl shadow-sm border border-slate-100 hover:border-blue-400 hover:shadow-md transition-all p-3 text-right overflow-hidden {% if loop.index > 4 %}hidden{% endif %}">
+                  class="group relative bg-white rounded-2xl shadow-sm border border-slate-100 hover:border-blue-400 hover:shadow-md transition-all p-3 text-right overflow-hidden {% if loop.index > 6 %}hidden{% endif %}">
             <span class="absolute top-2 left-2 bg-gradient-to-r from-orange-500 to-red-500 text-white text-[9px] font-bold px-2 py-0.5 rounded-full">
               {{ p.count }}+
             </span>
@@ -235,29 +268,22 @@
                   <span>{{ p.country_name }}</span>
                 </div>
               </div>
-              {# ✨ إخفاء السعر في وضع hide_prices #}
               <div class="mt-1">
-                {% if hide_prices %}
-                  <span class="price-hidden-badge">💎 السعر عند الطلب</span>
-                {% else %}
-                  <div class="bg-blue-50 group-hover:bg-blue-100 rounded-lg px-2 py-1 transition-colors">
-                    <span class="text-xs font-bold text-blue-600">${{ "%.2f"|format(p.price) }}</span>
-                  </div>
-                {% endif %}
+                <span class="price-hidden-badge">💎 السعر عند الطلب</span>
               </div>
             </div>
           </button>
           {% endfor %}
         </div>
 
-        {% if popular_services|length > 4 %}
-        <div class="text-center mt-4">
+        {% if popular_services|length > 6 %}
+        <div class="text-center mt-3">
           <button type="button"
                   onclick="togglePopular(this)"
                   data-expanded="false"
-                  data-preview="4"
+                  data-preview="6"
                   class="text-xs font-bold text-blue-600 hover:text-blue-700 border border-blue-200 hover:border-blue-400 bg-white px-4 py-2 rounded-lg transition-colors inline-flex items-center gap-1">
-            <span class="label">عرض المزيد ({{ popular_services|length - 4 }})</span>
+            <span class="label">عرض المزيد ({{ popular_services|length - 6 }})</span>
             <svg class="w-3.5 h-3.5 transition-transform duration-200 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
             </svg>
@@ -270,6 +296,7 @@
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div class="lg:col-span-2 space-y-4">
 
+          {# ══ الخطوة 1: الدولة ══ #}
           <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
             <div class="flex items-center gap-3 mb-4">
               <div class="w-7 h-7 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center">1</div>
@@ -277,39 +304,55 @@
               <span class="text-[10px] text-slate-400">{{ countries|length }} دولة متاحة من 5SIM</span>
             </div>
 
-            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3" id="country-grid">
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 scroll-grid" id="country-grid">
               {% for c in countries %}
               <button type="button"
                       onclick="selectCountry('{{ c.slug }}', this)"
                       data-slug="{{ c.slug }}"
                       data-code="{{ c.code }}"
-                      class="country-btn flex items-center gap-2 p-3 rounded-xl border-2 border-slate-100 hover:border-blue-400 hover:bg-blue-50 transition-all text-right">
+                      data-country-index="{{ loop.index0 }}"
+                      class="country-btn flex items-center gap-2 p-3 rounded-xl border-2 border-slate-100 hover:border-blue-400 hover:bg-blue-50 transition-all text-right {% if loop.index > 6 %}hidden{% endif %}">
                 <span class="text-2xl">{{ c.flag }}</span>
                 <div class="flex-1 min-w-0">
                   <div class="text-sm font-bold text-slate-700 truncate">{{ c.name }}</div>
                   <div class="text-[10px] text-slate-400">
-                    {# ✨ لا نعرض السعر إن كان مخفياً #}
-                    {% if not hide_prices and c.min_price %}${{ "%.2f"|format(c.min_price) }} · {% endif %}
                     {{ c.services_count }} خدمة
                   </div>
                 </div>
               </button>
               {% endfor %}
             </div>
+
+            {% if countries|length > 6 %}
+            <div class="text-center mt-3">
+              <button type="button"
+                      onclick="toggleMore(this, '.country-btn', 'countryIndex')"
+                      data-expanded="false"
+                      data-preview="6"
+                      class="text-xs font-bold text-blue-600 hover:text-blue-700 border border-blue-200 hover:border-blue-400 bg-white px-4 py-2 rounded-lg transition-colors inline-flex items-center gap-1">
+                <span class="label">عرض المزيد ({{ countries|length - 6 }})</span>
+                <svg class="w-3.5 h-3.5 transition-transform duration-200 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                </svg>
+              </button>
+            </div>
+            {% endif %}
           </div>
 
+          {# ══ الخطوة 2: الخدمة ══ #}
           <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 opacity-50 pointer-events-none" id="service-step">
             <div class="flex items-center gap-3 mb-4">
               <div class="w-7 h-7 rounded-full bg-slate-300 text-white text-xs font-bold flex items-center justify-center">2</div>
               <h3 class="text-base font-bold text-slate-800">اختر الخدمة</h3>
             </div>
-            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3" id="service-grid"></div>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 scroll-grid" id="service-grid"></div>
             <div id="service-empty" class="hidden text-center text-xs text-slate-400 py-6">
               لا توجد خدمات متاحة لهذه الدولة حالياً
             </div>
-            <div id="service-more-wrap" class="hidden text-center mt-4"></div>
+            <div id="service-more-wrap" class="hidden text-center mt-3"></div>
           </div>
 
+          {# ══ الخطوة 3: التأكيد ══ #}
           <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 opacity-50 pointer-events-none" id="confirm-step">
             <div class="flex items-center gap-3 mb-4">
               <div class="w-7 h-7 rounded-full bg-slate-300 text-white text-xs font-bold flex items-center justify-center">3</div>
@@ -329,28 +372,19 @@
                 <span class="text-sm text-slate-500">الكمية المتاحة</span>
                 <span id="confirm-count" class="text-sm font-bold text-slate-700">—</span>
               </div>
-              <div class="flex items-center justify-between py-2 border-b border-slate-200">
-                <span class="text-sm text-slate-500">رصيدك</span>
-                <span id="confirm-balance" class="text-sm font-bold text-emerald-600">${{ "%.2f"|format(customer.balance) }}</span>
-              </div>
-              {# ✨ إخفاء السعر إن كان مخفياً #}
               <div class="flex items-center justify-between pt-3">
-                <span class="text-sm font-bold text-slate-700">
-                  {% if hide_prices %}التكلفة النهائية{% else %}التكلفة{% endif %}
-                </span>
-                {% if hide_prices %}
-                  <span class="price-hidden-badge">💎 تُحتسب عند التأكيد</span>
-                {% else %}
-                  <span id="confirm-price" class="text-lg font-bold text-blue-600">$0.00</span>
-                {% endif %}
+                <span class="text-sm font-bold text-slate-700">التكلفة النهائية</span>
+                <span class="price-hidden-badge">💎 تُحتسب عند التأكيد</span>
               </div>
             </div>
 
-            {# ✨ NEW — نموذج كود الشحن (اختياري) #}
+            {# ✨ كود الشراء (إلزامي في وضع الضيف) #}
             <div class="bg-gradient-to-br from-amber-50 to-yellow-50 border border-amber-200 rounded-xl p-3 mb-4">
               <div class="flex items-center gap-2 mb-2">
                 <span class="text-lg">🎟️</span>
-                <span class="text-xs font-bold text-amber-900">هل تريد الدفع بكود شحن؟ (اختياري)</span>
+                <span class="text-xs font-bold text-amber-900">
+                  كود الشراء {% if guest_requires_voucher %}<span class="text-red-600">(إلزامي)</span>{% else %}(اختياري){% endif %}
+                </span>
               </div>
               <div class="flex gap-2">
                 <input type="text" id="orderVoucherCode"
@@ -365,20 +399,6 @@
               <p id="orderVoucherMsg" class="text-[11px] text-amber-800 mt-1.5"></p>
             </div>
 
-            <div id="insufficient-warning" class="hidden mb-3 bg-red-50 border border-red-200 rounded-xl p-3">
-              <div class="flex items-start gap-2">
-                <span class="text-red-600 text-lg flex-shrink-0">⚠️</span>
-                <div class="flex-1 text-xs text-red-800">
-                  <p class="font-bold mb-1">رصيدك غير كافٍ</p>
-                  <p id="insufficient-text">—</p>
-                  <button onclick="openModal('walletModal')"
-                          class="inline-flex items-center gap-1 mt-2 bg-red-600 hover:bg-red-700 text-white font-bold px-3 py-1.5 rounded-lg transition-colors">
-                    🎟️ شحن الرصيد
-                  </button>
-                </div>
-              </div>
-            </div>
-
             <button onclick="confirmPurchase()" id="buy-btn"
                     class="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl transition-colors flex items-center justify-center gap-2">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -388,24 +408,13 @@
               شراء الآن
             </button>
             <p class="text-[10px] text-slate-400 text-center mt-2">
-              {% if hide_prices %}
-                سيُحتسب السعر النهائي عند تأكيد الطلب.
-              {% else %}
-                سيتم خصم المبلغ من رصيدك فور تأكيد الشراء.
-              {% endif %}
+              سيُحتسب السعر النهائي عند تأكيد الطلب.
             </p>
           </div>
         </div>
 
         <div class="space-y-4">
-          <div class="bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl p-5 text-white shadow-lg">
-            <div class="text-xs text-blue-100 font-medium mb-1">رصيدك الحالي</div>
-            <div class="text-3xl font-bold">${{ "%.2f"|format(customer.balance) }}</div>
-            <button onclick="openModal('walletModal')"
-                    class="mt-3 inline-flex items-center gap-1 {% if customer.balance < 0.5 %}bg-amber-500 hover:bg-amber-600{% else %}bg-white/20 hover:bg-white/30 backdrop-blur{% endif %} text-xs font-bold px-3 py-1.5 rounded-lg transition-colors w-full justify-center">
-              {% if customer.balance < 0.5 %}🎟️ إدخال كود شحن{% else %}+ إيداع / شحن{% endif %}
-            </button>
-          </div>
+          {# ❌ لا بطاقة رصيد #}
 
           <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
             <h4 class="text-sm font-bold text-slate-800 mb-3">إحصائيات سريعة</h4>
@@ -438,84 +447,109 @@
 
   <!-- ═══════════════ MODALS ═══════════════ -->
 
-  <!-- Wallet -->
-  <div id="walletModal" class="modal-overlay" onclick="if(event.target===this) closeModal('walletModal')">
+  <!-- ✨ NEW — Verify Code Modal (منفصل عن المحفظة) -->
+  <div id="verifyCodeModal" class="modal-overlay" onclick="if(event.target===this) closeModal('verifyCodeModal')">
     <div class="modal-box p-5">
       <div class="flex items-center justify-between mb-4">
-        <h3 class="font-black text-base">💳 المحفظة</h3>
-        <button onclick="closeModal('walletModal')" class="text-slate-400 hover:text-slate-600 text-xl">✕</button>
+        <h3 class="font-black text-base">🔍 التحقق من كود الشراء</h3>
+        <button onclick="closeModal('verifyCodeModal')" class="text-slate-400 hover:text-slate-600 text-xl">✕</button>
       </div>
 
-      <div class="bg-slate-50 rounded-xl p-4 mb-4 text-center">
-        <div class="text-xs text-slate-500 mb-1">رصيدك الحالي</div>
-        <div class="text-3xl font-black text-sky-600" id="modalBalance">${{ '%.2f' % customer.balance }}</div>
+      <div class="space-y-2">
+        <input type="text" id="verifyCodeInput" placeholder="JS-XXX-XXXX-XXXX"
+               class="glass uppercase w-full" dir="ltr">
+        <div class="grid grid-cols-2 gap-2">
+          <input type="text" id="verifyCountry" placeholder="الدولة (مثال: egypt)"
+                 class="glass !bg-white !text-xs" dir="ltr">
+          <input type="text" id="verifyService" placeholder="الخدمة (مثال: whatsapp)"
+                 class="glass !bg-white !text-xs" dir="ltr">
+        </div>
+        <button type="button" onclick="doVerifyCode()"
+                class="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-2.5 rounded-xl text-sm">
+          🔍 تحقق
+        </button>
+        <div id="verifyResult" class="hidden p-3 rounded-lg text-xs"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ✨ NEW — Purchase Result Modal -->
+  <div id="purchaseResultModal" class="modal-overlay" onclick="if(event.target===this) closeModal('purchaseResultModal')">
+    <div class="modal-box p-5">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-black text-base">✅ تم الشراء</h3>
+        <button onclick="onClosePurchaseResult()" class="text-slate-400 hover:text-slate-600 text-xl">✕</button>
       </div>
 
-      <div class="space-y-3">
-        {# ✨ NEW — نموذج كود الشحن يدعم التحقق المسبق #}
-        <div class="bg-slate-50 rounded-xl p-3">
-          <div class="text-xs font-bold mb-2">🎟️ تفعيل كود شحن</div>
-
-          <div class="flex gap-2 mb-2">
-            <input type="text" id="voucherCode" placeholder="JS-XXX-XXXX-XXXX"
-                   class="glass uppercase flex-1" dir="ltr"
-                   oninput="resetVoucherMsg()">
-            <button type="button" onclick="checkVoucherStandalone()"
-                    class="bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs px-3 rounded-lg whitespace-nowrap">
-              🔍 تحقق
-            </button>
-          </div>
-
-          {# ✨ NEW — نتيجة التحقق #}
-          <div id="voucherCheckResult" class="hidden mb-2 p-2 rounded-lg text-[11px]"></div>
-
-          {# ✨ NEW — اختيار الزوج للتحقق (اختياري) #}
-          <div id="voucherPairSelector" class="hidden mb-2">
-            <p class="text-[10px] text-slate-500 mb-1">اختر الدولة والخدمة المطلوبة (اختياري):</p>
-            <div class="grid grid-cols-2 gap-1.5">
-              <input type="text" id="voucherCountry" placeholder="الدولة (مثال: egypt)"
-                     class="glass !bg-white !text-xs" dir="ltr">
-              <input type="text" id="voucherService" placeholder="الخدمة (مثال: whatsapp)"
-                     class="glass !bg-white !text-xs" dir="ltr">
-            </div>
-          </div>
-
-          <form id="voucherForm" class="flex gap-2">
-            <button class="bg-sky-500 hover:bg-sky-600 text-white font-bold text-sm px-4 py-2 rounded-xl w-full">
-              ✅ تفعيل الكود
-            </button>
-          </form>
-          <p class="text-[11px] text-slate-500 mt-1" id="voucherMsg"></p>
+      <div class="bg-slate-50 rounded-xl p-4 space-y-2 mb-4">
+        <div class="flex justify-between text-sm">
+          <span class="text-slate-500">التاريخ</span>
+          <span id="pr-date" class="font-bold">—</span>
         </div>
-
-        <div class="bg-slate-50 rounded-xl p-3">
-          <div class="text-xs font-bold mb-2">💰 طلب إيداع يدوي</div>
-          <form id="depositForm" class="space-y-2">
-            <input type="number" id="depAmt" placeholder="المبلغ ($)" min="5" step="0.01" class="glass">
-            <select id="depMethod" class="glass">
-              <option value="bank">تحويل بنكي</option>
-              <option value="usdt">USDT</option>
-              <option value="paypal">PayPal</option>
-            </select>
-            <input type="text" id="depRef" placeholder="رقم المرجع" class="glass">
-            <button class="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-sm py-2 rounded-xl">إرسال</button>
-          </form>
-          <p class="text-[11px] text-slate-500 mt-1" id="depositMsg"></p>
+        <div class="flex justify-between text-sm">
+          <span class="text-slate-500">الدولة</span>
+          <span id="pr-country" class="font-bold">—</span>
         </div>
-
-        {% if recent_deposits %}
-        <div class="bg-slate-50 rounded-xl p-3">
-          <div class="text-xs font-bold mb-2">📋 آخر الطلبات</div>
-          <div class="space-y-1">
-            {% for d in recent_deposits %}
-            <div class="flex items-center justify-between text-xs py-1.5 border-b border-slate-200 last:border-0">
-              <span>${{ '%.2f' % d.amount }}</span>
-              <span class="pill {% if d.status == 'pending' %}accent{% elif d.status == 'completed' %}green{% else %}red{% endif %}">{{ d.status }}</span>
-            </div>
-            {% endfor %}
-          </div>
+        <div class="flex justify-between text-sm">
+          <span class="text-slate-500">الخدمة</span>
+          <span id="pr-service" class="font-bold">—</span>
         </div>
-        {% endif %}
+        <div class="flex justify-between text-sm items-center">
+          <span class="text-slate-500">الرقم</span>
+          <span id="pr-phone" class="font-mono font-black text-lg text-slate-900">—</span>
+        </div>
+        <div class="flex justify-between text-sm">
+          <span class="text-slate-500">الحالة</span>
+          <span id="pr-status" class="pill accent">PENDING</span>
+        </div>
+        <div class="flex justify-between text-sm">
+          <span class="text-slate-500">ينتهي في</span>
+          <span id="pr-expires" class="font-bold text-amber-600">—</span>
+        </div>
+        <div class="flex justify-between text-sm">
+          <span class="text-slate-500">سيصلك الكود خلال</span>
+          <span id="pr-wait" class="font-bold text-emerald-600">0 ثانية</span>
+        </div>
+      </div>
+
+      {# أزرار النسخ #}
+      <div class="grid grid-cols-2 gap-2 mb-3">
+        <button type="button" onclick="copyPhone(false)"
+                class="bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs py-2 rounded-lg">
+          📋 نسخ الرقم
+        </button>
+        <button type="button" onclick="copyPhone(true)"
+                class="bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs py-2 rounded-lg">
+          📋 نسخ مع كود الدولة
+        </button>
+      </div>
+
+      {# شراء / إلغاء #}
+      <div id="pr-actions" class="grid grid-cols-2 gap-2">
+        <button type="button" onclick="confirmKeepOrder()"
+                class="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2.5 rounded-xl text-sm">
+          ✅ شراء
+        </button>
+        <button type="button" onclick="confirmCancelOrder()"
+                class="bg-red-500 hover:bg-red-600 text-white font-bold py-2.5 rounded-xl text-sm">
+          ❌ إلغاء
+        </button>
+      </div>
+
+      <div id="pr-cancelled" class="hidden">
+        <p class="text-center text-sm text-slate-600 mb-3">تم إلغاء الطلب.</p>
+        <button type="button" onclick="chooseAnotherNumber()"
+                class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl text-sm">
+          🔄 اختيار رقم آخر
+        </button>
+      </div>
+
+      <div id="pr-kept" class="hidden">
+        <p class="text-center text-sm text-emerald-700 font-bold mb-3">✅ تم تأكيد الشراء. راقب الرسائل.</p>
+        <button type="button" onclick="closeModal('purchaseResultModal')"
+                class="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold py-2.5 rounded-xl text-sm">
+          إغلاق
+        </button>
       </div>
     </div>
   </div>
@@ -577,49 +611,6 @@
     </div>
   </div>
 
-  <!-- Transactions -->
-  <div id="txModal" class="modal-overlay" onclick="if(event.target===this) closeModal('txModal')">
-    <div class="modal-box p-5">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="font-black text-base">📊 السجل</h3>
-        <button onclick="closeModal('txModal')" class="text-slate-400 hover:text-slate-600 text-xl">✕</button>
-      </div>
-
-      <div class="grid grid-cols-3 gap-2 mb-3">
-        <div class="bg-slate-50 rounded-xl p-2 text-center">
-          <div class="text-[9px] text-slate-500">العدد</div>
-          <div class="text-base font-black">{{ summary.count }}</div>
-        </div>
-        <div class="bg-slate-50 rounded-xl p-2 text-center">
-          <div class="text-[9px] text-slate-500">إيداعات</div>
-          <div class="text-base font-black text-emerald-600">${{ '%.2f' % summary.total_deposits }}</div>
-        </div>
-        <div class="bg-slate-50 rounded-xl p-2 text-center">
-          <div class="text-[9px] text-slate-500">مشتريات</div>
-          <div class="text-base font-black text-red-600">${{ '%.2f' % summary.total_spent }}</div>
-        </div>
-      </div>
-
-      {% if not transactions %}
-        <div class="text-center text-slate-400 text-sm py-6">لا معاملات</div>
-      {% else %}
-        <div class="space-y-1">
-          {% for t in transactions %}
-          <div class="flex items-center justify-between py-2 border-b border-slate-200 last:border-0 text-xs">
-            <div class="flex-1 min-w-0">
-              <div class="truncate">{{ t.description }}</div>
-              <div class="text-[10px] text-slate-500">{{ t.date }}</div>
-            </div>
-            <div class="font-bold {% if t.amount >= 0 %}text-emerald-600{% else %}text-red-600{% endif %} mr-2">
-              {{ '+' if t.amount >= 0 else '' }}${{ '%.2f' % t.amount }}
-            </div>
-          </div>
-          {% endfor %}
-        </div>
-      {% endif %}
-    </div>
-  </div>
-
   <!-- Support -->
   <div id="supportModal" class="modal-overlay" onclick="if(event.target===this) closeModal('supportModal')">
     <div class="modal-box p-5">
@@ -650,7 +641,8 @@
     </div>
   </div>
 
-  <!-- Profile -->
+  {# Profile modal — يظهر فقط لغير الضيف #}
+  {% if not guest_mode %}
   <div id="profileModal" class="modal-overlay" onclick="if(event.target===this) closeModal('profileModal')">
     <div class="modal-box p-5">
       <div class="flex items-center justify-between mb-4">
@@ -677,19 +669,21 @@
         <button class="w-full bg-gradient-to-r from-sky-500 to-violet-500 text-white font-bold py-2.5 rounded-xl">حفظ</button>
       </form>
       <p class="text-xs text-slate-500 mt-2" id="profileMsg"></p>
-
       <div class="mt-4 pt-4 border-t border-slate-200">
         <a href="/logout" class="block text-center bg-red-50 text-red-600 font-bold py-2 rounded-xl hover:bg-red-100">تسجيل الخروج</a>
       </div>
     </div>
   </div>
+  {% endif %}
 
   <!-- ═══════════════ SCRIPTS ═══════════════ -->
   <script>
   // ══════════════════════════════════════════════════════════
-  // ✨ NEW — إعدادات السعر (من السيرفر)
+  // إعدادات السيرفر
   // ══════════════════════════════════════════════════════════
-  const HIDE_PRICES = {{ 'true' if hide_prices else 'false' }};
+  const HIDE_PRICES = true;
+  const GUEST_MODE = {{ 'true' if guest_mode else 'false' }};
+  const GUEST_REQUIRES_VOUCHER = {{ 'true' if guest_requires_voucher else 'false' }};
 
   // ══════════════════════════════════════════════════════════
   // Modal helpers
@@ -781,19 +775,11 @@
     });
   }
 
-  const PREVIEW_COUNT = 4;
+  const PREVIEW_COUNT = 6;
   let COUNTRIES = [];
   try { COUNTRIES = JSON.parse(document.getElementById('countries-data').textContent || '[]'); } catch(e) {}
-  let selectedCountry = null, selectedService = null, currentPrice = 0, currentCount = 0;
-  let CUSTOMER_BALANCE = {{ "%.2f"|format(customer.balance) }};
-
-  // ✨ NEW — عرض السعر مع مراعاة الإخفاء
-  function formatPrice(price) {
-    if (HIDE_PRICES) {
-      return '<span class="price-hidden-badge">💎 السعر عند الطلب</span>';
-    }
-    return '<span class="text-xs font-bold text-blue-600">$' + Number(price).toFixed(2) + '</span>';
-  }
+  let selectedCountry = null, selectedService = null, currentCount = 0;
+  let CURRENT_ORDER = null;
 
   function hydrateServiceIcons(root) {
     (root||document).querySelectorAll('[data-service-icon]').forEach(el => {
@@ -803,6 +789,51 @@
     });
   }
 
+  // ══════════════════════════════════════════════════════════
+  // HUD actions
+  // ══════════════════════════════════════════════════════════
+  function scrollToBuy() {
+    const target = document.getElementById('country-grid');
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // Verify Code (منفصل)
+  // ══════════════════════════════════════════════════════════
+  async function doVerifyCode() {
+    const code = (document.getElementById('verifyCodeInput').value || '').trim().toUpperCase();
+    const country = (document.getElementById('verifyCountry').value || '').trim().toLowerCase();
+    const service = (document.getElementById('verifyService').value || '').trim().toLowerCase();
+    const out = document.getElementById('verifyResult');
+    if (!code) { out.classList.remove('hidden'); out.className='p-3 rounded-lg text-xs bg-amber-50 text-amber-800'; out.textContent='أدخل الكود أولاً'; return; }
+    if (!country || !service) { out.classList.remove('hidden'); out.className='p-3 rounded-lg text-xs bg-amber-50 text-amber-800'; out.textContent='أدخل الدولة والخدمة للتحقق الكامل'; return; }
+
+    out.classList.remove('hidden');
+    out.className = 'p-3 rounded-lg text-xs bg-slate-100 text-slate-600';
+    out.textContent = '⏳ جارٍ التحقق...';
+
+    try {
+      const r = await fetch('/api/v1/vouchers/check', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ code, country, service }),
+      });
+      const d = await r.json();
+      if (r.ok) {
+        out.className = 'p-3 rounded-lg text-xs bg-emerald-50 text-emerald-800';
+        out.innerHTML = `✅ <b>الكود صالح!</b><br>💰 القيمة: $${d.value.toFixed(2)}<br>📅 ينتهي: ${new Date(d.expires_at).toLocaleDateString('ar-EG')}`;
+      } else {
+        out.className = 'p-3 rounded-lg text-xs bg-red-50 text-red-800';
+        out.innerHTML = '❌ ' + (d.detail || 'غير صالح');
+      }
+    } catch(e) {
+      out.className = 'p-3 rounded-lg text-xs bg-red-50 text-red-800';
+      out.textContent = '❌ خطأ في الاتصال';
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // Country / Service selection
+  // ══════════════════════════════════════════════════════════
   function selectCountry(slug, btn) {
     document.querySelectorAll('.country-btn').forEach(b => {
       b.classList.remove('border-blue-500','bg-blue-50'); b.classList.add('border-slate-100');
@@ -811,7 +842,7 @@
 
     const country = COUNTRIES.find(c => c.slug === slug);
     selectedCountry = country ? { slug: country.slug, code: country.code, name: country.name, services: country.services||[] } : null;
-    selectedService = null; currentPrice = 0; currentCount = 0;
+    selectedService = null; currentCount = 0;
     updateConfirm();
     renderServices(selectedCountry ? selectedCountry.services : []);
     document.getElementById('service-step').classList.remove('opacity-50','pointer-events-none');
@@ -832,51 +863,66 @@
       btn.className = 'service-btn flex flex-col items-center gap-1 p-3 rounded-xl border-2 border-slate-100 transition-all ' +
         (s.available ? 'hover:border-blue-400 hover:bg-blue-50' : 'opacity-40 cursor-not-allowed');
       if (idx >= PREVIEW_COUNT) btn.classList.add('hidden');
-      if (s.available) btn.onclick = () => selectService(s.id, s.cost, s.count, btn);
+      if (s.available) btn.onclick = () => selectService(s.id, s.count, btn);
       else btn.disabled = true;
       const iconEl = document.createElement('div');
       iconEl.className = 'w-10 h-10 flex items-center justify-center';
       iconEl.innerHTML = serviceIconHtml(s.id, s.name, 30);
-      // ✨ NEW — السعر مخفي إن كان HIDE_PRICES
-      const priceHtml = s.available ? formatPrice(s.cost) : '<span class="text-[10px] text-slate-400">غير متاح</span>';
-      const countHtml = s.available ? '<span class="text-[9px] text-slate-400">'+s.count+' متاح</span>' : '';
       const nameEl = document.createElement('span');
       nameEl.className = 'text-xs font-bold text-slate-700'; nameEl.textContent = s.name;
       btn.appendChild(iconEl); btn.appendChild(nameEl);
+      const priceHtml = s.available ? '<span class="price-hidden-badge">💎 السعر عند الطلب</span>' : '<span class="text-[10px] text-slate-400">غير متاح</span>';
+      const countHtml = s.available ? '<span class="text-[9px] text-slate-400">'+s.count+' متاح</span>' : '';
       btn.insertAdjacentHTML('beforeend', priceHtml + countHtml);
       grid.appendChild(btn);
     });
     if (sorted.length > PREVIEW_COUNT) {
       moreWrap.classList.remove('hidden');
-      moreWrap.innerHTML = '<button type="button" onclick="toggleServices(this)" data-expanded="false" data-preview="'+PREVIEW_COUNT+'" class="text-xs font-bold text-blue-600 hover:text-blue-700 border border-blue-200 hover:border-blue-400 bg-white px-4 py-2 rounded-lg transition-colors inline-flex items-center gap-1"><span class="label">عرض المزيد ('+(sorted.length-PREVIEW_COUNT)+')</span></button>';
+      moreWrap.innerHTML = '<button type="button" onclick="toggleMore(this, \'.service-btn\', \'serviceIndex\')" data-expanded="false" data-preview="'+PREVIEW_COUNT+'" class="text-xs font-bold text-blue-600 hover:text-blue-700 border border-blue-200 hover:border-blue-400 bg-white px-4 py-2 rounded-lg transition-colors inline-flex items-center gap-1"><span class="label">عرض المزيد ('+(sorted.length-PREVIEW_COUNT)+')</span><svg class="w-3.5 h-3.5 transition-transform duration-200 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg></button>';
     }
   }
 
+  // ══════════════════════════════════════════════════════════
+  // Toggle More (يستخدم سكرول داخلي)
+  // ══════════════════════════════════════════════════════════
   function toggleMore(btn, selector, indexAttr) {
     const expanded = btn.dataset.expanded === 'true';
     const preview = parseInt(btn.dataset.preview, 10) || PREVIEW_COUNT;
-    document.querySelectorAll(selector).forEach(el => {
-      const i = parseInt(el.dataset[indexAttr], 10);
-      if (isNaN(i)) return;
-      if (i >= preview) el.classList.toggle('hidden', expanded);
-    });
-    btn.dataset.expanded = expanded ? 'false' : 'true';
-    const label = btn.querySelector('.label');
-    const chev = btn.querySelector('.chevron');
-    if (label) label.textContent = expanded ? 'عرض المزيد ('+(document.querySelectorAll(selector).length-preview)+')' : 'عرض أقل';
-    if (chev) chev.style.transform = expanded ? '' : 'rotate(180deg)';
+    const items = document.querySelectorAll(selector);
+
+    if (!expanded) {
+      // أظهر الكل — السكرول الداخلي يتولى الباقي
+      items.forEach(el => el.classList.remove('hidden'));
+      btn.dataset.expanded = 'true';
+      const label = btn.querySelector('.label');
+      if (label) label.textContent = 'عرض أقل';
+      const chev = btn.querySelector('.chevron');
+      if (chev) chev.style.transform = 'rotate(180deg)';
+    } else {
+      // أخفِ ما بعد preview وأعد التمرير للأعلى
+      items.forEach(el => {
+        const i = parseInt(el.dataset[indexAttr], 10);
+        if (!isNaN(i) && i >= preview) el.classList.add('hidden');
+      });
+      btn.dataset.expanded = 'false';
+      const label = btn.querySelector('.label');
+      if (label) label.textContent = `عرض المزيد (${items.length - preview})`;
+      const chev = btn.querySelector('.chevron');
+      if (chev) chev.style.transform = '';
+      const scroller = items[0]?.closest('.scroll-grid');
+      if (scroller) scroller.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   }
   function togglePopular(btn) { toggleMore(btn, '[data-popular-item]', 'popularIndex'); }
   function toggleServices(btn) { toggleMore(btn, '.service-btn', 'serviceIndex'); }
 
-  function selectService(id, cost, count, btn) {
+  function selectService(id, count, btn) {
     document.querySelectorAll('.service-btn').forEach(b => {
       b.classList.remove('border-blue-500','bg-blue-50'); b.classList.add('border-slate-100');
     });
     btn.classList.add('border-blue-500','bg-blue-50'); btn.classList.remove('border-slate-100');
     const svc = ((selectedCountry && selectedCountry.services) || []).find(s => String(s.id) === String(id));
     selectedService = { id, name: (svc && svc.name) || id };
-    currentPrice = parseFloat(cost) || 0;
     currentCount = parseInt(count, 10) || 0;
     document.getElementById('confirm-step').classList.remove('opacity-50','pointer-events-none');
     updateConfirm();
@@ -887,27 +933,6 @@
     set('confirm-country', (selectedCountry && selectedCountry.name) || '—');
     set('confirm-service', (selectedService && selectedService.name) || '—');
     set('confirm-count', currentCount ? currentCount + ' رقم' : '—');
-    // ✨ السعر مخفي؟ لا نملأه
-    if (!HIDE_PRICES) {
-      set('confirm-price', '$' + currentPrice.toFixed(2));
-    }
-    set('confirm-balance', '$' + CUSTOMER_BALANCE.toFixed(2));
-
-    const warn = document.getElementById('insufficient-warning');
-    const warnText = document.getElementById('insufficient-text');
-    const buyBtn = document.getElementById('buy-btn');
-    // ✨ التحقق من الرصيد ممكن فقط إن كنا نعرف السعر
-    if (!HIDE_PRICES && selectedService && currentPrice > CUSTOMER_BALANCE) {
-      const short = (currentPrice - CUSTOMER_BALANCE).toFixed(2);
-      if (warn && warnText) {
-        warnText.textContent = `المطلوب: $${currentPrice.toFixed(2)} — المتاح: $${CUSTOMER_BALANCE.toFixed(2)} — ينقصك: $${short}`;
-        warn.classList.remove('hidden');
-      }
-      if (buyBtn) buyBtn.disabled = true;
-    } else {
-      if (warn) warn.classList.add('hidden');
-      if (buyBtn) buyBtn.disabled = false;
-    }
   }
 
   function quickBuy(countrySlug, serviceId) {
@@ -924,7 +949,7 @@
         }
         const c = COUNTRIES.find(x => x.slug === cb.dataset.slug || x.code === cb.dataset.code);
         const s = c && (c.services||[]).find(x => String(x.id) === String(serviceId));
-        selectService(serviceId, (s && s.cost) || 0, (s && s.count) || 0, svcBtn);
+        selectService(serviceId, (s && s.count) || 0, svcBtn);
       }
       const cf = document.getElementById('confirm-step');
       if (cf) cf.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -941,57 +966,9 @@
     setTimeout(() => div.remove(), 3500);
   }
 
-  async function confirmPurchase() {
-    if (!selectedCountry || !selectedService) return;
-    if (!HIDE_PRICES && currentPrice > CUSTOMER_BALANCE) {
-      showAlert(`❌ رصيدك غير كافٍ — ينقصك $${(currentPrice - CUSTOMER_BALANCE).toFixed(2)}`, 'error');
-      setTimeout(() => openModal('walletModal'), 1200);
-      return;
-    }
-
-    // ✨ NEW — هل يريد الدفع بكود؟
-    const voucherCode = (document.getElementById('orderVoucherCode')?.value || '').trim().toUpperCase();
-
-    const btn = document.getElementById('buy-btn');
-    const original = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = 'جارٍ الشراء...';
-
-    const body = {
-      country: selectedCountry.slug,
-      service: selectedService.id,
-    };
-    if (voucherCode) body.voucher_code = voucherCode;
-
-    try {
-      const r = await fetch('/api/v1/orders', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify(body),
-      });
-      const d = await r.json();
-      if (r.ok) {
-        showAlert('✅ تم الشراء بنجاح', 'success');
-        setTimeout(() => location.reload(), 1000);
-      } else {
-        showAlert('❌ ' + (d.detail || 'فشل الشراء'), 'error');
-        btn.disabled = false; btn.innerHTML = original;
-        const det = (d.detail||'').toLowerCase();
-        if (det.includes('رصيد') || det.includes('balance')) {
-          setTimeout(() => openModal('walletModal'), 800);
-        }
-        if (det.includes('كود') || det.includes('voucher')) {
-          document.getElementById('orderVoucherMsg').textContent = '⚠️ ' + d.detail;
-          document.getElementById('orderVoucherMsg').className = 'text-[11px] text-red-700 mt-1.5';
-        }
-      }
-    } catch(e) {
-      showAlert('❌ خطأ في الاتصال', 'error');
-      btn.disabled = false; btn.innerHTML = original;
-    }
-  }
-
-  // ✨ NEW — تحقق سريع من كود الشحن (من قسم التأكيد)
+  // ══════════════════════════════════════════════════════════
+  // Purchase flow
+  // ══════════════════════════════════════════════════════════
   async function checkOrderVoucher() {
     const code = (document.getElementById('orderVoucherCode')?.value || '').trim().toUpperCase();
     const msg = document.getElementById('orderVoucherMsg');
@@ -1001,19 +978,13 @@
       msg.className = 'text-[11px] text-amber-700 mt-1.5';
       return;
     }
-
     msg.textContent = '⏳ جارٍ التحقق...';
     msg.className = 'text-[11px] text-slate-600 mt-1.5';
-
     try {
       const r = await fetch('/api/v1/vouchers/check', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-          code,
-          country: selectedCountry.slug,
-          service: selectedService.id,
-        }),
+        body: JSON.stringify({ code, country: selectedCountry.slug, service: selectedService.id }),
       });
       const d = await r.json();
       if (r.ok) {
@@ -1029,6 +1000,141 @@
     }
   }
 
+  async function confirmPurchase() {
+    if (!selectedCountry || !selectedService) return;
+
+    const voucherCode = (document.getElementById('orderVoucherCode')?.value || '').trim().toUpperCase();
+
+    if (GUEST_REQUIRES_VOUCHER && !voucherCode) {
+      showAlert('أدخل كود الشراء أولاً', 'error');
+      return;
+    }
+
+    const btn = document.getElementById('buy-btn');
+    const original = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = 'جارٍ الشراء...';
+
+    const body = { country: selectedCountry.slug, service: selectedService.id };
+    if (voucherCode) body.voucher_code = voucherCode;
+
+    try {
+      const r = await fetch('/api/v1/orders', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(body),
+      });
+      const d = await r.json();
+      if (r.ok) {
+        CURRENT_ORDER = d;
+        showPurchaseResult(d);
+        btn.disabled = false; btn.innerHTML = original;
+      } else {
+        showAlert('❌ ' + (d.detail || 'فشل الشراء'), 'error');
+        btn.disabled = false; btn.innerHTML = original;
+        const det = (d.detail||'').toLowerCase();
+        if (det.includes('كود') || det.includes('voucher')) {
+          const m = document.getElementById('orderVoucherMsg');
+          if (m) { m.textContent = '⚠️ ' + d.detail; m.className = 'text-[11px] text-red-700 mt-1.5'; }
+        }
+      }
+    } catch(e) {
+      showAlert('❌ خطأ في الاتصال', 'error');
+      btn.disabled = false; btn.innerHTML = original;
+    }
+  }
+
+  function showPurchaseResult(order) {
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    set('pr-date', new Date(order.created_at || Date.now()).toLocaleString('ar-EG'));
+    set('pr-country', (order.flag || '') + ' ' + (order.country || '—'));
+    set('pr-service', order.service || '—');
+    set('pr-phone', order.phone || '—');
+    set('pr-status', order.status || 'PENDING');
+    set('pr-expires', order.expires ? new Date(order.expires).toLocaleString('ar-EG') : '—');
+
+    // عدّاد انتظار الكود
+    const waitEl = document.getElementById('pr-wait');
+    if (window._waitTimer) { clearInterval(window._waitTimer); window._waitTimer = null; }
+    if (waitEl) {
+      let seconds = 0;
+      waitEl.textContent = '0 ثانية';
+      window._waitTimer = setInterval(() => {
+        seconds++;
+        const m = Math.floor(seconds / 60), s = seconds % 60;
+        waitEl.textContent = m > 0 ? `${m} د ${s} ث` : `${s} ثانية`;
+      }, 1000);
+    }
+
+    document.getElementById('pr-actions').classList.remove('hidden');
+    document.getElementById('pr-cancelled').classList.add('hidden');
+    document.getElementById('pr-kept').classList.add('hidden');
+    openModal('purchaseResultModal');
+  }
+
+  async function copyPhone(withPrefix) {
+    if (!CURRENT_ORDER || !CURRENT_ORDER.phone) return;
+    let text = CURRENT_ORDER.phone;
+    if (withPrefix) {
+      const prefix = CURRENT_ORDER.country_code || '';
+      text = '+' + prefix + text.replace(/^\+/, '');
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      showAlert('📋 تم النسخ', 'success');
+    } catch(e) {
+      // fallback
+      const ta = document.createElement('textarea');
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); showAlert('📋 تم النسخ', 'success'); }
+      catch(_) { showAlert('تعذّر النسخ', 'error'); }
+      ta.remove();
+    }
+  }
+
+  async function confirmCancelOrder() {
+    if (!CURRENT_ORDER) return;
+    try {
+      const r = await fetch(`/api/v1/orders/${CURRENT_ORDER.id}/cancel`, { method: 'POST' });
+      if (r.ok) {
+        document.getElementById('pr-actions').classList.add('hidden');
+        document.getElementById('pr-cancelled').classList.remove('hidden');
+        if (window._waitTimer) { clearInterval(window._waitTimer); window._waitTimer = null; }
+      } else {
+        const d = await r.json();
+        showAlert('❌ ' + (d.detail || 'فشل الإلغاء'), 'error');
+      }
+    } catch(e) {
+      showAlert('❌ خطأ', 'error');
+    }
+  }
+
+  function confirmKeepOrder() {
+    document.getElementById('pr-actions').classList.add('hidden');
+    document.getElementById('pr-kept').classList.remove('hidden');
+    if (window._waitTimer) { clearInterval(window._waitTimer); window._waitTimer = null; }
+  }
+
+  function chooseAnotherNumber() {
+    closeModal('purchaseResultModal');
+    CURRENT_ORDER = null;
+    selectedService = null;
+    document.getElementById('confirm-step').classList.add('opacity-50','pointer-events-none');
+    // مسح كود الشراء السابق
+    const vc = document.getElementById('orderVoucherCode');
+    if (vc) vc.value = '';
+    const vm = document.getElementById('orderVoucherMsg');
+    if (vm) { vm.textContent = ''; vm.className = 'text-[11px] text-amber-800 mt-1.5'; }
+    scrollToBuy();
+  }
+
+  function onClosePurchaseResult() {
+    if (window._waitTimer) { clearInterval(window._waitTimer); window._waitTimer = null; }
+    closeModal('purchaseResultModal');
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // Refresh prices
+  // ══════════════════════════════════════════════════════════
   async function refreshPrices(btn) {
     const old = btn.innerHTML;
     btn.disabled = true; btn.innerHTML = '⏳ جارٍ التحديث...';
@@ -1044,114 +1150,10 @@
   }
 
   // ══════════════════════════════════════════════════════════
-  // ✨ NEW — Voucher check + Redeem
+  // Support / Profile
   // ══════════════════════════════════════════════════════════
-  function resetVoucherMsg() {
-    const r = document.getElementById('voucherCheckResult');
-    if (r) { r.classList.add('hidden'); r.innerHTML = ''; }
-    const p = document.getElementById('voucherPairSelector');
-    if (p) p.classList.add('hidden');
-  }
-
-  async function checkVoucherStandalone() {
-    const code = (document.getElementById('voucherCode').value || '').trim().toUpperCase();
-    const resultEl = document.getElementById('voucherCheckResult');
-    if (!code) { showAlert('أدخل الكود أولاً', 'info'); return; }
-
-    resultEl.classList.remove('hidden');
-    resultEl.className = 'mb-2 p-2 rounded-lg text-[11px] bg-slate-100 text-slate-600';
-    resultEl.textContent = '⏳ جارٍ التحقق...';
-
-    // نرسل زوجاً افتراضياً إن لم يُحدد — بعض الأكواد لا تحتاج زوجاً
-    const country = (document.getElementById('voucherCountry')?.value || '').trim().toLowerCase();
-    const service = (document.getElementById('voucherService')?.value || '').trim().toLowerCase();
-
-    if (!country || !service) {
-      // لا يمكن التحقق الكامل بدون زوج — نظهر الحقول
-      document.getElementById('voucherPairSelector').classList.remove('hidden');
-      resultEl.className = 'mb-2 p-2 rounded-lg text-[11px] bg-amber-50 text-amber-800';
-      resultEl.innerHTML = '💡 أدخل الدولة والخدمة للتحقق الكامل من صلاحية الكود.';
-      return;
-    }
-
-    try {
-      const r = await fetch('/api/v1/vouchers/check', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ code, country, service }),
-      });
-      const d = await r.json();
-      if (r.ok) {
-        const pairsList = (d.allowed_pairs || []).map(p => `${p.country}/${p.service}`).join(', ');
-        resultEl.className = 'mb-2 p-2 rounded-lg text-[11px] bg-emerald-50 text-emerald-800';
-        resultEl.innerHTML = `
-          ✅ <b>الكود صالح!</b><br>
-          💰 القيمة: $${d.value.toFixed(2)}<br>
-          📅 ينتهي: ${new Date(d.expires_at).toLocaleDateString('ar-EG')}<br>
-          ${d.is_merged ? `🔗 يصلح لـ <b>${d.allowed_pairs.length} زوج</b>:<br><span class="text-[10px]">${pairsList}</span>` : ''}
-        `;
-        document.getElementById('voucherPairSelector').classList.add('hidden');
-      } else {
-        resultEl.className = 'mb-2 p-2 rounded-lg text-[11px] bg-red-50 text-red-800';
-        resultEl.innerHTML = '❌ ' + (d.detail || 'الكود غير صالح');
-      }
-    } catch(e) {
-      resultEl.className = 'mb-2 p-2 rounded-lg text-[11px] bg-red-50 text-red-800';
-      resultEl.textContent = '❌ خطأ في الاتصال';
-    }
-  }
-
-  // ══════════════════════════════════════════════════════════
-  // Wallet forms
-  // ══════════════════════════════════════════════════════════
-  document.getElementById('voucherForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const code = document.getElementById('voucherCode').value.trim().toUpperCase();
-    const msg = document.getElementById('voucherMsg');
-
-    // ✨ NEW — أرسل country/service إن حُددا للتحقق من allowed_pairs
-    const country = (document.getElementById('voucherCountry')?.value || '').trim().toLowerCase();
-    const service = (document.getElementById('voucherService')?.value || '').trim().toLowerCase();
-
-    const body = { code };
-    if (country && service) {
-      body.country = country;
-      body.service = service;
-    }
-
-    const r = await fetch('/api/v1/wallet/redeem-voucher', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify(body)
-    });
-    const d = await r.json();
-    if (r.ok) {
-      msg.textContent = `✅ تم إضافة $${d.value.toFixed(2)}`;
-      CUSTOMER_BALANCE = d.new_balance;
-      document.getElementById('hudBalance').textContent = '$' + d.new_balance.toFixed(2);
-      document.getElementById('modalBalance').textContent = '$' + d.new_balance.toFixed(2);
-      setTimeout(() => location.reload(), 1500);
-    } else {
-      msg.textContent = '❌ ' + (d.detail || 'فشل');
-    }
-  });
-
-  document.getElementById('depositForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const msg = document.getElementById('depositMsg');
-    const r = await fetch('/api/v1/wallet/deposit-request', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        amount: parseFloat(document.getElementById('depAmt').value),
-        method: document.getElementById('depMethod').value,
-        reference: document.getElementById('depRef').value,
-      })
-    });
-    const d = await r.json();
-    msg.textContent = r.ok ? '✅ طلبك قيد المراجعة' : ('❌ ' + (d.detail||'فشل'));
-  });
-
-  // Support form
-  document.getElementById('ticketForm').addEventListener('submit', async (e) => {
+  const ticketForm = document.getElementById('ticketForm');
+  if (ticketForm) ticketForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const msg = document.getElementById('ticketMsg');
     const r = await fetch('/api/v1/support/tickets', {
@@ -1165,8 +1167,8 @@
     if (r.ok) setTimeout(() => location.reload(), 1000);
   });
 
-  // Profile form
-  document.getElementById('profileForm').addEventListener('submit', async (e) => {
+  const profileForm = document.getElementById('profileForm');
+  if (profileForm) profileForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const msg = document.getElementById('profileMsg');
     const r = await fetch('/api/v1/profile', {
