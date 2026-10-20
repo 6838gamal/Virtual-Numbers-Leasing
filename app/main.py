@@ -2,13 +2,13 @@
 Jamal Solutions — Virtual Numbers Platform
 Customer Portal (FastAPI + Jinja2 + SSE + 5SIM + Access-Code Login)
 
-✅ 1.9.0 — وضع الضيف + الأكثر طلباً من لوحة التحكم + إخفاء كامل للرصيد والأسعار:
+✅ 1.9.1 — إصلاح TypeError + country_prefix + وضع الضيف:
+- _next_id() لحساب IDs بأمان (لا max(...)+1 على مفاتيح قد تكون str من JSONB)
+- country_prefix في استجابة create_order (لزر "نسخ مع كود الدولة")
 - GUEST_MODE: إقلاع مباشر على /buy بدون تسجيل دخول
-- GUEST_REQUIRES_VOUCHER: كود شراء إلزامي للزائر (حماية من استهلاك رصيدك)
+- GUEST_REQUIRES_VOUCHER: كود شراء إلزامي للزائر
 - HIDE_BALANCE_FROM_CUSTOMERS: إخفاء الرصيد والأسعار قسرياً في وضع الضيف
-- popular_services تُدار من لوحة التحكم (/api/v1/admin/popular)
-- /api/v1/vouchers/check متاح بدون تسجيل دخول في وضع الضيف
-- create_order يعيد بيانات نتيجة الشراء (بدون سعر/رصيد في وضع الإخفاء)
+- popular_services تُدار من لوحة التحكم
 - shared_storage.py كمخزن مشترك
 """
 from __future__ import annotations
@@ -76,9 +76,27 @@ except ImportError:
 
 
 STORE: dict[str, Any] = load_store()
-# ✨ NEW — تأكد من وجود المفاتيح الجديدة
 STORE.setdefault("popular_services", [])
 print(f"[app] 💾 store loaded from {STORE_FILE}")
+
+
+# ══════════════════════════════════════════════════════════════
+# ✨ NEW — أداة آمنة لحساب IDs (تحل مشكلة JSONB str keys)
+# ══════════════════════════════════════════════════════════════
+def _next_id(collection: dict) -> int:
+    """يعيد أكبر id رقمي + 1، مع تجاهل المفاتيح غير الرقمية.
+
+    JSONB في PostgreSQL يحوّل مفاتيح القواميس إلى strings — لذا
+    max(collection.keys(), default=0) قد يُرجع str ويسبب TypeError
+    عند جمعها مع int. هذه الدالة آمنة.
+    """
+    int_keys = []
+    for k in collection.keys():
+        try:
+            int_keys.append(int(k))
+        except (ValueError, TypeError):
+            continue
+    return (max(int_keys) if int_keys else 0) + 1
 
 
 def _store_file_info() -> dict:
@@ -126,7 +144,6 @@ def _refresh() -> None:
     fresh = reload_from_disk()
     STORE.clear()
     STORE.update(fresh)
-    # ✨ NEW — أعد التأكد بعد الـ reload
     STORE.setdefault("popular_services", [])
 
 
@@ -154,7 +171,7 @@ SESSION_IDLE_TIMEOUT = int(os.getenv("SESSION_IDLE_TIMEOUT", str(7 * 24 * 3600))
 
 
 # ══════════════════════════════════════════════════════════════
-# ✨ NEW — Guest Mode (إلغاء تسجيل الدخول)
+# Guest Mode (إلغاء تسجيل الدخول)
 # ══════════════════════════════════════════════════════════════
 GUEST_MODE = os.getenv("GUEST_MODE", "true").lower() == "true"
 GUEST_REQUIRES_VOUCHER = os.getenv("GUEST_REQUIRES_VOUCHER", "true").lower() == "true"
@@ -171,7 +188,6 @@ SIM5_ENABLED = bool(SIM5_API_KEY)
 
 FIVESIM_MARKUP_PERCENT = float(os.getenv("FIVESIM_MARKUP_PERCENT", "40"))
 
-# ✨ NEW — إخفاء قسري إن كان GUEST_MODE + HIDE_BALANCE
 HIDE_PRICES_FROM_CUSTOMERS = (
     os.getenv("HIDE_PRICES_FROM_CUSTOMERS", "true").lower() == "true"
     or (GUEST_MODE and HIDE_BALANCE_FROM_CUSTOMERS)
@@ -295,7 +311,6 @@ def _calculate_sale_price(fivesim_cost: float) -> float:
 
 
 def _strip_prices(catalog: dict) -> dict:
-    """إذا HIDE_PRICES_FROM_CUSTOMERS=true، يحذف cost/fivesim_cost/min_price."""
     if not HIDE_PRICES_FROM_CUSTOMERS or not catalog.get("ok"):
         return catalog
 
@@ -318,7 +333,6 @@ def _strip_prices(catalog: dict) -> dict:
 
 
 def _normalize_voucher_pairs(v: dict) -> list[dict]:
-    """يعيد قائمة الأزواج المسموحة مع التوافق العكسي."""
     pairs = v.get("allowed_pairs") or []
     if pairs:
         return pairs
@@ -328,10 +342,9 @@ def _normalize_voucher_pairs(v: dict) -> list[dict]:
 
 
 def _voucher_allows(v: dict, country: str, service: str) -> bool:
-    """يتحقق أن الكود يصلح للزوج (country, service)."""
     pairs = _normalize_voucher_pairs(v)
     if not pairs:
-        return True  # كود بدون قيود
+        return True
     return any(p["country"] == country and p["service"] == service for p in pairs)
 
 
@@ -469,9 +482,9 @@ PUBLIC_PATHS = (
     "/favicon.ico",
     "/api/v1/system",
     "/api/v1/prices",
-    "/api/v1/popular",           # ✨ NEW
+    "/api/v1/popular",
     "/api/v1/auth/login-with-code",
-    "/api/v1/vouchers/check",    # ✨ NEW — متاح بدون تسجيل في وضع الضيف
+    "/api/v1/vouchers/check",
 )
 
 PROTECTED_PREFIXES = (
@@ -701,7 +714,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Jamal Solutions — Customer Portal",
     description="Virtual Numbers Platform",
-    version="1.9.0",
+    version="1.9.1",
     lifespan=lifespan,
 )
 
@@ -713,7 +726,6 @@ if STATIC_DIR.exists():
 # Customer helpers
 # ══════════════════════════════════════════════════════════════
 def _get_or_create_guest() -> dict:
-    """ينشئ/يعيد عميلاً افتراضياً موحّداً لكل الزوار."""
     if GUEST_CUSTOMER_ID and GUEST_CUSTOMER_ID in STORE["customers"]:
         return STORE["customers"][GUEST_CUSTOMER_ID]
 
@@ -724,7 +736,7 @@ def _get_or_create_guest() -> dict:
     if guest:
         return guest
 
-    new_id = max(STORE["customers"].keys(), default=0) + 1
+    new_id = _next_id(STORE["customers"])   # ✨ بدلاً من max(...)+1
     now = datetime.now(timezone.utc)
     guest = {
         "id": new_id,
@@ -756,7 +768,6 @@ def _get_or_create_guest() -> dict:
 
 
 def _get_customer_from_session(request: Request) -> dict | None:
-    # ✨ GUEST MODE — تجاهل الجلسة تماماً
     if GUEST_MODE:
         return _get_or_create_guest()
 
@@ -768,6 +779,15 @@ def _get_customer_from_session(request: Request) -> dict | None:
     if not cid:
         return None
 
+    # ✨ قد يكون cid str من JSONB سابق — جرّب int
+    cid_int = cid
+    try:
+        cid_int = int(cid)
+    except (ValueError, TypeError):
+        pass
+
+    if cid_int in STORE["customers"]:
+        return STORE["customers"][cid_int]
     if cid in STORE["customers"]:
         return STORE["customers"][cid]
 
@@ -779,7 +799,7 @@ def _get_customer_from_session(request: Request) -> dict | None:
         return None
 
     customer = {
-        "id": cid,
+        "id": cid_int,
         "name": name or email.split("@")[0],
         "email": email,
         "phone": "",
@@ -800,9 +820,9 @@ def _get_customer_from_session(request: Request) -> dict | None:
             "marketing_emails": False,
         },
     }
-    STORE["customers"][cid] = customer
+    STORE["customers"][cid_int] = customer
     _persist_now()
-    print(f"♻️  أُعيد إنشاء العميل #{cid} ({email}) من الجلسة.")
+    print(f"♻️  أُعيد إنشاء العميل #{cid_int} ({email}) من الجلسة.")
     return customer
 
 
@@ -907,9 +927,9 @@ def _create_vouchers_batch(
     value: float,
     expires_days: int = 30,
     note: str = "",
-    country: Optional[str] = None,
-    service: Optional[str] = None,
-    allowed_pairs: Optional[list[dict]] = None,
+    country: str | None = None,
+    service: str | None = None,
+    allowed_pairs: list[dict] | None = None,
 ) -> list[dict]:
     batch_id = f"batch_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
     now = datetime.now(timezone.utc)
@@ -957,7 +977,6 @@ def _create_vouchers_batch(
 
 
 def _validate_voucher(code: str) -> dict:
-    """✨ محدّث — يضمن وجود allowed_pairs + يتحقق من الحالة."""
     code = code.strip().upper()
     v = next((v for v in STORE["vouchers"] if v["code"] == code), None)
     if not v:
@@ -1142,7 +1161,6 @@ class AccessCodeCreate(BaseModel):
     preset_balance: float = Field(0.0, ge=0)
 
 
-# ✨ NEW — popular services
 class PopularServiceItem(BaseModel):
     country_slug: str
     service_id: str
@@ -1457,11 +1475,10 @@ async def api_prices_refresh(request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# ✨ NEW — Popular services (public endpoint)
+# API — Popular services (public)
 # ══════════════════════════════════════════════════════════════
 @app.get("/api/v1/popular")
 async def api_popular():
-    """للزبون — يعيد قائمة الأكثر طلباً كما ضبطها الأدمن."""
     _refresh()
     return {"ok": True, "popular": STORE.get("popular_services", [])}
 
@@ -1472,7 +1489,6 @@ async def api_popular():
 @app.get("/", response_class=HTMLResponse)
 async def login_page(request: Request):
     _refresh()
-    # ✨ GUEST MODE — الإقلاع مباشرة على /buy
     if GUEST_MODE:
         return RedirectResponse(url="/buy", status_code=303)
 
@@ -1506,10 +1522,14 @@ async def login_with_code(payload: AccessCodeLogin, request: Request):
     customer = None
     if record["used_by"]:
         prev_id = record["used_by"][-1]
+        try:
+            prev_id = int(prev_id)
+        except (ValueError, TypeError):
+            pass
         customer = STORE["customers"].get(prev_id)
 
     if customer is None:
-        new_id = max(STORE["customers"].keys(), default=0) + 1
+        new_id = _next_id(STORE["customers"])   # ✨ بدلاً من max(...)+1
         email = record.get("preset_email") or f"user{new_id}@jamal.local"
         name = record.get("preset_name") or record.get("label") or f"عميل {new_id}"
         customer = {
@@ -1594,7 +1614,7 @@ async def buy_page(request: Request):
     result = _strip_prices(result)
     countries = result["countries"] if result["ok"] else []
 
-    # ✨ NEW — الأكثر طلباً من STORE (بدلاً من حسابها)
+    # الأكثر طلباً من STORE (بدلاً من حسابها)
     popular: list[dict] = []
     if result["ok"]:
         wanted = STORE.get("popular_services", [])
@@ -1613,7 +1633,7 @@ async def buy_page(request: Request):
                 "service_id": s["id"],
                 "service_name": s["name"],
                 "count": s["count"],
-                "price": None,  # لا نرسل السعر إطلاقاً
+                "price": None,
             })
 
     stats["countries_count"] = len(countries)
@@ -1747,19 +1767,10 @@ async def admin_panel(request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# ✨ NEW — التحقق من كود موحّد قبل الاستخدام (متاح بدون تسجيل في وضع الضيف)
+# التحقق من كود موحّد قبل الاستخدام
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/vouchers/check")
 async def check_voucher_compat(payload: VoucherCheck, request: Request):
-    """
-    يتحقق أن الكود:
-      - موجود
-      - غير مستخدم/معطّل
-      - غير منتهي
-      - يصلح للزوج (country, service) المطلوب
-
-    لا يستهلك الكود — آمن للاستدعاء من واجهة الزبون.
-    """
     _refresh()
     if not GUEST_MODE:
         await get_current_customer(request)
@@ -1882,10 +1893,6 @@ async def create_deposit_request(payload: DepositRequestCreate, request: Request
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/orders")
 async def create_order(payload: OrderCreate, request: Request):
-    """
-    - الدفع من الرصيد (للمسجّلين فقط، إن لم يُخفَ الرصيد)
-    - الدفع بالكود عبر voucher_code (إلزامي في وضع الضيف)
-    """
     _refresh()
     customer = await get_current_customer(request)
     cid = customer["id"]
@@ -1893,11 +1900,9 @@ async def create_order(payload: OrderCreate, request: Request):
     if not SIM5_ENABLED:
         raise HTTPException(503, "5SIM غير مفعّل — لا يمكن الشراء")
 
-    # ✨ GUEST MODE — كود إلزامي
     if GUEST_MODE and GUEST_REQUIRES_VOUCHER and not payload.voucher_code:
         raise HTTPException(400, "أدخل كود الشراء أولاً")
 
-    # ✨ معالجة الكود
     voucher = None
     if payload.voucher_code:
         voucher = _validate_voucher(payload.voucher_code)
@@ -1936,7 +1941,6 @@ async def create_order(payload: OrderCreate, request: Request):
     if not service.get("operator"):
         raise HTTPException(400, "لم يُحدد مشغل متاح لهذه الخدمة")
 
-    # ✨ الرصيد المتاح
     if voucher:
         available_balance = voucher["value"]
         source_name = "الكود"
@@ -1969,7 +1973,6 @@ async def create_order(payload: OrderCreate, request: Request):
     sale_price = _calculate_sale_price(fivesim_cost)
     profit = round(sale_price - fivesim_cost, 4)
 
-    # ✨ تحقق نهائي
     if voucher:
         if voucher["value"] < sale_price:
             try:
@@ -2002,6 +2005,7 @@ async def create_order(payload: OrderCreate, request: Request):
         "country": country["name"],
         "country_slug": country["slug"],
         "country_code": country["code"],
+        "country_prefix": country.get("prefix", ""),   # ✨ NEW
         "flag": country["flag"],
         "service": service["name"],
         "service_id": service["id"],
@@ -2024,6 +2028,7 @@ async def create_order(payload: OrderCreate, request: Request):
         "phone": order["phone"],
         "country": country["name"],
         "country_code": country["code"],
+        "country_prefix": country.get("prefix", ""),   # ✨ NEW
         "flag": country["flag"],
         "service": service["name"],
         "service_id": service["id"],
@@ -2034,7 +2039,6 @@ async def create_order(payload: OrderCreate, request: Request):
         "created_at": order["created_at"],
     })
 
-    # ✨ خصم / استهلاك
     if voucher:
         voucher["status"] = "used"
         voucher["used_by"] = cid
@@ -2077,7 +2081,6 @@ async def create_order(payload: OrderCreate, request: Request):
 
     _persist_now()
 
-    # ✨ بيانات كافية لنموذج نتيجة الشراء — بدون سعر/رصيد في وضع الإخفاء
     response = {
         "id": order_id,
         "sim5_id": order["sim5_id"],
@@ -2088,6 +2091,7 @@ async def create_order(payload: OrderCreate, request: Request):
         "service": service["name"],
         "country": country["name"],
         "country_code": country["code"],
+        "country_prefix": country.get("prefix", ""),   # ✨ NEW
         "flag": country["flag"],
         "paid_by_voucher": voucher["code"] if voucher else None,
     }
@@ -2128,6 +2132,7 @@ async def sync_orders_from_sim5(request: Request, category: str = "activation"):
             "country": so.get("country", ""),
             "country_slug": so.get("country", ""),
             "country_code": "",
+            "country_prefix": "",   # ✨ NEW
             "flag": "🏳️",
             "service": so.get("product", ""),
             "service_id": so.get("product", ""),
@@ -2271,7 +2276,7 @@ async def cancel_order(order_id: int, request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# API — Admin (احتياطي — الأدمن الأساسي في admin/main.py)
+# API — Admin (احتياطي)
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/admin/vouchers/generate")
 async def admin_generate_vouchers(payload: VoucherBatchCreate, request: Request):
@@ -2508,7 +2513,7 @@ async def admin_delete_access_code(code_id: int, request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# ✨ NEW — Popular Services (admin)
+# Popular Services (admin)
 # ══════════════════════════════════════════════════════════════
 @app.get("/api/v1/admin/popular")
 async def admin_list_popular(request: Request):
@@ -2662,11 +2667,10 @@ async def end_session(session_id: str, request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# Middleware — Auth Guard (يتخطى كل شيء في وضع الضيف)
+# Middleware — Auth Guard
 # ══════════════════════════════════════════════════════════════
 @app.middleware("http")
 async def auth_guard(request: Request, call_next):
-    # ✨ GUEST MODE — لا حماية إطلاقاً
     if GUEST_MODE:
         return await call_next(request)
 
