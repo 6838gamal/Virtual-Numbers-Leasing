@@ -17,11 +17,11 @@ Jamal Solutions — Admin Panel (standalone + shared storage)
 ⚠️  workers=1 لكلا التطبيقين.
 ⚠️  بدون تسجيل دخول — لا تنشرها على إنترنت عام.
 
-✨ v2.4.0 — دعم الكود الموحّد المرن (Matrix):
-    - كود واحد يصلح لأكثر من زوج (دولة/خدمة)
-    - 3 أوضاع توليد: merged / groups / separate
-    - endpoint /vouchers/generate-matrix
-    - endpoint /vouchers/check للتحقق المسبق
+✨ v2.5.0:
+    - label (اسم اختياري) لكل دفعة أكواد
+    - endpoint /vouchers/used — الأكواد المستخدمة
+    - حذف access-codes نهائياً من admin
+    - matrix generate مع label
 """
 from __future__ import annotations
 
@@ -75,6 +75,7 @@ except ImportError:
 
 
 STORE: dict = load_store()
+STORE.setdefault("popular_services", [])
 print(f"[admin] 💾 store loaded from {STORE_FILE}")
 
 
@@ -119,6 +120,7 @@ def _refresh() -> None:
     fresh = reload_from_disk()
     STORE.clear()
     STORE.update(fresh)
+    STORE.setdefault("popular_services", [])
 
 
 # ══════════════════════════════════════════════════════════════
@@ -372,14 +374,16 @@ def _create_vouchers_batch(
     service: Optional[str] = None,
     allowed_pairs: Optional[list[dict]] = None,
     batch_id: Optional[str] = None,
+    label: str = "",                    # ✨ NEW — اسم اختياري للدفعة
 ) -> list[dict]:
     """
     ينشئ دفعة أكواد.
 
     - allowed_pairs: قائمة [{"country":..., "service":...}, ...]
-      كود واحد يصلح لأي من هذه الأزواج. متوافق مع الأكواد القديمة.
-    - country/service: زوج واحد فقط. يُستخدم إن كانت allowed_pairs فارغة.
+      كود واحد يصلح لأي من هذه الأزواج.
+    - country/service: زوج واحد فقط (إن كانت allowed_pairs فارغة).
     - batch_id: اختياري — لتجميع عدة أكواد في دفعة واحدة.
+    - label: ✨ اسم اختياري للكود/الدفعة (يظهر في التقارير).
     """
     prefix = os.getenv("VOUCHER_PREFIX", "JS").strip().upper()
     if not batch_id:
@@ -387,7 +391,6 @@ def _create_vouchers_batch(
     now = datetime.now(timezone.utc)
     expires = now + timedelta(days=expires_days)
 
-    # تطبيع allowed_pairs
     pairs: list[dict] = []
     if allowed_pairs:
         for p in allowed_pairs:
@@ -395,7 +398,6 @@ def _create_vouchers_batch(
             s = (p.get("service") or "").strip()
             if c and s:
                 pairs.append({"country": c, "service": s})
-    # توافق عكسي
     if not pairs and country and service:
         pairs = [{"country": country, "service": service}]
 
@@ -419,6 +421,7 @@ def _create_vouchers_batch(
             "status": "unused",
             "batch_id": batch_id,
             "note": note,
+            "label": label,                  # ✨ NEW
             "country": single["country"] if single else (country or None),
             "service": single["service"] if single else (service or None),
             "allowed_pairs": pairs,
@@ -431,39 +434,6 @@ def _create_vouchers_batch(
         STORE["vouchers"].append(v)
         created.append(v)
     return created
-
-
-def _create_access_code(
-    label: str = "",
-    expires_days: int = 30,
-    max_uses: int = 1,
-    preset_name: str = "",
-    preset_email: str = "",
-    preset_balance: float = 0.0,
-) -> dict:
-    prefix = os.getenv("ACCESS_CODE_PREFIX", "JS-LOGIN").strip().upper()
-    while True:
-        code = f"{prefix}-{secrets.token_hex(6).upper()}"
-        if not any(c["code"] == code for c in STORE["access_codes"]):
-            break
-    now = datetime.now(timezone.utc)
-    record = {
-        "id": len(STORE["access_codes"]) + 1,
-        "code": code,
-        "label": label,
-        "status": "active",
-        "max_uses": max_uses,
-        "uses_count": 0,
-        "preset_name": preset_name,
-        "preset_email": preset_email,
-        "preset_balance": float(preset_balance),
-        "created_at": now.isoformat(),
-        "expires_at": (now + timedelta(days=expires_days)).isoformat(),
-        "used_by": [],
-        "last_used_at": None,
-    }
-    STORE["access_codes"].append(record)
-    return record
 
 
 def _now_iso() -> str:
@@ -483,7 +453,7 @@ def _normalize_pairs(v: dict) -> list[dict]:
 # ══════════════════════════════════════════════════════════════
 # 5) App
 # ══════════════════════════════════════════════════════════════
-app = FastAPI(title="Jamal Solutions — Admin Panel", version="2.4.0-open")
+app = FastAPI(title="Jamal Solutions — Admin Panel", version="2.5.0-open")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 if STATIC_DIR.exists():
@@ -516,6 +486,7 @@ class VoucherBatchCreate(BaseModel):
     value: float = Field(..., ge=1)
     expires_days: int = Field(30, ge=1, le=365)
     note: str = ""
+    label: str = ""                      # ✨ NEW
     country: str = ""
     service: str = ""
     allowed_pairs: list[AllowedPair] = Field(default_factory=list)
@@ -531,6 +502,7 @@ class VoucherMultiCreate(BaseModel):
     value: float = Field(..., ge=1)
     expires_days: int = Field(30, ge=1, le=365)
     note: str = ""
+    label: str = ""                      # ✨ NEW
     pairs: list[VoucherPair] = Field(default_factory=list)
     merge: bool = False
     count: int = Field(1, ge=1, le=1000)
@@ -538,14 +510,14 @@ class VoucherMultiCreate(BaseModel):
 
 
 class VoucherGroup(BaseModel):
-    """✨ NEW — مجموعة أزواج تُولّد لها كود موحّد واحد."""
+    """مجموعة أزواج تُولّد لها كود موحّد واحد."""
     label: str = ""
     pairs: list[AllowedPair] = Field(..., min_length=1)
 
 
 class MatrixGenerateRequest(BaseModel):
     """
-    ✨ NEW — التوليد المرن بثلاثة أوضاع:
+    التوليد المرن بثلاثة أوضاع:
       - merged:   كود واحد يصلح لكل الأزواج في pairs
       - groups:   كل مجموعة في groups → كود واحد
       - separate: كود منفصل لكل زوج في pairs
@@ -553,6 +525,7 @@ class MatrixGenerateRequest(BaseModel):
     value: float = Field(..., ge=1)
     expires_days: int = Field(30, ge=1, le=365)
     note: str = ""
+    label: str = ""                      # ✨ NEW — اسم الدفعة
     mode: str = "merged"
     count: int = Field(1, ge=1, le=1000)
     pairs: list[AllowedPair] = Field(default_factory=list)
@@ -565,13 +538,14 @@ class VoucherCheckIn(BaseModel):
     service: str = Field(..., min_length=1)
 
 
-class AccessCodeCreate(BaseModel):
-    label: str = ""
-    expires_days: int = Field(30, ge=1, le=365)
-    max_uses: int = Field(1, ge=1, le=100)
-    preset_name: str = ""
-    preset_email: str = ""
-    preset_balance: float = Field(0.0, ge=0)
+class PopularServiceItem(BaseModel):
+    country_slug: str
+    service_id: str
+    order: int = 0
+
+
+class PopularServicesUpdate(BaseModel):
+    items: list[PopularServiceItem] = Field(default_factory=list)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -592,6 +566,7 @@ async def health():
         1 for v in STORE["vouchers"]
         if len(_normalize_pairs(v)) > 1
     )
+    used_count = sum(1 for v in STORE["vouchers"] if v.get("status") == "used")
     out = {
         "status": "ok",
         "app": "admin",
@@ -606,15 +581,19 @@ async def health():
         "counts": {
             "vouchers": len(STORE["vouchers"]),
             "merged_vouchers": merged_count,
-            "access_codes": len(STORE["access_codes"]),
-            "deposits": len(STORE["deposits"]),
+            "used_vouchers": used_count,
             "customers": len(STORE["customers"]),
             "orders": len(STORE["orders"]),
+            "popular_services": len(STORE.get("popular_services", [])),
         },
         "features": {
             "multi_pair_vouchers": True,
-            "matrix_generate": True,        # ✨ NEW
+            "matrix_generate": True,
             "voucher_check_endpoint": True,
+            "voucher_label": True,           # ✨ NEW
+            "used_vouchers_endpoint": True,  # ✨ NEW
+            "popular_services_admin": True,  # ✨
+            "access_codes": False,           # ❌ محذوف
         },
     }
     if _info.get("version") is not None:
@@ -766,6 +745,7 @@ async def admin_list_vouchers(
         pairs = _normalize_pairs(v)
         out.append({
             **v,
+            "label": v.get("label") or "",   # ✨ NEW
             "country": v.get("country") or (pairs[0]["country"] if len(pairs) == 1 else None),
             "service": v.get("service") or (pairs[0]["service"] if len(pairs) == 1 else None),
             "allowed_pairs": pairs,
@@ -773,6 +753,49 @@ async def admin_list_vouchers(
         })
 
     return {"summary": summary, "vouchers": out}
+
+
+# ══════════════════════════════════════════════════════════════
+# ✨ NEW — الأكواد المستخدمة (بدلاً من طلبات الإيداع)
+# ══════════════════════════════════════════════════════════════
+@app.get("/api/v1/admin/vouchers/used")
+async def admin_list_used_vouchers(request: Request):
+    _check_admin(request)
+    _refresh()
+
+    used = [v for v in STORE["vouchers"] if v.get("status") == "used"]
+    used_sorted = sorted(used, key=lambda v: v.get("used_at") or "", reverse=True)
+
+    total_value = sum(float(v.get("value", 0)) for v in used)
+
+    out = []
+    for v in used_sorted[:500]:
+        pairs = _normalize_pairs(v)
+        used_on = v.get("used_on") or {}
+        out.append({
+            "id": v["id"],
+            "code": v["code"],
+            "value": float(v.get("value", 0)),
+            "label": v.get("label") or "",
+            "note": v.get("note") or "",
+            "batch_id": v.get("batch_id"),
+            "status": v.get("status"),
+            "created_at": v.get("created_at"),
+            "expires_at": v.get("expires_at"),
+            "used_at": v.get("used_at"),
+            "used_by": v.get("used_by"),
+            "used_on": used_on,
+            "allowed_pairs": pairs,
+            "is_merged": len(pairs) > 1,
+        })
+
+    return {
+        "summary": {
+            "total_used": len(used),
+            "total_value": round(total_value, 2),
+        },
+        "vouchers": out,
+    }
 
 
 # ══════════════════════════════════════════════════════════════
@@ -788,6 +811,7 @@ async def admin_generate_vouchers(payload: VoucherBatchCreate, request: Request)
         value=payload.value,
         expires_days=payload.expires_days,
         note=payload.note,
+        label=payload.label,             # ✨ NEW
         country=payload.country or None,
         service=payload.service or None,
         allowed_pairs=[p.model_dump() for p in payload.allowed_pairs] or None,
@@ -802,6 +826,7 @@ async def admin_generate_vouchers(payload: VoucherBatchCreate, request: Request)
         "codes": [v["code"] for v in created],
         "country": payload.country or None,
         "service": payload.service or None,
+        "label": payload.label,          # ✨ NEW
         "allowed_pairs": pairs_out,
         "is_merged": len(pairs_out) > 1,
     }
@@ -832,6 +857,7 @@ async def admin_generate_vouchers_multi(payload: VoucherMultiCreate, request: Re
             value=payload.value,
             expires_days=payload.expires_days,
             note=payload.note,
+            label=payload.label,             # ✨ NEW
             allowed_pairs=[p.model_dump() for p in payload.allowed_pairs],
         )
         _persist_now()
@@ -845,6 +871,7 @@ async def admin_generate_vouchers_multi(payload: VoucherMultiCreate, request: Re
             "batches": [{
                 "country": "merged",
                 "service": pairs_desc,
+                "label": payload.label,      # ✨ NEW
                 "allowed_pairs": [p.model_dump() for p in payload.allowed_pairs],
                 "count": len(created),
                 "batch_id": created[0]["batch_id"] if created else None,
@@ -865,6 +892,7 @@ async def admin_generate_vouchers_multi(payload: VoucherMultiCreate, request: Re
             value=payload.value,
             expires_days=payload.expires_days,
             note=payload.note,
+            label=payload.label,             # ✨ NEW
             country=p.country,
             service=p.service,
         )
@@ -872,6 +900,7 @@ async def admin_generate_vouchers_multi(payload: VoucherMultiCreate, request: Re
         batches.append({
             "country": p.country,
             "service": p.service,
+            "label": payload.label,          # ✨ NEW
             "count": len(created),
             "batch_id": created[0]["batch_id"] if created else None,
             "codes": [v["code"] for v in created],
@@ -888,7 +917,7 @@ async def admin_generate_vouchers_multi(payload: VoucherMultiCreate, request: Re
 
 
 # ══════════════════════════════════════════════════════════════
-# 12b) Vouchers — generate matrix ✨ NEW
+# 12b) Vouchers — generate matrix
 # ══════════════════════════════════════════════════════════════
 @app.post("/api/v1/admin/vouchers/generate-matrix")
 async def admin_generate_vouchers_matrix(
@@ -896,21 +925,14 @@ async def admin_generate_vouchers_matrix(
     request: Request,
 ):
     """
-    ✨ NEW — توليد مرن بثلاثة أوضاع:
+    توليد مرن بثلاثة أوضاع:
 
     - mode="merged":
         كل الأزواج في pairs → كود واحد لكل count.
-        مثال: pairs=[مصر/WA, مصر/TG, السعودية/WA, السعودية/TG]
-              count=10 → 10 أكواد، كل كود يصلح لأي من الأربعة.
-
     - mode="groups":
         كل مجموعة → كود موحّد × count.
-        مثال: groups=[{pairs:[مصر/WA, مصر/TG]}, {pairs:[السعودية/WA, السعودية/TG]}]
-              count=5 → 5 أكواد لمصر + 5 أكواد للسعودية.
-
     - mode="separate":
-        كود منفصل لكل زوج × count (الوضع القديم).
-        مثال: pairs=[مصر/WA, السعودية/TG] count=3 → 3+3 = 6 أكواد.
+        كود منفصل لكل زوج × count.
     """
     _check_admin(request)
     _refresh()
@@ -919,7 +941,6 @@ async def admin_generate_vouchers_matrix(
     created_all: list[dict] = []
     response_batches: list[dict] = []
 
-    # توليد batch_id مشترك بين كل الأكواد (اختياري — للعرض المجمّع)
     master_batch_id = f"matrix_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
 
     # ══ merged ══
@@ -933,6 +954,7 @@ async def admin_generate_vouchers_matrix(
             value=payload.value,
             expires_days=payload.expires_days,
             note=payload.note,
+            label=payload.label,             # ✨ NEW
             allowed_pairs=pairs_dict,
             batch_id=f"{master_batch_id}_merged",
         )
@@ -942,7 +964,7 @@ async def admin_generate_vouchers_matrix(
         pairs_desc = ", ".join(f"{p['country']}/{p['service']}" for p in pairs_dict)
         response_batches.append({
             "mode": "merged",
-            "label": f"كود موحّد ({len(pairs_dict)} زوج)",
+            "label": payload.label or f"كود موحّد ({len(pairs_dict)} زوج)",   # ✨ NEW
             "country": "merged",
             "service": pairs_desc,
             "allowed_pairs": pairs_dict,
@@ -962,22 +984,24 @@ async def admin_generate_vouchers_matrix(
             if not pairs_dict:
                 continue
 
+            group_label = group.label or payload.label or f"مجموعة {g_idx + 1}"
+
             created = _create_vouchers_batch(
                 count=payload.count,
                 value=payload.value,
                 expires_days=payload.expires_days,
                 note=payload.note,
+                label=group_label,           # ✨ NEW
                 allowed_pairs=pairs_dict,
                 batch_id=f"{master_batch_id}_g{g_idx + 1}",
             )
             _persist_now()
             created_all.extend(created)
 
-            label = group.label or f"مجموعة {g_idx + 1}"
             pairs_desc = ", ".join(f"{p['country']}/{p['service']}" for p in pairs_dict)
             response_batches.append({
                 "mode": "groups",
-                "label": label,
+                "label": group_label,        # ✨ NEW
                 "country": "group",
                 "service": pairs_desc,
                 "allowed_pairs": pairs_dict,
@@ -998,6 +1022,7 @@ async def admin_generate_vouchers_matrix(
                 value=payload.value,
                 expires_days=payload.expires_days,
                 note=payload.note,
+                label=payload.label,         # ✨ NEW
                 country=p.country,
                 service=p.service,
                 batch_id=f"{master_batch_id}_p{p_idx + 1}",
@@ -1007,7 +1032,7 @@ async def admin_generate_vouchers_matrix(
 
             response_batches.append({
                 "mode": "separate",
-                "label": f"{p.country}/{p.service}",
+                "label": payload.label or f"{p.country}/{p.service}",   # ✨ NEW
                 "country": p.country,
                 "service": p.service,
                 "allowed_pairs": [p.model_dump()],
@@ -1026,6 +1051,7 @@ async def admin_generate_vouchers_matrix(
         "ok": True,
         "mode": mode,
         "master_batch_id": master_batch_id,
+        "label": payload.label,              # ✨ NEW
         "total_count": len(created_all),
         "total_value": round(sum(v["value"] for v in created_all), 2),
         "batches": response_batches,
@@ -1090,6 +1116,7 @@ async def admin_check_voucher(payload: VoucherCheckIn, request: Request):
         "ok": True,
         "code": v["code"],
         "value": v["value"],
+        "label": v.get("label") or "",       # ✨ NEW
         "expires_at": v["expires_at"],
         "allowed_pairs": pairs,
         "is_merged": len(pairs) > 1,
@@ -1119,152 +1146,43 @@ async def admin_disable_voucher(voucher_id: int, request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# 14) Deposits
+# ✨ NEW — Popular Services (admin)
 # ══════════════════════════════════════════════════════════════
-@app.get("/api/v1/admin/deposits")
-async def admin_list_deposits(
-    request: Request,
-    status_filter: Optional[str] = None,
-):
+@app.get("/api/v1/admin/popular")
+async def admin_list_popular(request: Request):
     _check_admin(request)
     _refresh()
-    deposits = STORE["deposits"]
-    if status_filter:
-        deposits = [d for d in deposits if d["status"] == status_filter]
-    deposits_sorted = sorted(deposits, key=lambda d: d["created_at"], reverse=True)
-    out = []
-    for d in deposits_sorted:
-        cust = STORE["customers"].get(d["customer_id"])
-        out.append({
-            **d,
-            "customer_email": cust["email"] if cust else None,
-            "customer_name": cust["name"] if cust else None,
+    return {"ok": True, "popular": STORE.get("popular_services", [])}
+
+
+@app.put("/api/v1/admin/popular")
+async def admin_set_popular(payload: PopularServicesUpdate, request: Request):
+    _check_admin(request)
+    _refresh()
+    items = []
+    for it in payload.items:
+        c = it.country_slug.strip().lower()
+        s = it.service_id.strip().lower()
+        if not c or not s:
+            continue
+        items.append({
+            "country_slug": c,
+            "service_id": s,
+            "order": int(it.order),
         })
-    return {
-        "summary": {
-            "total": len(STORE["deposits"]),
-            "pending": sum(1 for d in STORE["deposits"] if d["status"] == "pending"),
-            "completed": sum(1 for d in STORE["deposits"] if d["status"] == "completed"),
-            "rejected": sum(1 for d in STORE["deposits"] if d["status"] == "rejected"),
-        },
-        "deposits": out,
-    }
-
-
-@app.post("/api/v1/admin/deposits/{deposit_id}/approve")
-async def admin_approve_deposit(deposit_id: int, request: Request):
-    _check_admin(request)
-    _refresh()
-    deposit = next((d for d in STORE["deposits"] if d["id"] == deposit_id), None)
-    if not deposit:
-        raise HTTPException(404, "الطلب غير موجود")
-    if deposit["status"] != "pending":
-        raise HTTPException(400, "تمت مراجعة هذا الطلب مسبقاً")
-    customer = STORE["customers"].get(deposit["customer_id"])
-    if not customer:
-        raise HTTPException(404, "الزبون غير موجود")
-
-    deposit["status"] = "completed"
-    deposit["reviewed_at"] = _now_iso()
-    customer["balance"] += deposit["amount"]
-
-    STORE["transactions"].append({
-        "id": len(STORE["transactions"]) + 1,
-        "customer_id": customer["id"],
-        "type": "deposit",
-        "description": f"إيداع يدوي ({deposit['method']})",
-        "amount": deposit["amount"],
-        "balance_after": customer["balance"],
-        "created_at": _now_iso(),
-        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"),
-    })
-    STORE["owner_wallet"]["total_revenue"] += deposit["amount"]
+    items.sort(key=lambda x: x["order"])
+    STORE["popular_services"] = items
     _persist_now()
-    return {"ok": True, "new_balance": customer["balance"]}
+    return {"ok": True, "count": len(items), "popular": items}
 
 
-@app.post("/api/v1/admin/deposits/{deposit_id}/reject")
-async def admin_reject_deposit(deposit_id: int, request: Request, reason: str = ""):
+@app.delete("/api/v1/admin/popular")
+async def admin_clear_popular(request: Request):
     _check_admin(request)
     _refresh()
-    deposit = next((d for d in STORE["deposits"] if d["id"] == deposit_id), None)
-    if not deposit:
-        raise HTTPException(404, "الطلب غير موجود")
-    deposit["status"] = "rejected"
-    deposit["reviewed_at"] = _now_iso()
-    deposit["reject_reason"] = reason
+    STORE["popular_services"] = []
     _persist_now()
-    return {"ok": True, "status": "rejected"}
-
-
-# ══════════════════════════════════════════════════════════════
-# 15) Access codes
-# ══════════════════════════════════════════════════════════════
-@app.post("/api/v1/admin/access-codes/generate")
-async def admin_generate_access_code(payload: AccessCodeCreate, request: Request):
-    _check_admin(request)
-    _refresh()
-    record = _create_access_code(
-        label=payload.label,
-        expires_days=payload.expires_days,
-        max_uses=payload.max_uses,
-        preset_name=payload.preset_name,
-        preset_email=payload.preset_email,
-        preset_balance=payload.preset_balance,
-    )
-    _persist_now()
-    return {
-        "ok": True,
-        "id": record["id"],
-        "code": record["code"],
-        "expires_at": record["expires_at"],
-        "max_uses": record["max_uses"],
-        "preset_balance": record["preset_balance"],
-    }
-
-
-@app.get("/api/v1/admin/access-codes")
-async def admin_list_access_codes(
-    request: Request,
-    status_filter: Optional[str] = None,
-):
-    _check_admin(request)
-    _refresh()
-    codes = STORE["access_codes"]
-    if status_filter:
-        codes = [c for c in codes if c["status"] == status_filter]
-    summary = {
-        "total": len(STORE["access_codes"]),
-        "active": sum(1 for c in STORE["access_codes"] if c["status"] == "active"),
-        "used": sum(1 for c in STORE["access_codes"] if c["status"] == "used"),
-        "disabled": sum(1 for c in STORE["access_codes"] if c["status"] == "disabled"),
-        "expired": sum(1 for c in STORE["access_codes"] if c["status"] == "expired"),
-    }
-    return {"summary": summary, "codes": list(reversed(codes))}
-
-
-@app.post("/api/v1/admin/access-codes/{code_id}/disable")
-async def admin_disable_access_code(code_id: int, request: Request):
-    _check_admin(request)
-    _refresh()
-    record = next((c for c in STORE["access_codes"] if c["id"] == code_id), None)
-    if not record:
-        raise HTTPException(404, "الكود غير موجود")
-    record["status"] = "disabled"
-    _persist_now()
-    return {"ok": True, "status": "disabled"}
-
-
-@app.delete("/api/v1/admin/access-codes/{code_id}")
-async def admin_delete_access_code(code_id: int, request: Request):
-    _check_admin(request)
-    _refresh()
-    before = len(STORE["access_codes"])
-    STORE["access_codes"] = [c for c in STORE["access_codes"] if c["id"] != code_id]
-    if len(STORE["access_codes"]) == before:
-        raise HTTPException(404, "الكود غير موجود")
-    _persist_now()
-    return {"ok": True, "deleted": True}
+    return {"ok": True, "count": 0}
 
 
 # ══════════════════════════════════════════════════════════════
@@ -1316,6 +1234,7 @@ async def _startup_log():
     _refresh()
     _info = _store_file_info()
     merged_count = sum(1 for v in STORE["vouchers"] if len(_normalize_pairs(v)) > 1)
+    used_count = sum(1 for v in STORE["vouchers"] if v.get("status") == "used")
     print("═" * 60)
     print(f"[admin] 🚀 لوحة الأدمن v{app.version}  (🔓 بدون تسجيل دخول)")
     print(f"[admin] root          = {ADMIN_DIR}")
@@ -1335,12 +1254,12 @@ async def _startup_log():
     print(f"[admin] SIM5 base     = {SIM5_BASE}")
     print(f"[admin] MARKUP        = {FIVESIM_MARKUP_PERCENT}%")
     print(f"[admin] CATALOG TTL   = {CATALOG_TTL_SECONDS}s")
-    print(f"[admin] features      = multi_pair ✅ | matrix ✅ | check ✅")
+    print(f"[admin] features      = multi_pair ✅ | matrix ✅ | check ✅ | label ✅ | used ✅")
     print(f"[admin] owner_wallet  = {STORE['owner_wallet']}")
-    print(f"[admin] vouchers      = {len(STORE['vouchers'])}  (merged: {merged_count})")
-    print(f"[admin] access_codes  = {len(STORE['access_codes'])}")
+    print(f"[admin] vouchers      = {len(STORE['vouchers'])}  (merged: {merged_count}, used: {used_count})")
     print(f"[admin] customers     = {len(STORE['customers'])}")
     print(f"[admin] orders        = {len(STORE['orders'])}")
+    print(f"[admin] popular       = {len(STORE.get('popular_services', []))}")
     if SIM5_ENABLED:
         try:
             profile = await _sim5_get("/user/profile", auth=True)
