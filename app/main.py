@@ -2,12 +2,13 @@
 Jamal Solutions — Virtual Numbers Platform
 Customer Portal (FastAPI + Jinja2 + SSE + 5SIM + Access-Code Login)
 
-✅ 1.9.2 — تحقق مرن + تشخيص popular:
+✅ 1.9.3 — حجب الدول المحظورة (إسرائيل) + تحقق مرن + تشخيص popular:
 - /api/v1/vouchers/check: country/service اختياريّان
 - buy_page: مطابقة popular_services بـ slug/code/name + سجلات تشخيصية
 - GUEST_MODE / GUEST_REQUIRES_VOUCHER / HIDE_BALANCE_FROM_CUSTOMERS
 - _next_id() لحساب IDs بأمان
 - country_prefix في create_order
+- ✨ BLOCKED_COUNTRY_SLUGS / BLOCKED_COUNTRY_CODES (حجب إسرائيل افتراضياً)
 """
 from __future__ import annotations
 
@@ -185,6 +186,31 @@ HIDE_PRICES_FROM_CUSTOMERS = (
 ADMIN_SECRET = os.getenv("ADMIN_SECRET", "").strip()
 VOUCHER_PREFIX = os.getenv("VOUCHER_PREFIX", "JS").strip().upper()
 ACCESS_CODE_PREFIX = os.getenv("ACCESS_CODE_PREFIX", "JS-LOGIN").strip().upper()
+
+
+# ══════════════════════════════════════════════════════════════
+# ✨ دول محظورة (لا تُعرض للزبائن)
+# ══════════════════════════════════════════════════════════════
+BLOCKED_COUNTRY_SLUGS = {
+    s.strip().lower()
+    for s in os.getenv("BLOCKED_COUNTRY_SLUGS", "israel").split(",")
+    if s.strip()
+}
+BLOCKED_COUNTRY_CODES = {
+    s.strip().upper()
+    for s in os.getenv("BLOCKED_COUNTRY_CODES", "IL").split(",")
+    if s.strip()
+}
+
+
+def _is_country_blocked(slug: str, code: str = "") -> bool:
+    """هل الدولة محظورة (بالـ slug أو الـ ISO code)؟"""
+    if slug and slug.strip().lower() in BLOCKED_COUNTRY_SLUGS:
+        return True
+    if code and code.strip().upper() in BLOCKED_COUNTRY_CODES:
+        return True
+    return False
+
 
 _SIM5_CACHE: dict[str, dict] = {
     "prices": {"data": None, "at": 0.0},
@@ -394,6 +420,11 @@ async def build_live_catalog(force: bool = False) -> dict:
     for country_slug, cmeta in raw_countries.items():
         iso_raw = cmeta.get("iso") or {}
         iso = next(iter(iso_raw.keys()), "").upper() if isinstance(iso_raw, dict) else ""
+
+        # ✨ تخطّي الدول المحظورة (إسرائيل افتراضياً)
+        if _is_country_blocked(country_slug, iso):
+            continue
+
         prefix_raw = cmeta.get("prefix") or {}
         prefix = next(iter(prefix_raw.keys()), "") if isinstance(prefix_raw, dict) else ""
         name_en = cmeta.get("text_en") or country_slug
@@ -653,6 +684,8 @@ async def lifespan(app: FastAPI):
     print("✅ الشاشة الوحيدة: /buy")
     print(f"✅ إخفاء الأسعار عن الزبائن: {HIDE_PRICES_FROM_CUSTOMERS}")
     print(f"✅ إخفاء الرصيد عن الزبائن: {HIDE_BALANCE_FROM_CUSTOMERS}")
+    print(f"✅ الدول المحظورة (slug): {sorted(BLOCKED_COUNTRY_SLUGS) or '—'}")
+    print(f"✅ الدول المحظورة (ISO):  {sorted(BLOCKED_COUNTRY_CODES) or '—'}")
 
     _info = _store_file_info()
     print(f"✅ المخزن المشترك: {_info['path']} (kind={_info['kind']}, ready={'✅' if _info['exists'] else '❌'})")
@@ -703,7 +736,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Jamal Solutions — Customer Portal",
     description="Virtual Numbers Platform",
-    version="1.9.2",
+    version="1.9.3",
     lifespan=lifespan,
 )
 
@@ -1178,6 +1211,7 @@ async def health():
         "guest_requires_voucher": GUEST_REQUIRES_VOUCHER,
         "hide_balance": HIDE_BALANCE_FROM_CUSTOMERS,
         "popular_services_count": len(STORE.get("popular_services", [])),
+        "blocked_countries": sorted(BLOCKED_COUNTRY_SLUGS),
     }
     if _info.get("version") is not None:
         out["store_version"] = _info["version"]
@@ -1228,20 +1262,22 @@ async def system_version():
             "shared_store": True,
             "multi_pair_vouchers": True,
             "voucher_check_endpoint": True,
-            "voucher_check_optional_pair": True,   # ✨ NEW
+            "voucher_check_optional_pair": True,
             "hide_prices_from_customers": HIDE_PRICES_FROM_CUSTOMERS,
             "hide_balance_from_customers": HIDE_BALANCE_FROM_CUSTOMERS,
             "guest_mode": GUEST_MODE,
             "guest_requires_voucher": GUEST_REQUIRES_VOUCHER,
             "popular_services_admin": True,
-            "popular_services_tolerant_match": True,   # ✨ NEW
+            "popular_services_tolerant_match": True,
+            "blocked_countries": sorted(BLOCKED_COUNTRY_SLUGS),
+            "blocked_country_codes": sorted(BLOCKED_COUNTRY_CODES),
         },
         "sim5": sim5_info,
         "customers_in_store": len(STORE["customers"]),
         "vouchers_in_store": len(STORE["vouchers"]),
         "access_codes_in_store": len(STORE["access_codes"]),
         "popular_services_count": len(STORE.get("popular_services", [])),
-        "popular_services": STORE.get("popular_services", []),   # ✨ NEW (للتشخيص)
+        "popular_services": STORE.get("popular_services", []),
         "uptime": _fmt_uptime(time.time() - START_TIME),
         "store_file": _info["path"],
         "store_kind": _info["kind"],
@@ -1321,6 +1357,7 @@ async def status_page(request: Request):
 
     _info = _store_file_info()
     store_kind_str = f"{_info['kind']} — {'✅' if _info['exists'] else '❌'}"
+    blocked_str = ", ".join(sorted(BLOCKED_COUNTRY_SLUGS)) or "—"
 
     html = f"""<!doctype html>
 <html lang="ar" dir="rtl">
@@ -1358,6 +1395,7 @@ async def status_page(request: Request):
       <span>المخزن: <b>{store_kind_str}</b></span>
       <span>الأسعار مخفية: <b>{'✅ نعم' if HIDE_PRICES_FROM_CUSTOMERS else '❌ لا'}</b></span>
       <span>وضع الضيف: <b>{'✅ نعم' if GUEST_MODE else '❌ لا'}</b></span>
+      <span>دول محظورة: <b>{blocked_str}</b></span>
     </div>
     <h1>🔌 5SIM</h1>
     <div class="meta"><span>{sim5_status}</span></div>
@@ -1451,6 +1489,7 @@ async def api_prices(country: str | None = None):
         "error_code": result["error_code"],
         "count": len(countries),
         "countries": countries,
+        "blocked_countries": sorted(BLOCKED_COUNTRY_SLUGS),
     }
 
 
@@ -1608,7 +1647,7 @@ async def buy_page(request: Request):
     result = _strip_prices(result)
     countries = result["countries"] if result["ok"] else []
 
-    # ✨ الأكثر طلباً — من STORE (مطابقة مرنة)
+    # ✨ الأكثر طلباً — من STORE (مطابقة مرنة + تجاهل الدول المحظورة)
     popular: list[dict] = []
     if result["ok"]:
         wanted = STORE.get("popular_services", [])
@@ -1626,6 +1665,11 @@ async def buy_page(request: Request):
             c_slug = (item.get("country_slug") or "").strip().lower()
             s_id = (item.get("service_id") or "").strip().lower()
             if not c_slug or not s_id:
+                continue
+
+            # ✨ تجاهل الدول المحظورة حتى لو كانت في popular_services
+            if _is_country_blocked(c_slug):
+                print(f"[buy_page] 🚫 popular: country '{c_slug}' is blocked")
                 continue
 
             c = by_key.get(c_slug)
@@ -1812,6 +1856,11 @@ async def check_voucher_compat(payload: VoucherCheck, request: Request):
     if payload.country and payload.service:
         c = payload.country.strip().lower()
         s = payload.service.strip().lower()
+
+        # ✨ حجب الدول المحظورة
+        if _is_country_blocked(c):
+            raise HTTPException(400, "هذه الدولة غير متاحة")
+
         if not _voucher_allows(v, c, s):
             pairs_str = ", ".join(f"{p['country']}/{p['service']}" for p in pairs) or "بدون قيود"
             raise HTTPException(
@@ -1847,6 +1896,8 @@ async def redeem_voucher(payload: VoucherRedeem, request: Request):
     voucher = _validate_voucher(payload.code)
 
     if payload.country and payload.service:
+        if _is_country_blocked(payload.country):
+            raise HTTPException(400, "هذه الدولة غير متاحة")
         if not _voucher_allows(voucher, payload.country, payload.service):
             pairs_str = ", ".join(
                 f"{p['country']}/{p['service']}"
@@ -1935,6 +1986,10 @@ async def create_order(payload: OrderCreate, request: Request):
     if GUEST_MODE and GUEST_REQUIRES_VOUCHER and not payload.voucher_code:
         raise HTTPException(400, "أدخل كود الشراء أولاً")
 
+    # ✨ حجب الدول المحظورة
+    if _is_country_blocked(payload.country):
+        raise HTTPException(400, "هذه الدولة غير متاحة")
+
     voucher = None
     if payload.voucher_code:
         voucher = _validate_voucher(payload.voucher_code)
@@ -1954,6 +2009,11 @@ async def create_order(payload: OrderCreate, request: Request):
         raise HTTPException(503, f"تعذّر الاتصال بـ 5SIM: {result['error']}")
 
     c_slug = payload.country.lower()
+
+    # ✨ فحص إضافي بعد بناء الكتالوج (حماية مزدوجة)
+    if _is_country_blocked(c_slug):
+        raise HTTPException(400, "هذه الدولة غير متاحة")
+
     country = next(
         (c for c in result["countries"]
          if c["slug"] == c_slug or c["code"].lower() == c_slug),
@@ -2563,6 +2623,10 @@ async def admin_set_popular(payload: PopularServicesUpdate, request: Request):
         c = it.country_slug.strip().lower()
         s = it.service_id.strip().lower()
         if not c or not s:
+            continue
+        # ✨ منع إضافة دول محظورة إلى "الأكثر طلباً"
+        if _is_country_blocked(c):
+            print(f"[admin_set_popular] 🚫 رفض '{c}/{s}' — دولة محظورة")
             continue
         items.append({
             "country_slug": c,
