@@ -481,7 +481,7 @@
     </section>
 
     <footer class="text-center text-[10px] text-slate-500 pt-4 pb-8">
-      <p>جمال سولوشنز · لوحة التحكم · <span id="footer-version">v2.5.0-open</span></p>
+      <p>جمال سولوشنز · لوحة التحكم · <span id="footer-version">v2.5.1-open</span></p>
       <p class="mt-1">آخر تحديث: <span id="last-refresh">—</span></p>
     </footer>
   </main>
@@ -490,6 +490,22 @@
 <div id="toast" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] bg-slate-800 border-2 rounded-2xl px-6 py-3 text-sm font-bold shadow-2xl"></div>
 
 <script>
+// ══════════════════════════════════════════════════════════════
+// ✨ حجب الدول المحظورة (دفاع مزدوج — حتى لو جاءت من كاش قديم)
+// ══════════════════════════════════════════════════════════════
+const BLOCKED_COUNTRIES_UI = new Set(['israel', 'il']);
+
+function isCountryBlockedUI(slug, code) {
+  if (!slug && !code) return false;
+  if (slug && BLOCKED_COUNTRIES_UI.has(String(slug).toLowerCase())) return true;
+  if (code && BLOCKED_COUNTRIES_UI.has(String(code).toLowerCase())) return true;
+  return false;
+}
+
+function filterBlockedCountries(countries) {
+  return (countries || []).filter(c => !isCountryBlockedUI(c.slug, c.code));
+}
+
 // ══════════════════════════════════════════════════════════════
 // Helpers
 // ══════════════════════════════════════════════════════════════
@@ -581,6 +597,11 @@ async function loadCatalog(force = false) {
     const r = await adminFetch(url);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     CATALOG = await r.json();
+
+    // ✨ طبقة حماية إضافية: إزالة الدول المحظورة مهما كان مصدرها
+    if (CATALOG.ok && Array.isArray(CATALOG.countries)) {
+      CATALOG.countries = filterBlockedCountries(CATALOG.countries);
+    }
 
     if (!CATALOG.ok) {
       document.getElementById('catalog-tree').innerHTML = `
@@ -1373,11 +1394,13 @@ async function loadPopular(btn) {
     const r = await adminFetch('/api/v1/admin/popular');
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
-    POPULAR_ITEMS = (data.popular || []).map((it, i) => ({
-      country_slug: it.country_slug,
-      service_id: it.service_id,
-      order: it.order ?? i,
-    }));
+    POPULAR_ITEMS = (data.popular || [])
+      .filter(it => !isCountryBlockedUI(it.country_slug))   // ✨ دفاع إضافي
+      .map((it, i) => ({
+        country_slug: it.country_slug,
+        service_id: it.service_id,
+        order: it.order ?? i,
+      }));
     POPULAR_SAVED = JSON.parse(JSON.stringify(POPULAR_ITEMS));
     POPULAR_DIRTY = false;
     renderPopularList();
@@ -1401,7 +1424,7 @@ function renderPopularCountryPicker() {
   }
   const current = sel.value;
   sel.innerHTML = '<option value="">اختر دولة...</option>' + countries
-    .filter(c => c.services_count > 0)
+    .filter(c => c.services_count > 0 && !isCountryBlockedUI(c.slug, c.code))   // ✨ دفاع إضافي
     .map(c => `<option value="${escapeHtml(c.slug)}">${c.flag || '🏳️'} ${escapeHtml(c.name)}</option>`)
     .join('');
   if (current) sel.value = current;
@@ -1431,6 +1454,11 @@ function addPopularItem() {
   const serviceId = document.getElementById('pop-service').value;
   if (!countrySlug || !serviceId) {
     toast('اختر الدولة والخدمة أولاً', 'warning');
+    return;
+  }
+  // ✨ دفاع إضافي
+  if (isCountryBlockedUI(countrySlug)) {
+    toast('هذه الدولة غير متاحة', 'error');
     return;
   }
   const exists = POPULAR_ITEMS.some(it => it.country_slug === countrySlug && it.service_id === serviceId);
@@ -1807,7 +1835,7 @@ function renderUsedVouchers() {
 // ══════════════════════════════════════════════════════════════
 loadAll();
 loadCatalog();
-loadPopular();           // ✨ NEW
+loadPopular();
 setInterval(loadAll, 30000);
 setInterval(() => loadCatalog(true), 5 * 60 * 1000);
 </script>
