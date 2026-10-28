@@ -17,11 +17,12 @@ Jamal Solutions — Admin Panel (standalone + shared storage)
 ⚠️  workers=1 لكلا التطبيقين.
 ⚠️  بدون تسجيل دخول — لا تنشرها على إنترنت عام.
 
-✨ v2.5.0:
+✨ v2.5.1:
     - label (اسم اختياري) لكل دفعة أكواد
     - endpoint /vouchers/used — الأكواد المستخدمة
     - حذف access-codes نهائياً من admin
     - matrix generate مع label
+    - ✨ حجب الدول المحظورة (إسرائيل افتراضياً)
 """
 from __future__ import annotations
 
@@ -131,6 +132,30 @@ SIM5_API_KEY = os.getenv("SIM5_API_KEY", "").strip()
 SIM5_ENABLED = bool(SIM5_API_KEY)
 
 FIVESIM_MARKUP_PERCENT = float(os.getenv("FIVESIM_MARKUP_PERCENT", "40"))
+
+
+# ══════════════════════════════════════════════════════════════
+# ✨ 3a) دول محظورة (لا تُعرض في لوحة التحكم)
+# ══════════════════════════════════════════════════════════════
+BLOCKED_COUNTRY_SLUGS = {
+    s.strip().lower()
+    for s in os.getenv("BLOCKED_COUNTRY_SLUGS", "israel").split(",")
+    if s.strip()
+}
+BLOCKED_COUNTRY_CODES = {
+    s.strip().upper()
+    for s in os.getenv("BLOCKED_COUNTRY_CODES", "IL").split(",")
+    if s.strip()
+}
+
+
+def _is_country_blocked(slug: str, code: str = "") -> bool:
+    """هل الدولة محظورة (بالـ slug أو الـ ISO code)؟"""
+    if slug and slug.strip().lower() in BLOCKED_COUNTRY_SLUGS:
+        return True
+    if code and code.strip().upper() in BLOCKED_COUNTRY_CODES:
+        return True
+    return False
 
 
 class Sim5Error(Exception):
@@ -297,6 +322,11 @@ async def build_live_catalog(force: bool = False) -> dict:
     for country_slug, cmeta in raw_countries.items():
         iso_raw = cmeta.get("iso") or {}
         iso = next(iter(iso_raw.keys()), "").upper() if isinstance(iso_raw, dict) else ""
+
+        # ✨ تخطّي الدول المحظورة
+        if _is_country_blocked(country_slug, iso):
+            continue
+
         prefix_raw = cmeta.get("prefix") or {}
         prefix = next(iter(prefix_raw.keys()), "") if isinstance(prefix_raw, dict) else ""
         name_en = cmeta.get("text_en") or country_slug
@@ -374,7 +404,7 @@ def _create_vouchers_batch(
     service: Optional[str] = None,
     allowed_pairs: Optional[list[dict]] = None,
     batch_id: Optional[str] = None,
-    label: str = "",                    # ✨ NEW — اسم اختياري للدفعة
+    label: str = "",
 ) -> list[dict]:
     """
     ينشئ دفعة أكواد.
@@ -383,7 +413,7 @@ def _create_vouchers_batch(
       كود واحد يصلح لأي من هذه الأزواج.
     - country/service: زوج واحد فقط (إن كانت allowed_pairs فارغة).
     - batch_id: اختياري — لتجميع عدة أكواد في دفعة واحدة.
-    - label: ✨ اسم اختياري للكود/الدفعة (يظهر في التقارير).
+    - label: اسم اختياري للكود/الدفعة (يظهر في التقارير).
     """
     prefix = os.getenv("VOUCHER_PREFIX", "JS").strip().upper()
     if not batch_id:
@@ -421,7 +451,7 @@ def _create_vouchers_batch(
             "status": "unused",
             "batch_id": batch_id,
             "note": note,
-            "label": label,                  # ✨ NEW
+            "label": label,
             "country": single["country"] if single else (country or None),
             "service": single["service"] if single else (service or None),
             "allowed_pairs": pairs,
@@ -453,7 +483,7 @@ def _normalize_pairs(v: dict) -> list[dict]:
 # ══════════════════════════════════════════════════════════════
 # 5) App
 # ══════════════════════════════════════════════════════════════
-app = FastAPI(title="Jamal Solutions — Admin Panel", version="2.5.0-open")
+app = FastAPI(title="Jamal Solutions — Admin Panel", version="2.5.1-open")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 if STATIC_DIR.exists():
@@ -486,7 +516,7 @@ class VoucherBatchCreate(BaseModel):
     value: float = Field(..., ge=1)
     expires_days: int = Field(30, ge=1, le=365)
     note: str = ""
-    label: str = ""                      # ✨ NEW
+    label: str = ""
     country: str = ""
     service: str = ""
     allowed_pairs: list[AllowedPair] = Field(default_factory=list)
@@ -502,7 +532,7 @@ class VoucherMultiCreate(BaseModel):
     value: float = Field(..., ge=1)
     expires_days: int = Field(30, ge=1, le=365)
     note: str = ""
-    label: str = ""                      # ✨ NEW
+    label: str = ""
     pairs: list[VoucherPair] = Field(default_factory=list)
     merge: bool = False
     count: int = Field(1, ge=1, le=1000)
@@ -525,7 +555,7 @@ class MatrixGenerateRequest(BaseModel):
     value: float = Field(..., ge=1)
     expires_days: int = Field(30, ge=1, le=365)
     note: str = ""
-    label: str = ""                      # ✨ NEW — اسم الدفعة
+    label: str = ""
     mode: str = "merged"
     count: int = Field(1, ge=1, le=1000)
     pairs: list[AllowedPair] = Field(default_factory=list)
@@ -590,10 +620,12 @@ async def health():
             "multi_pair_vouchers": True,
             "matrix_generate": True,
             "voucher_check_endpoint": True,
-            "voucher_label": True,           # ✨ NEW
-            "used_vouchers_endpoint": True,  # ✨ NEW
-            "popular_services_admin": True,  # ✨
-            "access_codes": False,           # ❌ محذوف
+            "voucher_label": True,
+            "used_vouchers_endpoint": True,
+            "popular_services_admin": True,
+            "blocked_countries": sorted(BLOCKED_COUNTRY_SLUGS),
+            "blocked_country_codes": sorted(BLOCKED_COUNTRY_CODES),
+            "access_codes": False,
         },
     }
     if _info.get("version") is not None:
@@ -636,6 +668,7 @@ async def admin_catalog(request: Request, force: bool = False):
         "error": result["error"],
         "error_code": result["error_code"],
         "countries": result["countries"],
+        "blocked_countries": sorted(BLOCKED_COUNTRY_SLUGS),
     }
 
 
@@ -651,6 +684,7 @@ async def admin_catalog_refresh(request: Request):
         "error": result["error"],
         "error_code": result["error_code"],
         "countries": result["countries"],
+        "blocked_countries": sorted(BLOCKED_COUNTRY_SLUGS),
     }
 
 
@@ -745,7 +779,7 @@ async def admin_list_vouchers(
         pairs = _normalize_pairs(v)
         out.append({
             **v,
-            "label": v.get("label") or "",   # ✨ NEW
+            "label": v.get("label") or "",
             "country": v.get("country") or (pairs[0]["country"] if len(pairs) == 1 else None),
             "service": v.get("service") or (pairs[0]["service"] if len(pairs) == 1 else None),
             "allowed_pairs": pairs,
@@ -756,7 +790,7 @@ async def admin_list_vouchers(
 
 
 # ══════════════════════════════════════════════════════════════
-# ✨ NEW — الأكواد المستخدمة (بدلاً من طلبات الإيداع)
+# ✨ الأكواد المستخدمة
 # ══════════════════════════════════════════════════════════════
 @app.get("/api/v1/admin/vouchers/used")
 async def admin_list_used_vouchers(request: Request):
@@ -811,7 +845,7 @@ async def admin_generate_vouchers(payload: VoucherBatchCreate, request: Request)
         value=payload.value,
         expires_days=payload.expires_days,
         note=payload.note,
-        label=payload.label,             # ✨ NEW
+        label=payload.label,
         country=payload.country or None,
         service=payload.service or None,
         allowed_pairs=[p.model_dump() for p in payload.allowed_pairs] or None,
@@ -826,7 +860,7 @@ async def admin_generate_vouchers(payload: VoucherBatchCreate, request: Request)
         "codes": [v["code"] for v in created],
         "country": payload.country or None,
         "service": payload.service or None,
-        "label": payload.label,          # ✨ NEW
+        "label": payload.label,
         "allowed_pairs": pairs_out,
         "is_merged": len(pairs_out) > 1,
     }
@@ -857,7 +891,7 @@ async def admin_generate_vouchers_multi(payload: VoucherMultiCreate, request: Re
             value=payload.value,
             expires_days=payload.expires_days,
             note=payload.note,
-            label=payload.label,             # ✨ NEW
+            label=payload.label,
             allowed_pairs=[p.model_dump() for p in payload.allowed_pairs],
         )
         _persist_now()
@@ -871,7 +905,7 @@ async def admin_generate_vouchers_multi(payload: VoucherMultiCreate, request: Re
             "batches": [{
                 "country": "merged",
                 "service": pairs_desc,
-                "label": payload.label,      # ✨ NEW
+                "label": payload.label,
                 "allowed_pairs": [p.model_dump() for p in payload.allowed_pairs],
                 "count": len(created),
                 "batch_id": created[0]["batch_id"] if created else None,
@@ -892,7 +926,7 @@ async def admin_generate_vouchers_multi(payload: VoucherMultiCreate, request: Re
             value=payload.value,
             expires_days=payload.expires_days,
             note=payload.note,
-            label=payload.label,             # ✨ NEW
+            label=payload.label,
             country=p.country,
             service=p.service,
         )
@@ -900,7 +934,7 @@ async def admin_generate_vouchers_multi(payload: VoucherMultiCreate, request: Re
         batches.append({
             "country": p.country,
             "service": p.service,
-            "label": payload.label,          # ✨ NEW
+            "label": payload.label,
             "count": len(created),
             "batch_id": created[0]["batch_id"] if created else None,
             "codes": [v["code"] for v in created],
@@ -954,7 +988,7 @@ async def admin_generate_vouchers_matrix(
             value=payload.value,
             expires_days=payload.expires_days,
             note=payload.note,
-            label=payload.label,             # ✨ NEW
+            label=payload.label,
             allowed_pairs=pairs_dict,
             batch_id=f"{master_batch_id}_merged",
         )
@@ -964,7 +998,7 @@ async def admin_generate_vouchers_matrix(
         pairs_desc = ", ".join(f"{p['country']}/{p['service']}" for p in pairs_dict)
         response_batches.append({
             "mode": "merged",
-            "label": payload.label or f"كود موحّد ({len(pairs_dict)} زوج)",   # ✨ NEW
+            "label": payload.label or f"كود موحّد ({len(pairs_dict)} زوج)",
             "country": "merged",
             "service": pairs_desc,
             "allowed_pairs": pairs_dict,
@@ -991,7 +1025,7 @@ async def admin_generate_vouchers_matrix(
                 value=payload.value,
                 expires_days=payload.expires_days,
                 note=payload.note,
-                label=group_label,           # ✨ NEW
+                label=group_label,
                 allowed_pairs=pairs_dict,
                 batch_id=f"{master_batch_id}_g{g_idx + 1}",
             )
@@ -1001,7 +1035,7 @@ async def admin_generate_vouchers_matrix(
             pairs_desc = ", ".join(f"{p['country']}/{p['service']}" for p in pairs_dict)
             response_batches.append({
                 "mode": "groups",
-                "label": group_label,        # ✨ NEW
+                "label": group_label,
                 "country": "group",
                 "service": pairs_desc,
                 "allowed_pairs": pairs_dict,
@@ -1022,7 +1056,7 @@ async def admin_generate_vouchers_matrix(
                 value=payload.value,
                 expires_days=payload.expires_days,
                 note=payload.note,
-                label=payload.label,         # ✨ NEW
+                label=payload.label,
                 country=p.country,
                 service=p.service,
                 batch_id=f"{master_batch_id}_p{p_idx + 1}",
@@ -1032,7 +1066,7 @@ async def admin_generate_vouchers_matrix(
 
             response_batches.append({
                 "mode": "separate",
-                "label": payload.label or f"{p.country}/{p.service}",   # ✨ NEW
+                "label": payload.label or f"{p.country}/{p.service}",
                 "country": p.country,
                 "service": p.service,
                 "allowed_pairs": [p.model_dump()],
@@ -1051,7 +1085,7 @@ async def admin_generate_vouchers_matrix(
         "ok": True,
         "mode": mode,
         "master_batch_id": master_batch_id,
-        "label": payload.label,              # ✨ NEW
+        "label": payload.label,
         "total_count": len(created_all),
         "total_value": round(sum(v["value"] for v in created_all), 2),
         "batches": response_batches,
@@ -1116,7 +1150,7 @@ async def admin_check_voucher(payload: VoucherCheckIn, request: Request):
         "ok": True,
         "code": v["code"],
         "value": v["value"],
-        "label": v.get("label") or "",       # ✨ NEW
+        "label": v.get("label") or "",
         "expires_at": v["expires_at"],
         "allowed_pairs": pairs,
         "is_merged": len(pairs) > 1,
@@ -1146,7 +1180,7 @@ async def admin_disable_voucher(voucher_id: int, request: Request):
 
 
 # ══════════════════════════════════════════════════════════════
-# ✨ NEW — Popular Services (admin)
+# ✨ Popular Services (admin)
 # ══════════════════════════════════════════════════════════════
 @app.get("/api/v1/admin/popular")
 async def admin_list_popular(request: Request):
@@ -1164,6 +1198,10 @@ async def admin_set_popular(payload: PopularServicesUpdate, request: Request):
         c = it.country_slug.strip().lower()
         s = it.service_id.strip().lower()
         if not c or not s:
+            continue
+        # ✨ منع إضافة دول محظورة إلى "الأكثر طلباً"
+        if _is_country_blocked(c):
+            print(f"[admin_set_popular] 🚫 رفض '{c}/{s}' — دولة محظورة")
             continue
         items.append({
             "country_slug": c,
@@ -1254,7 +1292,9 @@ async def _startup_log():
     print(f"[admin] SIM5 base     = {SIM5_BASE}")
     print(f"[admin] MARKUP        = {FIVESIM_MARKUP_PERCENT}%")
     print(f"[admin] CATALOG TTL   = {CATALOG_TTL_SECONDS}s")
-    print(f"[admin] features      = multi_pair ✅ | matrix ✅ | check ✅ | label ✅ | used ✅")
+    print(f"[admin] BLOCKED slugs = {sorted(BLOCKED_COUNTRY_SLUGS) or '—'}")
+    print(f"[admin] BLOCKED codes = {sorted(BLOCKED_COUNTRY_CODES) or '—'}")
+    print(f"[admin] features      = multi_pair ✅ | matrix ✅ | check ✅ | label ✅ | used ✅ | block ✅")
     print(f"[admin] owner_wallet  = {STORE['owner_wallet']}")
     print(f"[admin] vouchers      = {len(STORE['vouchers'])}  (merged: {merged_count}, used: {used_count})")
     print(f"[admin] customers     = {len(STORE['customers'])}")
