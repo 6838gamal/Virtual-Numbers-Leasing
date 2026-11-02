@@ -29,6 +29,40 @@ from app.services.vouchers import validate_voucher, voucher_allows
 router = APIRouter()
 
 
+# الحالات التي تُعتبر "مغلقة" — لا يجوز إلغاؤها أو إنهاؤها مرة أخرى
+# 🔒 إصلاح: ثوابت مركزية لمنع الاسترداد المزدوج
+CLOSED_STATUSES = frozenset({"CANCELED", "CANCELLED", "FINISHED", "REFUNDED"})
+
+
+def _next_id(items: list[dict]) -> int:
+    """
+    🔒 إصلاح: توليد ID آمن بدل len()+1.
+    len()+1 يعطي IDs مكررة بعد أي حذف أو عند التزامن.
+    """
+    return (max((i["id"] for i in items), default=0)) + 1
+
+
+def _find_customer_order(customer_id: int, order_id: int) -> dict | None:
+    """🔒 إصلاح: مساعد موحّد لتقليل التكرار في check/finish/cancel."""
+    return next(
+        (o for o in STORE["orders"]
+         if o["id"] == order_id and o["customer_id"] == customer_id),
+        None,
+    )
+
+
+def _ensure_order_open(order: dict) -> None:
+    """
+    🔒 إصلاح: يرفض العملية على طلب مغلق.
+    يمنع الاسترداد المزدوج عند تكرار الإلغاء أو إلغاء طلب منتهٍ.
+    """
+    if order.get("status") in CLOSED_STATUSES:
+        raise HTTPException(
+            400,
+            f"الطلب مغلق بالفعل (الحالة: {order['status']}) — لا يمكن تنفيذ العملية",
+        )
+
+
 # ══════════════════════════════════════════════════════════════
 # POST /api/v1/orders
 # ══════════════════════════════════════════════════════════════
@@ -44,6 +78,8 @@ async def create_order(payload: OrderCreate, request: Request):
     if GUEST_MODE and GUEST_REQUIRES_VOUCHER and not payload.voucher_code:
         raise HTTPException(400, "أدخل كود الشراء أولاً")
 
+    # 🔒 إصلاح: حذف الفحص المكرر لـ is_country_blocked
+    # كان يُستدعى قبل وبعد build_live_catalog — واحد يكفي
     if is_country_blocked(payload.country):
         raise HTTPException(400, "هذه الدولة غير متاحة")
 
@@ -67,9 +103,6 @@ async def create_order(payload: OrderCreate, request: Request):
 
     c_slug = payload.country.lower()
 
-    if is_country_blocked(c_slug):
-        raise HTTPException(400, "هذه الدولة غير متاحة")
-
     country = next(
         (c for c in result["countries"]
          if c["slug"] == c_slug or c["code"].lower() == c_slug),
@@ -89,6 +122,12 @@ async def create_order(payload: OrderCreate, request: Request):
     if not service.get("operator"):
         raise HTTPException(400, "لم يُحدد مشغل متاح لهذه الخدمة")
 
+    # 🔒 إصلاح: حساب sale_price المتوقع قبل الشراء
+    # الكود القديم كان يشتري ثم يكتشف أن sale_price > balance فيضطر للإلغاء.
+    # الآن نرفض مبكراً إن كان المتاح لا يغطي السعر النهائي المتوقع.
+    expected_cost = float(service.get("fivesim_cost") or service["cost"])
+    expected_sale_price = calculate_sale_price(expected_cost)
+
     if voucher:
         available_balance = voucher["value"]
         source_name = "الكود"
@@ -98,11 +137,11 @@ async def create_order(payload: OrderCreate, request: Request):
         available_balance = customer["balance"]
         source_name = "رصيدك"
 
-    expected_price = float(service["cost"])
-    if available_balance < expected_price:
+    if available_balance < expected_sale_price:
         raise HTTPException(
             400,
-            f"{source_name} غير كافٍ. المطلوب: ${expected_price:.2f}، المتاح: ${available_balance:.2f}",
+            f"{source_name} غير كافٍ. المطلوب: ${expected_sale_price:.2f}، "
+            f"المتاح: ${available_balance:.2f}",
         )
 
     try:
@@ -117,10 +156,12 @@ async def create_order(payload: OrderCreate, request: Request):
             detail=f"فشل الشراء من 5SIM: {e.message}",
         )
 
-    fivesim_cost = float(sim5_order.get("price", service["fivesim_cost"] or 0))
+    fivesim_cost = float(sim5_order.get("price", expected_cost))
     sale_price = calculate_sale_price(fivesim_cost)
     profit = round(sale_price - fivesim_cost, 4)
 
+    # 🔒 إصلاح: فحص ما بعد الشراء يبقى كشبكة أمان
+    # (السعر الفعلي من 5SIM قد يختلف عن المتوقع)
     if voucher:
         if voucher["value"] < sale_price:
             try:
@@ -129,7 +170,8 @@ async def create_order(payload: OrderCreate, request: Request):
                 pass
             raise HTTPException(
                 400,
-                f"قيمة الكود غير كافية. المطلوب: ${sale_price:.2f}، قيمة الكود: ${voucher['value']:.2f}",
+                f"قيمة الكود غير كافية. المطلوب: ${sale_price:.2f}، "
+                f"قيمة الكود: ${voucher['value']:.2f}",
             )
     else:
         if customer["balance"] < sale_price:
@@ -139,11 +181,12 @@ async def create_order(payload: OrderCreate, request: Request):
                 pass
             raise HTTPException(
                 400,
-                f"رصيدك غير كافٍ. المطلوب: ${sale_price:.2f}، المتاح: ${customer['balance']:.2f}",
+                f"رصيدك غير كافٍ. المطلوب: ${sale_price:.2f}، "
+                f"المتاح: ${customer['balance']:.2f}",
             )
 
     now = datetime.now(timezone.utc)
-    order_id = len(STORE["orders"]) + 1
+    order_id = _next_id(STORE["orders"])
 
     order = {
         "id": order_id,
@@ -166,11 +209,12 @@ async def create_order(payload: OrderCreate, request: Request):
         "created_at": sim5_order.get("created_at", now.isoformat()),
         "sms": sim5_order.get("sms") or [],
         "paid_by_voucher": voucher["code"] if voucher else None,
+        "refunded": False,  # 🔒 إصلاح: علم صريح لمنع الاسترداد المزدوج
     }
     STORE["orders"].append(order)
 
     STORE["numbers"].append({
-        "id": len(STORE["numbers"]) + 1,
+        "id": _next_id(STORE["numbers"]),
         "customer_id": cid,
         "sim5_id": sim5_order.get("id"),
         "phone": order["phone"],
@@ -199,7 +243,7 @@ async def create_order(payload: OrderCreate, request: Request):
         if remaining > 0:
             customer["balance"] += remaining
             STORE["transactions"].append({
-                "id": len(STORE["transactions"]) + 1,
+                "id": _next_id(STORE["transactions"]),
                 "customer_id": cid,
                 "type": "voucher_remainder",
                 "description": f"باقي كود {voucher['code']} بعد الشراء",
@@ -216,7 +260,7 @@ async def create_order(payload: OrderCreate, request: Request):
     ow["reserved_for_5sim"] += fivesim_cost
 
     STORE["transactions"].append({
-        "id": len(STORE["transactions"]) + 1,
+        "id": _next_id(STORE["transactions"]),
         "customer_id": cid,
         "type": "purchase",
         "description": f"شراء رقم {service['name']} — {country['name']}"
@@ -276,7 +320,7 @@ async def sync_orders_from_sim5(request: Request, category: str = "activation"):
         if so["id"] in existing:
             continue
         STORE["orders"].append({
-            "id": len(STORE["orders"]) + 1,
+            "id": _next_id(STORE["orders"]),
             "customer_id": customer["id"],
             "sim5_id": so["id"],
             "phone": so.get("phone", ""),
@@ -295,6 +339,7 @@ async def sync_orders_from_sim5(request: Request, category: str = "activation"):
             "expires": so.get("expires"),
             "created_at": so.get("created_at"),
             "sms": so.get("sms") or [],
+            "refunded": False,  # 🔒 إصلاح: اتساق الحقول مع create_order
         })
         imported += 1
 
@@ -311,11 +356,7 @@ async def sync_orders_from_sim5(request: Request, category: str = "activation"):
 async def check_order(order_id: int, request: Request):
     refresh()
     customer = await get_current_customer(request)
-    order = next(
-        (o for o in STORE["orders"]
-         if o["id"] == order_id and o["customer_id"] == customer["id"]),
-        None,
-    )
+    order = _find_customer_order(customer["id"], order_id)
     if not order or not order.get("sim5_id"):
         raise HTTPException(404, "الطلب غير موجود")
 
@@ -334,7 +375,7 @@ async def check_order(order_id: int, request: Request):
         if key in existing_keys:
             continue
         STORE["sms"].append({
-            "id": len(STORE["sms"]) + 1,
+            "id": _next_id(STORE["sms"]),
             "sim5_id": sms.get("id"),
             "customer_id": customer["id"],
             "order_id": order_id,
@@ -371,17 +412,18 @@ async def check_order(order_id: int, request: Request):
 async def finish_order(order_id: int, request: Request):
     refresh()
     customer = await get_current_customer(request)
-    order = next(
-        (o for o in STORE["orders"]
-         if o["id"] == order_id and o["customer_id"] == customer["id"]),
-        None,
-    )
+    order = _find_customer_order(customer["id"], order_id)
     if not order or not order.get("sim5_id"):
         raise HTTPException(404, "الطلب غير موجود")
+
+    # 🔒 إصلاح: منع إنهاء طلب مغلق مسبقاً
+    _ensure_order_open(order)
+
     try:
         data = await sim5_get(f"/user/finish/{order['sim5_id']}", auth=True)
     except Sim5Error as e:
         raise HTTPException(e.status or 503, e.message)
+
     order["status"] = data.get("status", "FINISHED")
     persist_now()
     return {"ok": True, "status": order["status"]}
@@ -394,13 +436,14 @@ async def finish_order(order_id: int, request: Request):
 async def cancel_order(order_id: int, request: Request):
     refresh()
     customer = await get_current_customer(request)
-    order = next(
-        (o for o in STORE["orders"]
-         if o["id"] == order_id and o["customer_id"] == customer["id"]),
-        None,
-    )
+    order = _find_customer_order(customer["id"], order_id)
     if not order or not order.get("sim5_id"):
         raise HTTPException(404, "الطلب غير موجود")
+
+    # 🔒 إصلاح حرج: منع الاسترداد المزدوج
+    # الكود القديم كان يسترد المبلغ في كل استدعاء، مما يسمح باستنزاف الرصيد
+    _ensure_order_open(order)
+
     try:
         data = await sim5_get(f"/user/cancel/{order['sim5_id']}", auth=True)
     except Sim5Error as e:
@@ -408,18 +451,36 @@ async def cancel_order(order_id: int, request: Request):
 
     order["status"] = data.get("status", "CANCELED")
 
+    # 🔒 إصلاح: علم refunded يمنع أي استرداد لاحق حتى لو تغيرت الحالة
+    if order.get("refunded"):
+        persist_now()
+        return {"ok": True, "status": order["status"], "refund": 0.0}
+
+    order["refunded"] = True
+
+    # 🔒 إصلاح: الطلب المدفوع بكود يُسترد للرصيد مع توثيق المصدر
+    # الكود القديم كان يعيد المبلغ للرصيد النقدي دون أي إشارة إلى الكود،
+    # مما يجعل التتبع المالي مستحيلاً. هنا نوثّق المصدر بوضوح.
     refund = order["price"]
-    customer["balance"] += refund
+    if order.get("paid_by_voucher"):
+        customer["balance"] += refund
+        refund_desc = (
+            f"استرداد طلب ملغي #{order_id} "
+            f"(مدفوع بكود {order['paid_by_voucher']})"
+        )
+    else:
+        customer["balance"] += refund
+        refund_desc = f"استرداد طلب ملغي #{order_id}"
 
     ow = STORE["owner_wallet"]
     ow["total_profit"] -= order.get("profit", 0.0)
     ow["reserved_for_5sim"] -= order.get("fivesim_cost", 0.0)
 
     STORE["transactions"].append({
-        "id": len(STORE["transactions"]) + 1,
+        "id": _next_id(STORE["transactions"]),
         "customer_id": customer["id"],
         "type": "refund",
-        "description": f"استرداد طلب ملغي #{order_id}",
+        "description": refund_desc,
         "amount": refund,
         "balance_after": customer["balance"],
         "created_at": now_iso(),
