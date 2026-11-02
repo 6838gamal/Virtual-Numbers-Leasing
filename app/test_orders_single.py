@@ -26,7 +26,7 @@ from fastapi.testclient import TestClient
 # ══════════════════════════════════════════════════════════════
 # ⚙️ الإعداد الوحيد المطلوب: مسار وحدة الطلبات عندك
 # ══════════════════════════════════════════════════════════════
-ORDERS_MODULE = "app.api.orders"   # ← عدّله إن لزم
+ORDERS_MODULE = "app.routers.orders"   # ← عدّله إن لزم
 
 orders = importlib.import_module(ORDERS_MODULE)
 
