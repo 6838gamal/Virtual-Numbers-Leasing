@@ -18,6 +18,11 @@ from pathlib import Path
 from fastapi import APIRouter, Header, HTTPException, Query
 
 from app.config import DEBUG, ADMIN_SECRET
+from app.models.diagnostics import (
+    DiagnosticsHealthResponse,
+    DiagnosticsRunTestsResponse,
+    DiagnosticsTestSummary,
+)
 
 
 router = APIRouter(prefix="/api/v1/diagnostics", tags=["diagnostics"])
@@ -33,6 +38,9 @@ TEST_TIMEOUT = 120.0
 MAX_OUTPUT_BYTES = 64 * 1024
 
 
+# ══════════════════════════════════════════════════════════════
+# مساعدات داخلية
+# ══════════════════════════════════════════════════════════════
 def _require_admin(admin_secret: str | None) -> None:
     """يتحقق من صلاحية الأدمن — يُرجع 404 في الإنتاج حتى لا يُكتشف الـ endpoint."""
     if not DEBUG:
@@ -72,23 +80,69 @@ def _truncate(text: str) -> str:
     return truncated.decode("utf-8", errors="ignore") + "\n... [مخترق — تجاوز الحد]"
 
 
-@router.get("/health")
-async def diagnostics_health():
-    """فحص صحة سريع — لا يشغّل اختبارات ولا يلمس 5SIM."""
+def _parse_pytest_summary(output: str) -> dict:
+    """يستخرج ملخّصاً سريعاً (passed/failed/...) من مخرجات pytest."""
+    summary: dict = {}
+    for line in reversed(output.splitlines()):
+        if " passed" in line or " failed" in line or " error" in line:
+            summary["raw"] = line.strip()
+            for token in line.replace("=", " ").split():
+                if token.isdigit():
+                    nxt_idx = line.find(token) + len(token)
+                    rest = line[nxt_idx:nxt_idx + 15].strip()
+                    for key in ("passed", "failed", "error", "errors", "skipped"):
+                        if rest.startswith(key):
+                            summary[key] = int(token)
+                            break
+            break
+    return summary
+
+
+# ══════════════════════════════════════════════════════════════
+# GET /api/v1/diagnostics/health
+# ══════════════════════════════════════════════════════════════
+@router.get(
+    "/health",
+    response_model=DiagnosticsHealthResponse,
+    summary="فحص صحة التشخيص",
+    description=(
+        "يعيد حالة سريعة عن بيئة التشخيص: DEBUG، توفّر pytest، "
+        "ومسار الملف الافتراضي. متاح دائماً بلا مصادقة."
+    ),
+)
+async def diagnostics_health() -> DiagnosticsHealthResponse:
     pytest_bin = shutil.which("pytest") or shutil.which("pytest.exe")
-    return {
-        "ok": True,
-        "debug": DEBUG,
-        "admin_configured": bool(ADMIN_SECRET),
-        "python": sys.version.split()[0],
-        "pytest_available": bool(pytest_bin),
-        "project_root": str(PROJECT_ROOT),
-        "default_test_file": str(DEFAULT_TEST_FILE),
-        "default_test_exists": DEFAULT_TEST_FILE.exists(),
-    }
+    return DiagnosticsHealthResponse(
+        ok=True,
+        debug=DEBUG,
+        admin_configured=bool(ADMIN_SECRET),
+        python=sys.version.split()[0],
+        pytest_available=bool(pytest_bin),
+        project_root=str(PROJECT_ROOT),
+        default_test_file=str(DEFAULT_TEST_FILE),
+        default_test_exists=DEFAULT_TEST_FILE.exists(),
+    )
 
 
-@router.post("/run-tests")
+# ══════════════════════════════════════════════════════════════
+# POST /api/v1/diagnostics/run-tests
+# ══════════════════════════════════════════════════════════════
+@router.post(
+    "/run-tests",
+    response_model=DiagnosticsRunTestsResponse,
+    summary="تشغيل اختبارات pytest",
+    description=(
+        "يشغّل pytest على ملف اختبار داخل المشروع ويعيد ملخّص النتائج. "
+        "يتطلب DEBUG=true + ترويسة X-Admin-Secret مطابقة لـ ADMIN_SECRET. "
+        "في الإنتاج (DEBUG=false) يعيد 404."
+    ),
+    responses={
+        401: {"description": "X-Admin-Secret غير صحيح"},
+        404: {"description": "المسار معطّل (DEBUG=false) أو ملف غير موجود"},
+        503: {"description": "pytest غير مثبّت أو ADMIN_SECRET غير مضبوط"},
+        504: {"description": "تجاوز مهلة التنفيذ"},
+    },
+)
 async def diagnostics_run_tests(
     target: str = Query(
         "test_orders_single.py",
@@ -100,7 +154,7 @@ async def diagnostics_run_tests(
     ),
     maxfail: int = Query(50, ge=1, le=500),
     x_admin_secret: str | None = Header(default=None, alias="X-Admin-Secret"),
-):
+) -> DiagnosticsRunTestsResponse:
     """
     يشغّل pytest على ملف الاختبار المحدّد ويعيد ملخّص النتائج.
 
@@ -161,28 +215,14 @@ async def diagnostics_run_tests(
 
     duration = round(time.perf_counter() - started, 3)
     output = _truncate((raw or b"").decode("utf-8", errors="replace"))
+    summary_dict = _parse_pytest_summary(output)
 
-    # استخراج ملخّص سريع (passed/failed/errors) من السطر الأخير
-    summary = {}
-    for line in reversed(output.splitlines()):
-        if " passed" in line or " failed" in line or " error" in line:
-            summary["raw"] = line.strip()
-            for token in line.replace("=", " ").split():
-                if token.isdigit():
-                    nxt_idx = line.find(token) + len(token)
-                    rest = line[nxt_idx:nxt_idx + 15].strip()
-                    for key in ("passed", "failed", "error", "errors", "skipped"):
-                        if rest.startswith(key):
-                            summary[key] = int(token)
-                            break
-            break
-
-    return {
-        "ok": proc.returncode == 0,
-        "exit_code": proc.returncode,
-        "duration_s": duration,
-        "target": target,
-        "marker": marker,
-        "summary": summary,
-        "output": output,
-    }
+    return DiagnosticsRunTestsResponse(
+        ok=proc.returncode == 0,
+        exit_code=proc.returncode,
+        duration_s=duration,
+        target=target,
+        marker=marker,
+        summary=DiagnosticsTestSummary(**summary_dict),
+        output=output,
+    )
