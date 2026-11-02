@@ -5,6 +5,10 @@
 - /run-tests يتطلب DEBUG=True + ADMIN_SECRET صحيح في الهيدر.
 - في الإنتاج (DEBUG=False) يُرجع 404 حتى لا يُكتشف.
 - مهلة تنفيذ محدودة + لا قراءة من stdin.
+
+📁 بنية المسارات (الخيار 1):
+- الملفات الاختبارية داخل app/ (حيث توجد فعلاً في الريبو).
+- pytest يُشغَّل من جذر الريبو (حتى يعمل import app.*).
 """
 from __future__ import annotations
 
@@ -27,9 +31,24 @@ from app.models.diagnostics import (
 
 router = APIRouter(prefix="/api/v1/diagnostics", tags=["diagnostics"])
 
-# مسار جذر المشروع — نبحث عن tests/ و pytest.ini/pyproject.toml
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_TEST_FILE = PROJECT_ROOT / "test_orders_single.py"
+# ══════════════════════════════════════════════════════════════
+# مسارات المشروع
+# ══════════════════════════════════════════════════════════════
+# diagnostics.py موجود في: <repo_root>/app/routers/diagnostics.py
+# parents[0] = app/routers/
+# parents[1] = app/              ← مجلد التطبيق (يحوي ملفات الاختبار)
+# parents[2] = <repo_root>       ← جذر الريبو (للتشغيل من هنا)
+APP_DIR = Path(__file__).resolve().parents[1]        # /app/app
+PROJECT_ROOT = Path(__file__).resolve().parents[2]   # /app  (جذر الريبو)
+
+# البحث عن ملفات الاختبار داخل مجلد التطبيق
+TEST_SEARCH_ROOT = APP_DIR
+
+# الافتراضي: test_orders_single.py داخل app/
+DEFAULT_TEST_FILE = TEST_SEARCH_ROOT / "test_orders_single.py"
+
+# تشغيل pytest من جذر الريبو حتى يعمل import app.*
+RUN_CWD = PROJECT_ROOT
 
 # مهلة قصوى لتشغيل الاختبارات (ثانية)
 TEST_TIMEOUT = 120.0
@@ -58,18 +77,50 @@ def _require_admin(admin_secret: str | None) -> None:
 def _resolve_target(target: str) -> Path:
     """
     يحوّل target (اسم ملف أو مسار نسبي) إلى مسار مطلق داخل المشروع.
-    يرفض أي محاولة للخروج من جذر المشروع (path traversal).
+
+    يبحث في:
+    1) TEST_SEARCH_ROOT (app/) — المكان الفعلي للملفات.
+    2) PROJECT_ROOT (جذر الريبو) — كاحتياطي.
+
+    يرفض أي محاولة للخروج من جذر الريبو (path traversal).
     """
-    candidate = (PROJECT_ROOT / target).resolve()
-    try:
-        candidate.relative_to(PROJECT_ROOT)
-    except ValueError:
-        raise HTTPException(400, "مسار غير مسموح")
-    if not candidate.exists():
-        raise HTTPException(404, f"ملف الاختبار غير موجود: {target}")
-    if candidate.suffix not in (".py",):
-        raise HTTPException(400, "يُسمح بملفات .py فقط")
-    return candidate
+    # جرّب إضافة .py إن لم يكن هناك امتداد
+    candidates_to_try = [target]
+    if not target.endswith(".py"):
+        candidates_to_try.append(f"{target}.py")
+
+    for name in candidates_to_try:
+        # البحث في app/ أولاً ثم جذر الريبو
+        for base in (TEST_SEARCH_ROOT, PROJECT_ROOT):
+            candidate = (base / name).resolve()
+            # منع path traversal: يجب أن يبقى داخل جذر الريبو
+            try:
+                candidate.relative_to(PROJECT_ROOT)
+            except ValueError:
+                continue
+            if not candidate.exists():
+                continue
+            if candidate.suffix != ".py":
+                raise HTTPException(400, "يُسمح بملفات .py فقط")
+            return candidate
+
+    # لم نجد — أبلغ بالملفات المتاحة
+    available: list[str] = []
+    for base in (TEST_SEARCH_ROOT, PROJECT_ROOT):
+        for p in base.glob("test_*.py"):
+            if ".git" in p.parts or "venv" in p.parts or "node_modules" in p.parts:
+                continue
+            try:
+                available.append(str(p.relative_to(PROJECT_ROOT)))
+            except ValueError:
+                available.append(str(p))
+    available = sorted(set(available))
+
+    raise HTTPException(
+        404,
+        f"ملف الاختبار غير موجود: {target}. "
+        f"الملفات المتاحة: {available or 'لا يوجد'}",
+    )
 
 
 def _truncate(text: str) -> str:
@@ -146,7 +197,10 @@ async def diagnostics_health() -> DiagnosticsHealthResponse:
 async def diagnostics_run_tests(
     target: str = Query(
         "test_orders_single.py",
-        description="مسار نسبي لملف اختبار .py داخل المشروع",
+        description=(
+            "مسار نسبي لملف اختبار .py داخل المشروع. "
+            "يُبحث عنه في app/ أولاً ثم جذر الريبو."
+        ),
     ),
     marker: str | None = Query(
         None,
@@ -189,12 +243,16 @@ async def diagnostics_run_tests(
     # ضمانات إضافية: لا تفعيل 5SIM الحقيقي حتى لو ضُبط في البيئة
     env["SIM5_ENABLED"] = "false"
     env["PYTHONDONTWRITEBYTECODE"] = "1"
+    # نضمن أن جذر الريبو في sys.path حتى يعمل import app.*
+    env["PYTHONPATH"] = str(PROJECT_ROOT) + (
+        os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else ""
+    )
 
     started = time.perf_counter()
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
-            cwd=str(PROJECT_ROOT),
+            cwd=str(RUN_CWD),  # ← نشغّل من جذر الريبو، لا من app/
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
             stdin=asyncio.subprocess.DEVNULL,
