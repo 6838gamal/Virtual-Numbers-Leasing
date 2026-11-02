@@ -23,3 +23,7 @@ python-multipart
 
 
 psycopg[binary,pool]
+
+
+pytest
+pytest-asyncio
