@@ -51,6 +51,7 @@ from app.routers import (
     security,
     admin,
     me,
+diagnostics,          # 🔒 إضافة: راوتر التشخيص
 )
 
 
@@ -173,5 +174,6 @@ for r in (
     security.router,
     admin.router,
     me.router,
+    diagnostics.router,   # 🔒 إضافة: مسارات /api/v1/diagnostics/*
 ):
     app.include_router(r)
