@@ -5,18 +5,16 @@ test_orders_single.py
 
 ضمانات عدم إهدار الرصيد الحقيقي (ثلاثية):
   1) sim5_get و build_live_catalog مُستبدلان بـ AsyncMock.
-  2) حظر الشبكة على مستوى socket (autouse fixture).
+  2) حجب الاتصالات الصادرة (AF_INET/AF_INET6) دون كسر TestClient.
   3) STORE و persist_now معزولان تماماً في الذاكرة.
 
 التشغيل:
-    pytest test_orders_single.py -v
-
-تعديل مطلوب واحد: ORDERS_MODULE أدناه.
+    pytest app/test_orders_single.py -v
 """
 from __future__ import annotations
 
 import importlib
-import socket
+import socket as _socket
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -24,26 +22,56 @@ from fastapi.testclient import TestClient
 
 
 # ══════════════════════════════════════════════════════════════
-# ⚙️ الإعداد الوحيد المطلوب: مسار وحدة الطلبات عندك
+# ⚙️ مسار وحدة الطلبات — يطابق ما أرسلته (app/routers/orders.py)
 # ══════════════════════════════════════════════════════════════
-ORDERS_MODULE = "app.routers.orders"   # ← عدّله إن لزم
+ORDERS_MODULE = "app.routers.orders"
 
 orders = importlib.import_module(ORDERS_MODULE)
+from app.services.sim5 import Sim5Error  # noqa: E402
 
 
 # ══════════════════════════════════════════════════════════════
-# 🛡️ حماية الشبكة (autouse) — أي اتصال حقيقي يفشل الاختبار
+# 🛡️ حماية الشبكة (autouse) — لا تكسر TestClient
 # ══════════════════════════════════════════════════════════════
 @pytest.fixture(autouse=True)
 def _forbid_real_network(monkeypatch):
-    def _blocked(*a, **k):
-        raise RuntimeError("⛔ محاولة اتصال شبكي حقيقي في اختبار — ممنوع!")
-    monkeypatch.setattr(socket, "socket", _blocked)
-    monkeypatch.setattr(socket, "create_connection", _blocked)
+    """
+    يحجب الاتصالات الصادرة الحقيقية (AF_INET/AF_INET6)
+    دون المساس بـ socketpair (AF_UNIX) التي يحتاجها asyncio/anyio.
+    """
+    _real_connect = _socket.socket.connect
+    _real_connect_ex = _socket.socket.connect_ex
+    _real_create_conn = _socket.create_connection
+
+    def _guarded_connect(self, address):
+        if self.family in (_socket.AF_INET, _socket.AF_INET6):
+            raise RuntimeError(
+                "⛔ محاولة اتصال شبكي حقيقي (AF_INET) في اختبار — ممنوع!"
+            )
+        return _real_connect(self, address)
+
+    def _guarded_connect_ex(self, address):
+        if self.family in (_socket.AF_INET, _socket.AF_INET6):
+            raise RuntimeError(
+                "⛔ محاولة اتصال شبكي حقيقي (AF_INET) في اختبار — ممنوع!"
+            )
+        return _real_connect_ex(self, address)
+
+    def _guarded_create_connection(address, *a, **k):
+        host = address[0] if isinstance(address, tuple) else address
+        if host not in ("127.0.0.1", "::1", "localhost", "testserver"):
+            raise RuntimeError(
+                f"⛔ create_connection إلى {host} في اختبار — ممنوع!"
+            )
+        return _real_create_conn(address, *a, **k)
+
+    monkeypatch.setattr(_socket.socket, "connect", _guarded_connect)
+    monkeypatch.setattr(_socket.socket, "connect_ex", _guarded_connect_ex)
+    monkeypatch.setattr(_socket, "create_connection", _guarded_create_connection)
 
 
 # ══════════════════════════════════════════════════════════════
-# 🧱 مخزن وهمي + عميل
+# 🧱 مخزن وهمي + كتالوج + عميل
 # ══════════════════════════════════════════════════════════════
 def _fresh_store():
     return {
@@ -99,10 +127,9 @@ def ctx():
         patch.object(orders, "GUEST_REQUIRES_VOUCHER", False),
         patch.object(orders, "HIDE_PRICES_FROM_CUSTOMERS", False),
         patch.object(orders, "HIDE_BALANCE_FROM_CUSTOMERS", False),
-        patch.object(orders, "is_country_blocked", lambda c_: False),
+        patch.object(orders, "is_country_blocked", lambda *a, **k: False),
     ):
         c.sim5 = sim5_mock
-        # استخدم تطبيقاً بسيطاً يحتوي الراوتر فقط — لا نحتاج app.main كاملاً
         from fastapi import FastAPI
         app = FastAPI()
         app.include_router(orders.router)
@@ -130,7 +157,7 @@ def _seed_order(ctx, sim5_id="sim5-1", price=6.0, cost=5.0, profit=1.0):
         "id": 1, "customer_id": ctx.customer["id"],
         "sim5_id": sim5_id, "phone": "+7900", "status": "PENDING",
         "price": price, "fivesim_cost": cost, "profit": profit,
-        "expires": None,
+        "expires": None, "paid_by_voucher": None, "refunded": False,
     })
     ctx.store["numbers"].append({"sim5_id": sim5_id, "sms_count": 0, "status": "active"})
     ctx.customer["balance"] -= price
@@ -189,7 +216,7 @@ def test_create_sim5_disabled(ctx):
 
 
 def test_create_blocked_country(ctx):
-    with patch.object(orders, "is_country_blocked", lambda c_: True):
+    with patch.object(orders, "is_country_blocked", lambda *a, **k: True):
         r = ctx.client.post("/api/v1/orders", json=PAYLOAD)
     assert r.status_code == 400 and "غير متاحة" in r.json()["detail"]
     ctx.sim5.assert_not_called()
@@ -210,8 +237,8 @@ def test_create_service_unavailable(ctx):
 
 
 def test_create_sim5_error_propagates(ctx):
-    from app.services.sim5 import Sim5Error
-    ctx.sim5.side_effect = Sim5Error(status=402, message="no funds")
+    # توقيع Sim5Error: (status_code, message, endpoint="")
+    ctx.sim5.side_effect = Sim5Error(402, "no funds")
     r = ctx.client.post("/api/v1/orders", json=PAYLOAD)
     assert r.status_code == 400 and "no funds" in r.json()["detail"]
     assert ctx.customer["balance"] == 50.0
@@ -238,8 +265,7 @@ def test_sync_sim5_disabled(ctx):
 
 
 def test_sync_sim5_error(ctx):
-    from app.services.sim5 import Sim5Error
-    ctx.sim5.side_effect = Sim5Error(status=503, message="down")
+    ctx.sim5.side_effect = Sim5Error(503, "down")
     r = ctx.client.get("/api/v1/orders/sync")
     assert r.status_code == 503
 
@@ -302,16 +328,17 @@ def test_cancel_refunds_and_reverses_wallet(ctx):
 
 
 def test_cancel_twice_does_not_double_refund(ctx):
-    """⚠️ يكشف ثغرة محتملة: لا يوجد فحص حالة قبل الاسترداد."""
+    """يجب ألا يُسترد المبلغ مرتين عند تكرار الإلغاء."""
     _seed_order(ctx)
     ctx.sim5.return_value = {"status": "CANCELED"}
-    ctx.client.post("/api/v1/orders/1/cancel")
+    r1 = ctx.client.post("/api/v1/orders/1/cancel")
+    assert r1.status_code == 200
     bal_after_first = ctx.customer["balance"]
-    ctx.sim5.return_value = {"status": "CANCELED"}
-    ctx.client.post("/api/v1/orders/1/cancel")
-    assert ctx.customer["balance"] == pytest.approx(bal_after_first), (
-        "ثغرة: الاسترداد تكرر عند إلغاء الطلب مرتين"
-    )
+
+    r2 = ctx.client.post("/api/v1/orders/1/cancel")
+    # الطلب مغلق → يجب رفض الطلب الثاني (400)
+    assert r2.status_code == 400
+    assert ctx.customer["balance"] == pytest.approx(bal_after_first)
 
 
 # ══════════════════════════════════════════════════════════════
