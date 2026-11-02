@@ -29,7 +29,7 @@ router = APIRouter(prefix="/api/v1/diagnostics", tags=["diagnostics"])
 
 # مسار جذر المشروع — نبحث عن tests/ و pytest.ini/pyproject.toml
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_TEST_FILE = PROJECT_ROOT / "tests" / "test_orders_single.py"
+DEFAULT_TEST_FILE = PROJECT_ROOT / "test_orders_single.py"
 
 # مهلة قصوى لتشغيل الاختبارات (ثانية)
 TEST_TIMEOUT = 120.0
