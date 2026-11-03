@@ -10,6 +10,8 @@ test_orders_single.py
 
 التشغيل:
     pytest app/test_orders_single.py -v
+
+المتوقع: 21 passed
 """
 from __future__ import annotations
 
@@ -22,7 +24,7 @@ from fastapi.testclient import TestClient
 
 
 # ══════════════════════════════════════════════════════════════
-# ⚙️ مسار وحدة الطلبات — يطابق ما أرسلته (app/routers/orders.py)
+# ⚙️ مسار وحدة الطلبات
 # ══════════════════════════════════════════════════════════════
 ORDERS_MODULE = "app.routers.orders"
 
@@ -197,14 +199,21 @@ def test_create_insufficient_balance_no_sim5_call(ctx, monkeypatch):
     assert ctx.store["orders"] == []
 
 
-def test_create_sale_price_above_balance_cancels(ctx, monkeypatch):
-    """الرصيد يكفي cost لكن لا يكفي sale_price → يجب إلغاء الطلب في 5SIM."""
+def test_create_sale_price_above_balance_rejected_early(ctx, monkeypatch):
+    """
+    رصيد 5.5 يكفي fivesim_cost (5.0) لكن لا يكفي sale_price (7.0).
+    الكود المُصلَح يرفض مبكراً — لا اتصال بـ 5SIM إطلاقاً.
+    """
     ctx.customer["balance"] = 5.5
-    ctx.sim5.side_effect = [_buy_ok(), {"status": "CANCELED"}]
+    ctx.sim5.return_value = _buy_ok()
     _with_sale_price(monkeypatch, lambda cost: cost + 2.0)
+
     r = ctx.client.post("/api/v1/orders", json=PAYLOAD)
-    assert r.status_code == 400 and "رصيدك غير كافٍ" in r.json()["detail"]
-    assert ctx.sim5.await_count == 2  # buy + cancel
+
+    assert r.status_code == 400
+    assert "غير كافٍ" in r.json()["detail"]
+    # الفحص المسبق: لم يُستدعَ 5SIM إطلاقاً (لا buy ولا cancel)
+    ctx.sim5.assert_not_called()
     assert ctx.customer["balance"] == 5.5
     assert ctx.store["orders"] == []
 
@@ -365,7 +374,11 @@ def test_voucher_does_not_deduct_balance_and_returns_remainder(ctx, monkeypatch)
     assert "voucher_remainder" in types
 
 
-def test_voucher_insufficient_cancels_and_keeps_voucher(ctx, monkeypatch):
+def test_voucher_insufficient_rejected_early_keeps_voucher(ctx, monkeypatch):
+    """
+    كود قيمته 3.0، sale_price = 7.0 → رفض مبكر.
+    الكود يبقى "active"، والرصيد لا يتغيّر، ولا اتصال بـ 5SIM.
+    """
     voucher = {
         "code": "V-LOW", "value": 3.0, "status": "active",
         "allowed_pairs": [{"country": "russia", "service": "telegram"}],
@@ -374,15 +387,18 @@ def test_voucher_insufficient_cancels_and_keeps_voucher(ctx, monkeypatch):
     monkeypatch.setattr(orders, "validate_voucher", lambda code: voucher)
     monkeypatch.setattr(orders, "voucher_allows", lambda v, c_, s: True)
     _with_sale_price(monkeypatch, lambda cost: cost + 2.0)
-    ctx.sim5.side_effect = [_buy_ok(), {"status": "CANCELED"}]
+    ctx.sim5.return_value = _buy_ok()
 
     r = ctx.client.post("/api/v1/orders", json={
         "country": "Russia", "service": "telegram", "voucher_code": "V-LOW",
     })
-    assert r.status_code == 400 and "قيمة الكود غير كافية" in r.json()["detail"]
+
+    assert r.status_code == 400
+    # الرسالة الجديدة من الفحص المسبق
+    assert "غير كافٍ" in r.json()["detail"] or "غير كافية" in r.json()["detail"]
     assert ctx.customer["balance"] == 50.0
-    assert voucher["status"] == "active"
-    assert ctx.sim5.await_count == 2
+    assert voucher["status"] == "active"  # لم يُستهلك
+    ctx.sim5.assert_not_called()           # لا buy ولا cancel
 
 
 def test_voucher_wrong_pair_rejected(ctx, monkeypatch):
