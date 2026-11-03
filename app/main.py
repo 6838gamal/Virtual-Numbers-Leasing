@@ -51,7 +51,6 @@ from app.routers import (
     security,
     admin,
     me,
-diagnostics,          # 🔒 إضافة: راوتر التشخيص
 )
 
 
@@ -108,6 +107,16 @@ async def lifespan(app: FastAPI):
     else:
         print("🔴 تحذير: ADMIN_SECRET غير مضبوط — endpoints الأدمن معطّلة!")
 
+    # 🔒 حالة مسارات التشخيص
+    if DEBUG:
+        if ADMIN_SECRET:
+            print("🧪 التشخيص مفعّل: /api/v1/diagnostics/* "
+                  "(run-tests يتطلب X-Admin-Secret)")
+        else:
+            print("⚠️  التشخيص معطّل: ADMIN_SECRET غير مضبوط")
+    else:
+        print("🔒 التشخيص مخفي في الإنتاج (DEBUG=false) — يعيد 404")
+
     idle_days = SESSION_IDLE_TIMEOUT / 86400
     print(f"🔧 DEBUG={DEBUG} | Version={app.version} | Idle={idle_days:.1f}d")
 
@@ -135,6 +144,10 @@ app = FastAPI(
     description="Virtual Numbers Platform",
     version="1.9.3",
     lifespan=lifespan,
+    # 🔒 إخفاء وثائق OpenAPI في الإنتاج
+    docs_url="/docs" if DEBUG else None,
+    redoc_url="/redoc" if DEBUG else None,
+    openapi_url="/openapi.json" if DEBUG else None,
 )
 
 if STATIC_DIR.exists():
@@ -160,7 +173,7 @@ app.middleware("http")(auth_guard)
 # ══════════════════════════════════════════════════════════════
 # Routers
 # ══════════════════════════════════════════════════════════════
-for r in (
+_routers = [
     system.router,
     auth.router,
     pages.router,
@@ -174,6 +187,13 @@ for r in (
     security.router,
     admin.router,
     me.router,
-    diagnostics.router,   # 🔒 إضافة: مسارات /api/v1/diagnostics/*
-):
+]
+
+# 🔒 diagnostics يُسجَّل فقط في وضع التطوير
+# في الإنتاج: المسارات لا تُوجد إطلاقاً (ليس مجرد 404)
+if DEBUG:
+    from app.routers import diagnostics
+    _routers.append(diagnostics.router)
+
+for r in _routers:
     app.include_router(r)
